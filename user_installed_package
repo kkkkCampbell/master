@@ -7,7 +7,7 @@ echo "opkg update"
 # Получаем самое старое время установки
 DISTRI_TIME=$(awk '/Installed-Time/ {print $2}' /usr/lib/opkg/status | sort -n | head -n1)
 
-# Обрабатываем только нужные пакеты
+# Обрабатываем пакеты, разделяя на обычные и luci-i18n-
 awk -v distri_time="$DISTRI_TIME" '
 BEGIN { RS = ""; FS = "\n" }  # Разделитель записей — пустая строка
 {
@@ -25,8 +25,17 @@ BEGIN { RS = ""; FS = "\n" }  # Разделитель записей — пус
     }
     
     if (pkg_name != "" && !auto_installed) {
-        print "opkg install " pkg_name
+        if (pkg_name ~ /luci-i18n-/) {
+            luci_pkgs = luci_pkgs "\n" "opkg install " pkg_name
+        } else {
+            std_pkgs = std_pkgs "\n" "opkg install " pkg_name
+        }
     }
-}' /usr/lib/opkg/status | sort
+}
+END {
+    # Сначала выводим обычные пакеты, затем luci-i18n-
+    print std_pkgs
+    print luci_pkgs
+}' /usr/lib/opkg/status | grep -v "^$" | sort
 
 echo "==============================================="
