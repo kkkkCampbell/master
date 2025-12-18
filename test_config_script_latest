@@ -31,44 +31,65 @@ else
 fi
 
 echo "=============================================================="
-echo "   АНАЛИЗ КОНФИГУРАЦИЙ (YOUTUBE)"
+echo "   АНАЛИЗ КОНФИГУРАЦИЙ (YOUTUBE + GOOGLEVIDEO)"
 echo "--------------------------------------------------------------"
 
-# 3. Анализ файлов на наличие youtube
+# 3. Анализ файлов
 google_warn=""
 for cfg in zeroblock podkop zapret youtubeUnblock; do
     file="/etc/config/$cfg"
     if [ -f "$file" ]; then
-        count=0
-        found_in=""
-        c=$(grep -i "youtube" "$file" | wc -l)
-        if [ "$c" -gt 0 ]; then
-            count=$((count + c))
-            found_in="$cfg"
-        fi
         
-        if [ "$cfg" = "zapret" ]; then
-            extra_files=$(grep -o "\-\-hostlist=[^ ]*" "$file" | cut -d= -f2 | sed "s/['\"]//g")
-            for ef in $extra_files; do
-                if [ -f "$ef" ]; then
-                    ecount=$(grep -i "youtube" "$ef" | wc -l)
-                    if [ "$ecount" -gt 0 ]; then
-                        count=$((count + ecount))
-                        fname=$(basename "$ef")
-                        found_in="${found_in:+$found_in, }$fname"
+        if [ "$cfg" = "youtubeUnblock" ]; then
+            any_found=0
+            sections=$(uci show youtubeUnblock | grep "=section" | cut -d. -f2 | cut -d= -f1)
+            for s in $sections; do
+                enabled=$(uci -q get youtubeUnblock."$s".enabled)
+                if [ "$enabled" = "1" ]; then
+                    match=$(uci show youtubeUnblock."$s" | grep -Ei "youtube|googlevideo\.com")
+                    if [ -n "$match" ]; then
+                        any_found=1
+                        count=$(echo "$match" | wc -l)
+                        s_name=$(uci -q get youtubeUnblock."$s".name)
+                        [ -z "$s_name" ] && s_name="$s"
+                        printf "%-15s найден в: ${YELLOW}%s${CLR_OFF} (${YELLOW}%d${CLR_OFF})\n" "$cfg" "$s_name" "$count"
                     fi
                 fi
             done
-            # Обновленное предупреждение с путем к файлу
-            if grep -q "hosts-google" "$file"; then
-                google_warn="${RED_BRIGHT}ВНИМАНИЕ: в /etc/config/zapret включен hosts-google!${CLR_OFF}"
-            fi
-        fi
-
-        if [ "$count" -gt 0 ]; then
-            printf "%-15s найден в: ${YELLOW}%s${CLR_OFF} (${YELLOW}%d${CLR_OFF})\n" "$cfg" "$found_in" "$count"
+            # Если в файле вообще ничего не включено
+            [ "$any_found" -eq 0 ] && printf "%-15s ютуб найден: 0\n" "$cfg"
+            
         else
-            printf "%-15s ютуб найден: 0\n" "$cfg"
+            # Стандартный поиск для остальных (построчно для zapret внешних файлов)
+            main_count=$(grep -Ei "youtube|googlevideo\.com" "$file" | wc -l)
+            if [ "$main_count" -gt 0 ]; then
+                printf "%-15s найден в: ${YELLOW}%s${CLR_OFF} (${YELLOW}%d${CLR_OFF})\n" "$cfg" "$cfg" "$main_count"
+            else
+                # Если в самом конфиге 0, но это zapret, проверим его файлы ниже
+                [ "$cfg" != "zapret" ] && printf "%-15s ютуб найден: 0\n" "$cfg"
+            fi
+            
+            if [ "$cfg" = "zapret" ]; then
+                extra_files=$(grep -o "\-\-hostlist=[^ ]*" "$file" | cut -d= -f2 | sed "s/['\"]//g")
+                zap_any=0
+                [ "$main_count" -gt 0 ] && zap_any=1
+                
+                for ef in $extra_files; do
+                    if [ -f "$ef" ]; then
+                        ecount=$(grep -Ei "youtube|googlevideo\.com" "$ef" | wc -l)
+                        if [ "$ecount" -gt 0 ]; then
+                            zap_any=1
+                            fname=$(basename "$ef")
+                            printf "%-15s найден в: ${YELLOW}%s${CLR_OFF} (${YELLOW}%d${CLR_OFF})\n" "$cfg" "$fname" "$ecount"
+                        fi
+                    fi
+                done
+                [ "$zap_any" -eq 0 ] && printf "%-15s ютуб найден: 0\n" "$cfg"
+                
+                if grep -q "hosts-google" "$file"; then
+                    google_warn="${RED_BRIGHT}ВНИМАНИЕ: в /etc/config/zapret включен hosts-google!${CLR_OFF}"
+                fi
+            fi
         fi
     fi
 done
