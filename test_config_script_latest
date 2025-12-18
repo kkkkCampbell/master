@@ -1,0 +1,85 @@
+#!/bin/sh
+
+# Очистка экрана
+clear
+
+# 1. Сбор системных данных
+LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
+MEM_TOTAL=$(free | grep Mem | awk '{print $2}')
+MEM_USED=$(free | grep Mem | awk '{print $3}')
+MEM_PCT=$((MEM_USED * 100 / MEM_TOTAL))
+
+# 2. Проверка интерфейса и пинга
+if [ ! -d "/sys/class/net/awg10" ]; then
+    PING_RES="\033[0;31mNOT FOUND\033[0m"
+else
+    printf "Проверка связи через awg10..."
+    PING_DATA=$(ping -I awg10 -c 4 ya.ru 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        STATS=$(echo "$PING_DATA" | grep "round-trip" | sed 's/[=/]/ /g' | awk '{printf "%.1f/%.1f ms", $(NF-3), $(NF-1)}')
+        PING_RES="\033[0;32m$STATS\033[0m"
+    else
+        PING_RES="\033[0;31mERROR\033[0m"
+    fi
+    printf "\r                             \r"
+fi
+
+echo "=============================================================="
+echo "   АНАЛИЗ КОНФИГУРАЦИЙ (YOUTUBE)"
+echo "--------------------------------------------------------------"
+
+# 3. Анализ файлов на наличие youtube
+for cfg in zeroblock podkop zapret youtubeUnblock; do
+    file="/etc/config/$cfg"
+    if [ -f "$file" ]; then
+        count=$(grep -i "youtube" "$file" | wc -l)
+        if [ "$count" -gt 0 ]; then
+            printf "%-15s ютуб найден: \033[1;33m%d\033[0m\n" "$cfg" "$count"
+        else
+            printf "%-15s ютуб найден: 0\n" "$cfg"
+        fi
+    fi
+done
+
+# ПУСТАЯ СТРОКА ПЕРЕД СЛЕДУЮЩИМ ЗАГОЛОВКОМ
+echo ""
+echo "=============================================================="
+echo "   СТАТУС СЛУЖБ"
+echo "=============================================================="
+echo "СЕРВИС          | СОСТОЯНИЕ      | АВТОЗАПУСК"
+echo "--------------------------------------------------------------"
+
+for s in zeroblock youtubeUnblock zapret ruantiblock podkop; do
+    if [ -f "/etc/init.d/$s" ]; then
+        if /etc/init.d/$s status 2>/dev/null | grep -q "running"; then
+            st_txt="▶ РАБОТАЕТ"
+            st_clr="\033[0;32m"
+        else
+            st_txt="■ ОСТАНОВЛЕН"
+            st_clr="\033[0;31m"
+        fi
+        
+        if /etc/init.d/$s enabled 2>/dev/null; then
+            au_txt="РАЗРЕШЕН"
+            au_clr="\033[0;32m"
+        else
+            au_txt="ЗАПРЕЩЕН"
+            au_clr="\033[0;31m"
+        fi
+
+        # УВЕЛИЧЕН ОТСТУП ДО 15 СИМВОЛОВ (было 12)
+        printf "%-15s | " "$s"
+        printf "%b%s\033[0m" "$st_clr" "$st_txt"
+        
+        case "$st_txt" in
+            "▶ РАБОТАЕТ")   printf "     | " ;;
+            "■ ОСТАНОВЛЕН") printf "   | " ;;
+        esac
+
+        printf "%b%s\033[0m\n" "$au_clr" "$au_txt"
+    fi
+done
+
+echo "--------------------------------------------------------------"
+printf "CPU LOAD (1 min): %-4s | RAM: %s%% | AWG10: %b\n" "$LOAD" "$MEM_PCT" "$PING_RES"
+echo "=============================================================="
