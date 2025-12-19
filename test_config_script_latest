@@ -6,8 +6,23 @@ TMP_OUT="/tmp/analyzer.raw"
 
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"
 IFACE="awg10"
-
 clear
+# --- ПРОВЕРКА И УСТАНОВКА WGET-SSL ---
+if ! opkg list-installed | grep -q "wget-ssl"; then
+    echo "Утилита wget-ssl не найдена. Попытка установки..."
+    if ! opkg install wget-ssl; then
+        echo "Прямая установка не удалась. Обновление списков пакетов..."
+        opkg update
+        if ! opkg install wget-ssl; then
+            echo -e "${RED_BRIGHT}ОШИБКА: Не удалось установить wget-ssl.${CLR_OFF}"
+            echo -e "${YELLOW}ВНИМАНИЕ: Часть данных (тесты через интерфейс) будет некорректна.${CLR_OFF}"
+            echo "Нажмите Enter, чтобы продолжить..."
+            read _
+        fi
+    fi
+fi
+
+
 {
 echo ""
 # 0. Сбор данных
@@ -18,31 +33,51 @@ LAN_IP=$(ip addr show br-lan 2>/dev/null | grep -w inet | awk '{print $2}' | cut
 [ -z "$LAN_IP" ] && LAN_IP=$(uci -q get network.lan.ipaddr)
 NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
 
+
 # --- БЛОК 1: СТАТУС СЛУЖБ ---
 echo "== СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБРАЖАЮТСЯ)"
 echo "=============================================================="
 INSTALLED_SERVICES=""
+
+# 1. Сбор статуса только для zeroblock (основа стабильности)
+ZB_RUN=0
+zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
+
 for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
     if [ -f "/etc/init.d/$s" ]; then
         INSTALLED_SERVICES="$INSTALLED_SERVICES $s"
-        if [ "$s" = "sing-box" ] && [ -f "/etc/init.d/zeroblock" ]; then
-             pgrep "sing-box" > /dev/null && ST_OUT="RUNNING (MANAGED BY ZB)" || ST_OUT="STOPPED"
+        
+        # Сброс цветов перед каждой итерацией
+        ST_CLR="${RED_BRIGHT}"; S_NAME_CLR=""; BLUE="\033[0;34m"
+
+        # 2. Определение текста статуса
+        if [ "$s" = "podkop" ]; then
+            ST_OUT="UNDEFINED"
+            ST_CLR="${BLUE}"
         elif [ "$s" = "zeroblock" ]; then
-            RAW_STATUS=$(zeroblock status 2>/dev/null)
-            ST_OUT=$(echo "$RAW_STATUS" | grep "Overall:" | sed 's/Overall: //' | tr 'a-z' 'A-Z')
-            if [ "$ST_OUT" != "RUNNING" ] && [ -n "$ST_OUT" ]; then
-                ERRS=$(echo "$RAW_STATUS" | grep -Ei ": (no|failed)" | tr '\n' ',' | sed 's/,$//' | tr 'a-z' 'A-Z')
-                [ -n "$ERRS" ] && ST_OUT="${ST_OUT}: ${ERRS}"
+            [ $ZB_RUN -eq 1 ] && { ST_OUT="RUNNING"; ST_CLR="${GREEN}"; } || ST_OUT="STOPPED"
+        elif [ "$s" = "sing-box" ]; then
+            if /etc/init.d/sing-box status 2>/dev/null | grep -q "running"; then
+                ST_OUT="RUNNING (MANAGED BY ZB)"
+                ST_CLR="${GREEN}"
+            else
+                ST_OUT="STOPPED"
             fi
-            [ -z "$ST_OUT" ] && ST_OUT="OFFLINE (N/A)"
         else
-            ST_OUT=$(/etc/init.d/$s status 2>&1 | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
-            echo "$ST_OUT" | grep -Ei "running|active" >/dev/null && ST_OUT="RUNNING"
+            # Для остальных стандартный grep
+            if /etc/init.d/$s status 2>/dev/null | grep -q "running"; then
+                ST_OUT="RUNNING"
+                ST_CLR="${GREEN}"
+            else
+                ST_OUT="STOPPED"
+            fi
         fi
-        ST_OUT=$(echo "$ST_OUT" | tr 'a-z' 'A-Z'); ST_CLR="${RED_BRIGHT}"
-        echo "$ST_OUT" | grep -Ei "RUNNING|ACTIVE|MANAGED" >/dev/null && ST_CLR="${GREEN}"
+
+        ST_OUT=$(echo "$ST_OUT" | tr 'a-z' 'A-Z')
+
         /etc/init.d/$s enabled 2>/dev/null && { au_txt="РАЗРЕШЁН"; au_clr="${GREEN}"; } || { au_txt="ОТКЛ"; au_clr="${RED_BRIGHT}"; }
-        printf "  %-15s | ${ST_CLR}%-25s${CLR_OFF} | ${au_clr}${au_txt}${CLR_OFF}\n" "$s" "$ST_OUT"
+        
+        printf "  %b%-15s${CLR_OFF} | ${ST_CLR}%-25s${CLR_OFF} | ${au_clr}${au_txt}${CLR_OFF}\n" "$S_NAME_CLR" "$s" "$ST_OUT"
     fi
 done
 
@@ -68,7 +103,7 @@ if echo "$INSTALLED_SERVICES" | grep -q "zeroblock"; then
         done
     fi
     grep -Ei "russia_inside|russia_outside" "$tmp_list" 2>/dev/null | while read -r line; do
-         # Добавлено 4 пробела после ИНФО: для выравнивания с КОНФЛИКТ:
+         # Добавлено 4 пробела после ИНФО для выравнивания с КОНФЛИКТ
          printf "  ${YELLOW}ИНФО:    ${CLR_OFF} найден список ${GREEN}%s${CLR_OFF} в секции: ${YELLOW}%s${CLR_OFF}\n" "$(echo "$line" | cut -d'|' -f1)" "$(echo "$line" | cut -d'|' -f2)"
     done
     rm -f "$tmp_list"
@@ -83,7 +118,6 @@ for cfg in zeroblock podkop zapret youtubeUnblock; do
     
     if [ "$cfg" = "zapret" ]; then
         zap_count=0
-        # ТОТ САМЫЙ РАБОЧИЙ МЕТОД
         LISTS_PATHS=$(grep -oE "\-\-hostlist=[^ '\" ]+" /etc/config/zapret | cut -d= -f2 | sed "s/['\"]//g" | sort | uniq)
         for f_path in $LISTS_PATHS; do
             if [ -f "$f_path" ]; then
@@ -100,56 +134,92 @@ for cfg in zeroblock podkop zapret youtubeUnblock; do
         done
         [ "$zap_count" -eq 0 ] && printf "  %-15s ютуб найден: 0\n" "$cfg"
 
-    elif [ "$cfg" = "youtubeUnblock" ]; then
+    else
+        # Для zeroblock, podkop и youtubeUnblock
         any_found=0
-        sections=$(uci -q show youtubeUnblock | grep "=section" | cut -d. -f2 | cut -d= -f1)
+        # Получаем список всех секций типа 'section'
+        sections=$(uci -q show "$cfg" | grep "=section" | cut -d. -f2 | cut -d= -f1)
+        
         for s in $sections; do
-            if [ "$(uci -q get youtubeUnblock."$s".enabled)" = "1" ]; then
-                match=$(uci show youtubeUnblock."$s" 2>/dev/null | grep -Ei "youtube|googlevideo\.com")
-                if [ -n "$match" ]; then
-                    any_found=1
-                    s_name=$(uci -q get youtubeUnblock."$s".name); [ -z "$s_name" ] && s_name="$s"
-                    printf "  %-15s найден в: ${YELLOW}%-25s${CLR_OFF} [${GREEN}✔${CLR_OFF}] (%d)\n" "$cfg" "$s_name" "$(echo "$match" | wc -l)"
-                fi
+            # Проверяем включена ли секция (в подкопе секция main обычно активна по умолчанию)
+            # Если параметра enabled нет, считаем секцию активной (как в podkop)
+            IS_EN=$(uci -q get "$cfg.$s.enabled")
+            [ "$IS_EN" = "0" ] && continue
+            
+            # Берем весь вывод uci show для этой секции
+            # Это подцепит и user_domains_text, и community_lists
+            SECTION_DATA=$(uci -q show "$cfg.$s")
+            count=$(echo "$SECTION_DATA" | grep -Ei "youtube|googlevideo\.com|russia_inside|russia_outside" | wc -l)
+            
+            if [ "$count" -gt 0 ]; then
+                any_found=1
+                printf "  %-15s найден в: ${YELLOW}%-25s${CLR_OFF} (%d)\n" "$cfg" "$s" "$count"
             fi
         done
         [ "$any_found" -eq 0 ] && printf "  %-15s ютуб найден: 0\n" "$cfg"
-    else
-        file="/etc/config/$cfg"
-        [ ! -f "$file" ] && continue
-        count=$(grep -Ei "youtube|googlevideo\.com" "$file" | wc -l)
-        [ "$count" -gt 0 ] && printf "  %-15s найден в: ${YELLOW}%-25s${CLR_OFF} (%d)\n" "$cfg" "$cfg" "$count" || printf "  %-15s ютуб найден: 0\n" "$cfg"
     fi
 done
 
-# --- БЛОК 4: СЕТЬ (SING-BOX / OPERA) ---
+
+# --- БЛОК 4: ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM) ---
+echo ""
+echo "== ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM)"
+echo "=============================================================="
+
+# 1. Тест через Sing-box (Opera)
 SB_CONF="/etc/sing-box/config.json"
 if [ -f "$SB_CONF" ]; then
-    DYNAMIC_PORT=$(jq -r '.inbounds[]? | select(.tag=="Opera") | .server_port' "$SB_CONF" 2>/dev/null)
+    # Ищем Opera в outbounds (как в твоем конфиге)
+    DYNAMIC_PORT=$(jq -r '.outbounds[] | select(.tag=="Opera") | .server_port' "$SB_CONF" 2>/dev/null)
+    
     if [ -n "$DYNAMIC_PORT" ] && [ "$DYNAMIC_PORT" != "null" ]; then
-        echo ""
-        echo "== ПРОВЕРКА PROXY (SING-BOX / OPERA)"
-        echo "=============================================================="
         PROXY_ADDR="127.0.0.1:$DYNAMIC_PORT"
-        P_URL="https://youtube.com"
-        P_RESP=$(curl -I -s --connect-timeout 3 -x http://$PROXY_ADDR $P_URL | head -n 1 | tr -d '\r\n' | tr 'a-z' 'A-Z')
-        if [ -z "$P_RESP" ]; then
-            printf "  URL: %s (%s) %b\n" "$P_URL" "$PROXY_ADDR" "${RED_BRIGHT}ОФЛАЙН${CLR_OFF}"
+        # Для прокси оставляем curl, он тут обычно справляется
+        P_CODE=$(curl -I -s --connect-timeout 3 -x http://$PROXY_ADDR https://youtube.com | head -n 1 | tr -d '\r\n')
+        if [ -n "$P_CODE" ]; then
+            printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
         else
-            printf "  URL: %s (%s) %b (%s)\n" "$P_URL" "$PROXY_ADDR" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_RESP"
+            printf "  OPERA (Proxy): %b\n" "${RED_BRIGHT}ОФЛАЙН${CLR_OFF}"
         fi
+    else
+        printf "  OPERA (Proxy): ${YELLOW}ПОРТ НЕ НАЙДЕН В OUTBOUNDS${CLR_OFF}\n"
     fi
 fi
 
-# Проверка интерфейса
+# 2. Тест через интерфейс AWG10 (используем wget-ssl)
+if [ -d "/sys/class/net/$IFACE" ]; then
+    IF_IP=$(ip addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
+    
+    if [ -n "$IF_IP" ]; then
+        # Нам важен сам факт ответа (даже 429 Too Many Requests), поэтому проверяем наличие HTTP в выводе
+        W_OUT=$(wget --spider --server-response --no-check-certificate -4 --timeout=4 --tries=1 --bind-address="$IF_IP" https://youtube.com 2>&1)
+        W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
+
+        if [ -n "$W_CODE" ]; then
+            # Если есть хоть какой-то HTTP код — туннель живой
+            printf "  %-14s %b (%s)\n" "$IFACE:" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE"
+        else
+            W_ERR=$(echo "$W_OUT" | grep -Ei "failed|error|timeout|refused" | tail -n 1 | sed 's/^ *//')
+            [ -z "$W_ERR" ] && W_ERR="No response"
+            printf "  %-14s %b (ПРИЧИНА: %s)\n" "$IFACE:" "${RED_BRIGHT}ОФЛАЙН${CLR_OFF}" "$W_ERR"
+        fi
+    else
+        printf "  %-14s %b (НЕТ IP АДРЕСА)\n" "$IFACE:" "${RED_BRIGHT}ОШИБКА${CLR_OFF}"
+    fi
+fi
+
+# --- ДЕТАЛИ ИНТЕРФЕЙСА ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ ---
+
+# Блок деталей интерфейса (трафик и пинг)
 if [ -d "/sys/class/net/$IFACE" ]; then
     echo ""
-    echo "== ИНТЕРФЕЙС $IFACE"
+    echo "== ИНТЕРФЕЙС $IFACE (ДЕТАЛИ)"
     echo "=============================================================="
     [ -n "$(ip link show $IFACE | grep 'UP')" ] && IF_STATUS="${GREEN}UP (ON)${CLR_OFF}" || IF_STATUS="${RED_BRIGHT}DOWN (OFF)${CLR_OFF}"
     printf "  Статус:      %b\n" "$IF_STATUS"
     RX_B=$(cat /sys/class/net/$IFACE/statistics/rx_bytes); TX_B=$(cat /sys/class/net/$IFACE/statistics/tx_bytes)
-    printf "  Получено:    %.2f MB\n" "$(echo $RX_B | awk '{print $1/1048576}')"; printf "  Отправлено:  %.2f MB\n" "$(echo $TX_B | awk '{print $1/1048576}')"
+    printf "  Получено:    %.2f MB\n" "$(echo $RX_B | awk '{print $1/1048576}')"
+    printf "  Отправлено:  %.2f MB\n" "$(echo $TX_B | awk '{print $1/1048576}')"
     printf "  Пинг (ya.ru via $IFACE): "
     P_D=$(ping -I $IFACE -c 4 ya.ru 2>/dev/null)
     if [ $? -eq 0 ]; then
@@ -161,6 +231,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         printf "${RED_BRIGHT}ERROR (100%% LOSS)${CLR_OFF}\n"
     fi
 fi
+
 
 echo ""
 echo "== ПРОВЕРКА DNS"
@@ -174,7 +245,8 @@ printf "  Facebook IP: %b\n" " $RES"
 echo ""
 echo "== СИСТЕМНЫЕ РЕСУРСЫ"
 echo "=============================================================="
-printf "  LAN IP:     %s\n" "$LAN_IP"; printf "  CPU LOAD:   %s\n" "$LOAD"; printf "  RAM USED:   %s%%\n" "$MEM_P"; printf "  NAND USED:  %s (%s free)\n" "$NAND_PCT" "$NAND_FREE"
+printf "  LAN IP: %s\n" "$LAN_IP"
+printf "  CPU: %s | RAM: %s%% | NAND: %s/%s\n" "$LOAD" "$MEM_P" "$NAND_PCT занято" "$NAND_FREE доступно"
 echo "=============================================================="
 } | tee "$TMP_OUT"
 
