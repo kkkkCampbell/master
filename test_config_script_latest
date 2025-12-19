@@ -54,12 +54,14 @@ echo ""
 echo "== ПОИСК КОНФЛИКТОВ"
 echo "=============================================================="
 
+# Флаг для контроля ПЕРВОГО напечатанного заголовка во всем разделе
+ANY_OUTPUT_PRINTED=0
+
 for cfg in zeroblock podkop; do
     [ -f "/etc/config/$cfg" ] || continue
     
-    # Заголовки разделов
-    [ "$cfg" = "zeroblock" ] && echo "ZeroBlock"
-    [ "$cfg" = "podkop" ] && echo "PODKOP"
+    HEADER_PRINTED=0
+    [ "$cfg" = "zeroblock" ] && CFG_TITLE="ZeroBlock" || CFG_TITLE="PODKOP"
     
     tmp_cfg="/tmp/cfg_lists.tmp"; > "$tmp_cfg"
     
@@ -67,26 +69,33 @@ for cfg in zeroblock podkop; do
     for sid in $sections; do
         s_name=$(uci -q get "$cfg.$sid".name); [ -z "$s_name" ] && s_name="$sid"
         lists=$(uci -q get "$cfg.$sid".community_lists | sed "s/'//g")
-        
         for l in $lists; do echo "$l|$s_name" >> "$tmp_cfg"; done
         
-        # ИНФО (special lists)
+        # Проверка ИНФО
         uci -q show "$cfg.$sid" | grep -Ei "russia_inside|russia_outside" >/dev/null && {
+            if [ "$HEADER_PRINTED" -eq 0 ]; then
+                [ "$ANY_OUTPUT_PRINTED" -eq 1 ] && echo ""
+                echo "$CFG_TITLE"
+                HEADER_PRINTED=1; ANY_OUTPUT_PRINTED=1
+            fi
             L_NAME=$(uci -q show "$cfg.$sid" | grep -oEi "russia_inside|russia_outside" | head -1)
             printf "  %b%s${CLR_OFF}     найден список ${YELLOW}%s${CLR_OFF} в секции: ${YELLOW}%s${CLR_OFF}\n" "${YELLOW}" "ИНФО:" "$L_NAME" "$s_name"
         }
     done
     
-    # Конфликты внутри конфига
+    # Проверка КОНФЛИКТОВ
     all_dups=$(cut -d'|' -f1 "$tmp_cfg" 2>/dev/null | sort | uniq -d)
     for d in $all_dups; do
+        if [ "$HEADER_PRINTED" -eq 0 ]; then
+            [ "$ANY_OUTPUT_PRINTED" -eq 1 ] && echo ""
+            echo "$CFG_TITLE"
+            HEADER_PRINTED=1; ANY_OUTPUT_PRINTED=1
+        fi
         found_in=$(grep "^$d|" "$tmp_cfg" | cut -d'|' -f2 | tr '\n' ' ' | sed 's/ $//' | sed 's/ /, /g')
         printf "  %b%s${CLR_OFF} список ${YELLOW}'%s'${CLR_OFF} найден в: ${YELLOW}%s${CLR_OFF}\n" "${RED_BRIGHT}" "КОНФЛИКТ:" "$d" "$found_in"
     done
     
     rm -f "$tmp_cfg"
-    # Перевод строки только между ZeroBlock и PODKOP
-    [ "$cfg" = "zeroblock" ] && echo ""
 done
 
 # --- БЛОК 3: АНАЛИЗ КОНФИГУРАЦИЙ ---
