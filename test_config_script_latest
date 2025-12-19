@@ -4,8 +4,8 @@
 LOG_FILE="/root/analyzer.log"
 TMP_OUT="/tmp/analyzer.raw"
 
-# Цвета
-CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[1;33m"
+# Цвета: YELLOW теперь 0;33 (более бледный/темный)
+CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"
 IFACE="awg10"
 
 clear
@@ -65,20 +65,28 @@ for cfg in zeroblock podkop zapret youtubeUnblock; do
 done
 
 echo ""
-echo "== СТАТУС СЛУЖБ (не установленные не отображаются)"
+echo "== СТАТУС СЛУЖБ"
 echo "=============================================================="
 for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
     if [ -f "/etc/init.d/$s" ]; then
-        ST_OUT=$(/etc/init.d/$s status 2>&1 | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
         if [ "$s" = "zeroblock" ]; then
-            echo "$ST_OUT" | grep -q "running" || ST_OUT="unknown (status N/A)"
+            ST_OUT=$(zeroblock status 2>/dev/null | grep "Overall:" | sed 's/Overall: //')
+            [ -z "$ST_OUT" ] && ST_OUT=$(/etc/init.d/$s status 2>&1 | grep "Overall:" | sed 's/Overall: //')
+            [ -z "$ST_OUT" ] && ST_OUT="OFFLINE (N/A)"
+        else
+            ST_OUT=$(/etc/init.d/$s status 2>&1 | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
         fi
-        if echo "$ST_OUT" | grep -Ei "running|active" >/dev/null; then
+
+        ST_OUT=$(echo "$ST_OUT" | tr 'a-z' 'A-Z')
+
+        if echo "$ST_OUT" | grep -Ei "RUNNING|ACTIVE" >/dev/null; then
             ST_CLR="${GREEN}"
         else
             ST_CLR="${RED_BRIGHT}"
         fi
+
         /etc/init.d/$s enabled 2>/dev/null && { au_txt="РАЗРЕШЁН"; au_clr="${GREEN}"; } || { au_txt="ОТКЛ"; au_clr="${RED_BRIGHT}"; }
+        
         printf "  %-15s | " "$s"
         printf "${ST_CLR}%-25s${CLR_OFF}" "$ST_OUT"
         printf " | ${au_clr}${au_txt}${CLR_OFF}\n"
@@ -90,7 +98,7 @@ echo "== ПРОВЕРКА PROXY (SING-BOX / OPERA)"
 echo "=============================================================="
 TEST_URL="https://youtube.com"
 PROXY_ADDR="127.0.0.1:18080"
-P_RESP=$(curl -I -s --connect-timeout 3 -x http://$PROXY_ADDR $TEST_URL | head -n 1 | tr -d '\r\n')
+P_RESP=$(curl -I -s --connect-timeout 3 -x http://$PROXY_ADDR $TEST_URL | head -n 1 | tr -d '\r\n' | tr 'a-z' 'A-Z')
 
 printf "  URL: %s (%s)\n" "$TEST_URL" "$PROXY_ADDR"
 if [ -z "$P_RESP" ]; then
@@ -114,15 +122,15 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     P_D=$(ping -I $IFACE -c 4 ya.ru 2>/dev/null)
     if [ $? -eq 0 ]; then
         STATS=$(echo "$P_D" | grep "round-trip" | sed 's/[=/]/ /g' | awk '{printf "%.1f/%.1f ms", $(NF-3), $(NF-1)}')
-        LOSS=$(echo "$P_D" | grep -o "[0-9]*% packet loss" | awk '{print $1}')
+        LOSS=$(echo "$P_D" | grep -o "[0-9]*% packet loss" | awk '{print $1}' | tr 'a-z' 'A-Z')
         L_VAL=$(echo "$LOSS" | tr -d '%')
         if [ "$L_VAL" -eq 0 ]; then
-            printf "${GREEN}%s (%s loss)${CLR_OFF}\n" "$STATS" "$LOSS"
+            printf "${GREEN}%s (%s LOSS)${CLR_OFF}\n" "$STATS" "$LOSS"
         else
-            printf "${YELLOW}%s (%s loss)${CLR_OFF}\n" "$STATS" "$LOSS"
+            printf "${YELLOW}%s (%s LOSS)${CLR_OFF}\n" "$STATS" "$LOSS"
         fi
     else
-        printf "${RED_BRIGHT}ERROR (100%% loss)${CLR_OFF}\n"
+        printf "${RED_BRIGHT}ERROR (100%% LOSS)${CLR_OFF}\n"
     fi
 else
     echo "  Интерфейс $IFACE не найден."
@@ -157,5 +165,5 @@ echo "=============================================================="
 sed 's/\x1b\[[0-9;]*m//g' "$TMP_OUT" > "$LOG_FILE"
 rm "$TMP_OUT"
 
-printf "  ${YELLOW}Путь к логу: %s${CLR_OFF}\n" "$LOG_FILE"
+printf "  ${YELLOW}ПУТЬ К ЛОГУ: %s${CLR_OFF}\n" "$LOG_FILE"
 echo ""
