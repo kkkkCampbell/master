@@ -173,13 +173,10 @@ fi
 echo ""
 echo "== ПРОВЕРКА DNS"
 echo "=============================================================="
-# Парсим реальный сервер, который ответил системе
-DNS_OUT=$(nslookup ya.ru 2>/dev/null)
-DNS_SRV=$(echo "$DNS_OUT" | grep "Server:" | awk '{print $2}')
-DNS_ADR=$(echo "$DNS_OUT" | grep "Address:" | head -1 | awk '{print $2}')
+# Берем только строку Address, там и IP и порт (например, 127.0.0.1:53)
+DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
 
 printf "  DNS Server:   %s\n" "${DNS_SRV:-UNKNOWN}"
-printf "  Address:      %s\n" "${DNS_ADR:-UNKNOWN}"
 printf "  DNS Redirect: 127.0.0.42\n"
 
 # Резолвим Facebook через локалхост и красим IP в желтый
