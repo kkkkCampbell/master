@@ -5,7 +5,10 @@ CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;3
 IFACE="awg10"
 
 # --- ПОДГОТОВКА ---
-[ -x /usr/bin/wget ] || { opkg update && opkg install wget-ssl; }
+[ -z "$(opkg list-installed | grep "wget-ssl")" ] && {
+  opkg update && 
+  opkg install wget-ssl;
+}
 
 clear
 echo ""
