@@ -65,7 +65,7 @@ for cfg in zeroblock podkop zapret youtubeUnblock; do
 done
 
 echo ""
-echo "== СТАТУС СЛУЖБ"
+echo "== СТАТУС СЛУЖБ (не установленные не выводятся)"
 echo "=============================================================="
 for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
     if [ -f "/etc/init.d/$s" ]; then
