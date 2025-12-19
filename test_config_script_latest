@@ -49,35 +49,45 @@ for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
     fi
 done
 
-# --- БЛОК 2: ПРОВЕРКА КОНФЛИКТОВ ZEROBLOCK ---
-if [ -f "/etc/init.d/zeroblock" ]; then
-    echo ""
-    echo "== ПРОВЕРКА КОНФЛИКТОВ ZEROBLOCK"
-    echo "=============================================================="
-    tmp_list="/tmp/zb_lists.tmp"; > "$tmp_list"
-    sections=$(uci -q show zeroblock | grep "=section" | cut -d. -f2 | cut -d= -f1)
+# --- БЛОК 2: ПОИСК КОНФЛИКТОВ ---
+echo ""
+echo "== ПОИСК КОНФЛИКТОВ"
+echo "=============================================================="
+
+for cfg in zeroblock podkop; do
+    [ -f "/etc/config/$cfg" ] || continue
     
+    # Заголовки разделов
+    [ "$cfg" = "zeroblock" ] && echo "ZeroBlock"
+    [ "$cfg" = "podkop" ] && echo "PODKOP"
+    
+    tmp_cfg="/tmp/cfg_lists.tmp"; > "$tmp_cfg"
+    
+    sections=$(uci -q show "$cfg" | grep "=section" | cut -d. -f2 | cut -d= -f1)
     for sid in $sections; do
-        s_name=$(uci -q get zeroblock."$sid".name); [ -z "$s_name" ] && s_name="$sid"
-        lists=$(uci -q get zeroblock."$sid".community_lists | sed "s/'//g")
-        for l in $lists; do echo "$l|$s_name" >> "$tmp_list"; done
+        s_name=$(uci -q get "$cfg.$sid".name); [ -z "$s_name" ] && s_name="$sid"
+        lists=$(uci -q get "$cfg.$sid".community_lists | sed "s/'//g")
         
-        # Инфо теперь YELLOW (темно-желтый), выравнивание сохранено
-        uci -q show zeroblock."$sid" | grep -Ei "russia_inside|russia_outside" >/dev/null && {
-            L_NAME=$(uci -q show zeroblock."$sid" | grep -oEi "russia_inside|russia_outside" | head -1)
+        for l in $lists; do echo "$l|$s_name" >> "$tmp_cfg"; done
+        
+        # ИНФО (special lists)
+        uci -q show "$cfg.$sid" | grep -Ei "russia_inside|russia_outside" >/dev/null && {
+            L_NAME=$(uci -q show "$cfg.$sid" | grep -oEi "russia_inside|russia_outside" | head -1)
             printf "  %b%s${CLR_OFF}     найден список ${YELLOW}%s${CLR_OFF} в секции: ${YELLOW}%s${CLR_OFF}\n" "${YELLOW}" "ИНФО:" "$L_NAME" "$s_name"
         }
     done
     
-    all_unique_lists=$(cut -d'|' -f1 "$tmp_list" 2>/dev/null | sort | uniq -d)
-    for d in $all_unique_lists; do
-        found_in=$(grep "^$d|" "$tmp_list" | cut -d'|' -f2 | tr '\n' ' ' | sed 's/ $//' | sed 's/ /, /g')
-        # Конфликт остается RED_BRIGHT (авария)
+    # Конфликты внутри конфига
+    all_dups=$(cut -d'|' -f1 "$tmp_cfg" 2>/dev/null | sort | uniq -d)
+    for d in $all_dups; do
+        found_in=$(grep "^$d|" "$tmp_cfg" | cut -d'|' -f2 | tr '\n' ' ' | sed 's/ $//' | sed 's/ /, /g')
         printf "  %b%s${CLR_OFF} список ${YELLOW}'%s'${CLR_OFF} найден в: ${YELLOW}%s${CLR_OFF}\n" "${RED_BRIGHT}" "КОНФЛИКТ:" "$d" "$found_in"
     done
-    rm -f "$tmp_list"
-fi
-
+    
+    rm -f "$tmp_cfg"
+    # Перевод строки только между ZeroBlock и PODKOP
+    [ "$cfg" = "zeroblock" ] && echo ""
+done
 
 # --- БЛОК 3: АНАЛИЗ КОНФИГУРАЦИЙ ---
 echo ""
