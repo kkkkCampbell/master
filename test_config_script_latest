@@ -149,7 +149,7 @@ DNS_R_ST="${GREEN}${DNS_FWD}${CLR_OFF}"; [ -z "$DNS_FWD" ] && DNS_R_ST="${RED_BR
 printf "  DNS Server:  %s\n" " ${DNS_SRV}:53"
 printf "  DNS Redirect: %b\n" "$DNS_R_ST"
 RES="${YELLOW}${FB_IP}${CLR_OFF}"; [ -z "$FB_IP" ] && RES="${RED_BRIGHT}FAILED${CLR_OFF}"
-printf "  Facebook IP: %b\n" "$RES"
+printf "  Facebook IP: %b\n" " $RES"
 
 echo ""
 echo "== СИСТЕМНЫЕ РЕСУРСЫ"
