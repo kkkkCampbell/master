@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh 
 
 # Путь к логу
 LOG_FILE="/root/analyzer.log"
