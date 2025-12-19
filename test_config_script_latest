@@ -3,6 +3,7 @@
 
 LOG_FILE="/root/analyzer.log"
 TMP_OUT="/tmp/analyzer.raw"
+PING_ATTEMPT="10"
 
 # Цвета
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"
@@ -23,7 +24,7 @@ NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}')
 NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
 
 # --- БЛОК 1: СТАТУС СЛУЖБ ---
-echo "== СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБРАЖАЮТСЯ)"
+echo "== СТАТУС СЛУЖБ (не установленные не отображаются)"
 echo "=============================================================="
 INSTALLED_SERVICES=""
 for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
@@ -33,7 +34,7 @@ for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
         if [ "$s" = "sing-box" ] && [ -f "/etc/init.d/zeroblock" ]; then
              # Если есть ZeroBlock, проверяем процесс в памяти, а не статус init.d
              if pgrep "sing-box" > /dev/null; then
-                 ST_OUT="RUNNING (MANAGED BY ZB)"
+                 ST_OUT="RUNNING (managed by ZB)"
              else
                  ST_OUT="STOPPED"
              fi
@@ -64,7 +65,7 @@ done
 
 # --- БЛОК 2: АНАЛИЗ КОНФИГУРАЦИЙ ---
 echo ""
-echo "== АНАЛИЗ КОНФИГУРАЦИЙ (YOUTUBE + GOOGLEVIDEO)"
+echo "== АНАЛИЗ КОНФИГУРАЦИЙ (ищем youtube + googlevideo)"
 echo "=============================================================="
 for cfg in zeroblock podkop zapret youtubeUnblock; do
     echo "$INSTALLED_SERVICES" | grep -q "$cfg" || continue
@@ -108,7 +109,7 @@ done
 
 # --- БЛОК 3: СЕТЬ И РЕСУРСЫ ---
 echo ""
-echo "== ПРОВЕРКА PROXY (SING-BOX / OPERA)"
+echo "== ПРОВЕРКА PROXY (sing-box / opera)"
 echo "=============================================================="
 PROXY_ADDR="127.0.0.1:18080"
 P_RESP=$(curl -I -s --connect-timeout 3 -x http://$PROXY_ADDR https://youtube.com | head -n 1 | tr -d '\r\n' | tr 'a-z' 'A-Z')
@@ -125,14 +126,14 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     printf "  Получено:    %.2f MB\n" "$(echo $RX_B | awk '{print $1/1048576}')"
     printf "  Отправлено:  %.2f MB\n" "$(echo $TX_B | awk '{print $1/1048576}')"
     printf "  Пинг (ya.ru via $IFACE): "
-    P_D=$(ping -I $IFACE -c 4 ya.ru 2>/dev/null)
+    P_D=$(ping -I $IFACE -c "$PING_ATTEMPT" ya.ru 2>/dev/null)
     if [ $? -eq 0 ]; then
         STATS=$(echo "$P_D" | grep "round-trip" | sed 's/[=/]/ /g' | awk '{printf "%.1f/%.1f ms", $(NF-3), $(NF-1)}')
         LOSS=$(echo "$P_D" | grep -o "[0-9]*% packet loss" | awk '{print $1}' | tr 'a-z' 'A-Z')
         L_CLR="${GREEN}"; [ "$(echo "$LOSS" | tr -d '%')" -gt 0 ] && L_CLR="${YELLOW}"
         printf "${L_CLR}%s (%s LOSS)${CLR_OFF}\n" "$STATS" "$LOSS"
     else
-        printf "${RED_BRIGHT}ERROR (100%% LOSS)${CLR_OFF}\n"
+        printf "${RED_BRIGHT}ERROR (100%% LOSS)${CLR_OFF}"
     fi
 else
     echo "  Интерфейс $IFACE не найден."
