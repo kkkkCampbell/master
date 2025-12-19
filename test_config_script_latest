@@ -22,10 +22,13 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
 echo "== ПРОВЕРКА DNS"
 echo "=============================================================="
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
-printf "  DNS Server:    %s\n" "${DNS_SRV:-UNKNOWN}"
+printf "  DNS Server:   %s\n" "${DNS_SRV:-UNKNOWN}"
 printf "  DNS Redirect: 127.0.0.42\n"
 FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}\n" "${FB_IP:-UNKNOWN}"
+
+
+
 
 # --- БЛОК 2: ИНТЕРФЕЙС awg10 (ДЕТАЛИ) ---
 if [ -d "/sys/class/net/$IFACE" ]; then
@@ -33,41 +36,57 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     echo "== ИНТЕРФЕЙС $IFACE (ДЕТАЛИ)"
     echo "=============================================================="
     PING_COUNT=10
+    
     RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
+    
     printf "  Статус:      ${GREEN}UP (ON)${CLR_OFF}\n"
     echo "  Получено:    $RX"
     echo "  Отправлено:  $TX"
+    
     PING_OUT=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>/dev/null)
     if [ $? -eq 0 ]; then
         P_MIN=$(echo "$PING_OUT" | tail -1 | awk -F'/' '{print $4}' | awk '{print $NF}')
         P_MAX=$(echo "$PING_OUT" | tail -1 | awk -F'/' '{print $5}')
         P_LOSS_PCT=$(echo "$PING_OUT" | grep "packet loss" | awk -F'%' '{print $1}' | awk '{print $NF}')
         P_LOST_NUM=$(( (PING_COUNT * P_LOSS_PCT) / 100 ))
+
+        # Возвращаю твою простую и надежную покраску без вложенных printf
         MIN_CLR="${GREEN}"; [ "$(echo "$P_MIN" | cut -d. -f1)" -ge 150 ] && MIN_CLR="${YELLOW}"; [ "$(echo "$P_MIN" | cut -d. -f1)" -ge 250 ] && MIN_CLR="${RED_BRIGHT}"
         MAX_CLR="${GREEN}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 150 ] && MAX_CLR="${YELLOW}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 250 ] && MAX_CLR="${RED_BRIGHT}"
         LOST_CLR="${GREEN}"; [ "$P_LOST_NUM" -gt 0 ] && LOST_CLR="${YELLOW}"; [ "$P_LOST_NUM" -gt 2 ] && LOST_CLR="${RED_BRIGHT}"
+
         printf "  Пинг (ya.ru via %s): ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d потеряно${CLR_OFF})\n" \
                "$IFACE" "$P_MIN" "$P_MAX" "$P_LOST_NUM" "$PING_COUNT"
     else
-        echo "  Пинг (ya.ru via $IFACE): ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}"
+        # Тот самый ERROR (красим только текст, без лишних слэшей)
+        printf "  Пинг (ya.ru via %s): ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}\n" "$IFACE"
     fi
 fi
 
+
+
+
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
+
 echo ""
 echo "== ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM)"
 echo "=============================================================="
+# Opera
 P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 https://youtube.com | head -n 1 | tr -d '\r\n')
 [ -n "$P_CODE" ] && printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE" || printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
 
+# AWG10
 if [ -d "/sys/class/net/$IFACE" ]; then
     IF_IP=$(ip addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
     if [ -n "$IF_IP" ]; then
         W_OUT=$(wget --spider --server-response --no-check-certificate -4 --timeout=4 --tries=1 --bind-address="$IF_IP" https://youtube.com 2>&1)
         W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
-        [ -n "$W_CODE" ] && printf "  %-14s %b (%s)\n" "$IFACE:" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" || \
-                           printf "  %-14s ${RED_BRIGHT}ОФЛАЙН (ПРИЧИНА: No response)${CLR_OFF}\n" "$IFACE:"
+        
+        # Передаем $IFACE: в оба случая, чтобы имя не пропадало
+        [ -n "$W_CODE" ] && \
+            printf "  %-14s %b (%s)\n" "$IFACE:" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" || \
+            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН (ПРИЧИНА: No response)${CLR_OFF}\n" "$IFACE:"
     fi
 fi
 
@@ -107,25 +126,53 @@ done
 echo ""
 echo "== ПОИСК КОНФЛИКТОВ"
 echo "=============================================================="
+
 tmp_global="/tmp/global_conflict.tmp"; > "$tmp_global"
+
+# Теперь проверяем наличие сервиса в init.d ПЕРЕД парсингом
 for cfg in zeroblock podkop youtubeUnblock zapret; do
+    [ -f "/etc/init.d/$cfg" ] || continue  # НЕТ СЕРВИСА — ИДЕМ МИМО
     [ -f "/etc/config/$cfg" ] || continue
-    case "$cfg" in zeroblock) c_short="ZB" ;; podkop) c_short="PK" ;; youtubeUnblock) c_short="YU" ;; zapret) c_short="ZP" ;; esac
+    
+    case "$cfg" in
+        zeroblock) c_short="ZB" ;;
+        podkop)    c_short="PK" ;;
+        youtubeUnblock) c_short="YU" ;;
+        zapret)    c_short="ZP" ;;
+    esac
+
+    # 1. ПАРСИМ UCI
     uci -q show "$cfg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
-        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$cfg.$s_id.name" 2>/dev/null || echo "$s_id")
+        s_id=$(echo "$line" | cut -d. -f2)
+        s_name=$(uci -q get "$cfg.$s_id.name" 2>/dev/null || echo "$s_id")
         val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\"")
         for v in $val_str; do
             case "$v" in ""|text|none|static|custom|community|all) continue ;; esac
             echo "$v|$c_short:$s_name" >> "$tmp_global"
-            case "$v" in russia_inside|youtube) echo "youtube.com|$c_short:$s_name" >> "$tmp_global"; echo "googlevideo.com|$c_short:$s_name" >> "$tmp_global" ;; esac
+            case "$v" in
+                russia_inside|youtube)
+                    echo "youtube.com|$c_short:$s_name" >> "$tmp_global"
+                    echo "googlevideo.com|$c_short:$s_name" >> "$tmp_global"
+                ;;
+            esac
         done
     done
+
+    # 2. ПАРСИМ ХОСТЛИСТЫ
     uci -q show "$cfg" | grep -Ei "hostlist" | while read -r line; do
-        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$cfg.$s_id.name" 2>/dev/null || echo "$s_id")
-        if echo "$line" | grep -q "\-\-hostlist="; then paths=$(echo "$line" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2); else paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); fi
+        s_id=$(echo "$line" | cut -d. -f2)
+        s_name=$(uci -q get "$cfg.$s_id.name" 2>/dev/null || echo "$s_id")
+        if echo "$line" | grep -q "\-\-hostlist="; then
+            paths=$(echo "$line" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d'=' -f2)
+        else
+            paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\"")
+        fi
         for fp in $paths; do
             [ -z "$fp" ] && continue
-            REAL_PATH=""; [ -f "$fp" ] && REAL_PATH="$fp"; [ -z "$REAL_PATH" ] && [ -f "/etc/zapret/$fp" ] && REAL_PATH="/etc/zapret/$fp"; [ -z "$REAL_PATH" ] && [ -f "/opt/zapret/ipset/$fp" ] && REAL_PATH="/opt/zapret/ipset/$fp"
+            REAL_PATH=""
+            [ -f "$fp" ] && REAL_PATH="$fp"
+            [ -z "$REAL_PATH" ] && [ -f "/etc/zapret/$fp" ] && REAL_PATH="/etc/zapret/$fp"
+            [ -z "$REAL_PATH" ] && [ -f "/opt/zapret/ipset/$fp" ] && REAL_PATH="/opt/zapret/ipset/$fp"
             if [ -n "$REAL_PATH" ]; then
                 fname=$(basename "$REAL_PATH")
                 while read -r d; do
@@ -138,8 +185,11 @@ for cfg in zeroblock podkop youtubeUnblock zapret; do
         done
     done
 done
+
+# --- ВЫВОД КРОСС-ПРОГРАММНЫХ ПЕРЕСЕЧЕНИЙ ---
 tmp_cross="/tmp/cross_res.tmp"; > "$tmp_cross"
 cross_dups=$(cut -d'|' -f1 "$tmp_global" 2>/dev/null | sort | uniq -d)
+
 if [ -n "$cross_dups" ]; then
     for cd in $cross_dups; do
         p_count=$(grep "^$cd|" "$tmp_global" | cut -d'|' -f2 | cut -d':' -f1 | sort -u | wc -l)
@@ -149,13 +199,12 @@ if [ -n "$cross_dups" ]; then
         fi
     done
 fi
-# --- ВЫВОД КРОСС-ПРОГРАММНЫХ ПЕРЕСЕЧЕНИЙ (ФИКС ВЫРАВНИВАНИЯ) ---
+
 if [ -s "$tmp_cross" ]; then
     echo "КРОСС-ПРОГРАММНЫЕ ПЕРЕСЕЧЕНИЯ:"
     cut -d'|' -f1 "$tmp_cross" | sort -u | while read -r key; do
         [ -z "$key" ] && continue
         LIST_DOMS=$(grep -F "$key|" "$tmp_cross" | cut -d'|' -f2 | tr '\n' ',' | sed 's/,$//; s/,/, /g')
-        
         printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} ${YELLOW}%s${CLR_OFF} делят:\n" "$LIST_DOMS"
         
         echo "$key" | tr ',' '\n' | while read -r part; do
@@ -169,43 +218,43 @@ if [ -s "$tmp_cross" ]; then
                 ZP) f="Zapret" ;; 
             esac
             
-            # Сначала форматируем строку (20 символов + 5 запаса), 
-            # а потом красим её целиком, чтобы не ломать отступы
             F_LINE=$(printf "%-25s : %s" "$f" "$s_nm")
             printf "    ${YELLOW}%s${CLR_OFF}\n" "$F_LINE"
         done
-        echo ""
     done
+else
+    # Вот она, та самая «зеленая рожа»
+    printf "  ${GREEN}Конфликты не обнаружены!${CLR_OFF}\n"
 fi
 rm -f "$tmp_global" "$tmp_cross"
 
-# --- БЛОК 6: АНАЛИЗ КОНФИГУРАЦИЙ ---
-echo ""
-echo "== АНАЛИЗ КОНФИГУРАЦИЙ (ИЩЕМ YOUTUBE + GOOGLEVIDEO)"
-echo "=============================================================="
-for cfg in zeroblock podkop zapret; do
-    [ -f "/etc/init.d/$cfg" ] || continue
-    if [ "$cfg" = "zapret" ]; then
-        LISTS_PATHS=$(grep -oE "\-\-hostlist=[^ '\" ]+" /etc/config/zapret | cut -d= -f2 | sed "s/['\"]//g" | sort | uniq)
-        for f_path in $LISTS_PATHS; do
-            if [ -f "$f_path" ]; then
-                match_c=$(grep -Ei "youtube|googlevideo\.com" "$f_path" | wc -l)
-                if [ "$match_c" -gt 0 ]; then
-                    printf "  %-15s найден в: ${YELLOW}%s${CLR_OFF}\n" "$cfg" "$(basename "$f_path")"
-                    printf "                  └─ Основные домены:  ${GREEN}%d${CLR_OFF}\n" "$(grep -Ei "^(youtube\.com|googlevideo\.com)$" "$f_path" | wc -l)"
-                    printf "                  └─ Субдомены/прочее: ${GREEN}%d${CLR_OFF}\n" "$((match_c - $(grep -Ei "^(youtube\.com|googlevideo\.com)$" "$f_path" | wc -l)))"
-                fi
-            fi
-        done
-    else
-        any_found=0; sections=$(uci -q show "$cfg" | grep "=section" | cut -d. -f2 | cut -d= -f1)
-        for s in $sections; do
-            count=$(uci -q show "$cfg.$s" | grep -Ei "youtube|googlevideo\.com" | wc -l)
-            [ "$count" -gt 0 ] && { any_found=1; printf "  %-15s найден в: ${YELLOW}%s${CLR_OFF} (%d)\n" "$cfg" "$s" "$count"; }
-        done
-        [ "$any_found" -eq 0 ] && printf "  %-15s ютуб найден: 0\n" "$cfg"
-    fi
-done
+# # --- БЛОК 6: АНАЛИЗ КОНФИГУРАЦИЙ ---
+# echo ""
+# echo "== АНАЛИЗ КОНФИГУРАЦИЙ (ИЩЕМ YOUTUBE + GOOGLEVIDEO)"
+# echo "=============================================================="
+# for cfg in zeroblock podkop zapret; do
+    # [ -f "/etc/init.d/$cfg" ] || continue
+    # if [ "$cfg" = "zapret" ]; then
+        # LISTS_PATHS=$(grep -oE "\-\-hostlist=[^ '\" ]+" /etc/config/zapret | cut -d= -f2 | sed "s/['\"]//g" | sort | uniq)
+        # for f_path in $LISTS_PATHS; do
+            # if [ -f "$f_path" ]; then
+                # match_c=$(grep -Ei "youtube|googlevideo\.com" "$f_path" | wc -l)
+                # if [ "$match_c" -gt 0 ]; then
+                    # printf "  %-15s найден в: ${YELLOW}%s${CLR_OFF}\n" "$cfg" "$(basename "$f_path")"
+                    # printf "                  └─ Основные домены:  ${GREEN}%d${CLR_OFF}\n" "$(grep -Ei "^(youtube\.com|googlevideo\.com)$" "$f_path" | wc -l)"
+                    # printf "                  └─ Субдомены/прочее: ${GREEN}%d${CLR_OFF}\n" "$((match_c - $(grep -Ei "^(youtube\.com|googlevideo\.com)$" "$f_path" | wc -l)))"
+                # fi
+            # fi
+        # done
+    # else
+        # any_found=0; sections=$(uci -q show "$cfg" | grep "=section" | cut -d. -f2 | cut -d= -f1)
+        # for s in $sections; do
+            # count=$(uci -q show "$cfg.$s" | grep -Ei "youtube|googlevideo\.com" | wc -l)
+            # [ "$count" -gt 0 ] && { any_found=1; printf "  %-15s найден в: ${YELLOW}%s${CLR_OFF} (%d)\n" "$cfg" "$s" "$count"; }
+        # done
+        # [ "$any_found" -eq 0 ] && printf "  %-15s ютуб найден: 0\n" "$cfg"
+    # fi
+# done
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
 echo ""
