@@ -4,13 +4,13 @@
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"
 IFACE="awg10"
 
-# --- ПРОВЕРКА WGET ---
+# --- ПОДГОТОВКА ---
 [ -x /usr/bin/wget ] || { opkg update && opkg install wget-ssl; }
 
 clear
 echo ""
 
-# Сбор данных для системных ресурсов
+# Сбор данных для системных ресурсов (для Блока 7)
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
 MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
 MEM_P=$((MEM_U * 100 / MEM_T))
@@ -18,7 +18,61 @@ LAN_IP=$(ip addr show br-lan 2>/dev/null | grep -w inet | awk '{print $2}' | cut
 [ -z "$LAN_IP" ] && LAN_IP=$(uci -q get network.lan.ipaddr)
 NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
 
-# --- БЛОК 1: СТАТУС СЛУЖБ ---
+# --- БЛОК 1: ПРОВЕРКА DNS ---
+echo "== ПРОВЕРКА DNS"
+echo "=============================================================="
+DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
+printf "  DNS Server:    %s\n" "${DNS_SRV:-UNKNOWN}"
+printf "  DNS Redirect: 127.0.0.42\n"
+FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
+printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}\n" "${FB_IP:-UNKNOWN}"
+
+# --- БЛОК 2: ИНТЕРФЕЙС awg10 (ДЕТАЛИ) ---
+if [ -d "/sys/class/net/$IFACE" ]; then
+    echo ""
+    echo "== ИНТЕРФЕЙС $IFACE (ДЕТАЛИ)"
+    echo "=============================================================="
+    PING_COUNT=10
+    RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
+    TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
+    printf "  Статус:      ${GREEN}UP (ON)${CLR_OFF}\n"
+    echo "  Получено:    $RX"
+    echo "  Отправлено:  $TX"
+    PING_OUT=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        P_MIN=$(echo "$PING_OUT" | tail -1 | awk -F'/' '{print $4}' | awk '{print $NF}')
+        P_MAX=$(echo "$PING_OUT" | tail -1 | awk -F'/' '{print $5}')
+        P_LOSS_PCT=$(echo "$PING_OUT" | grep "packet loss" | awk -F'%' '{print $1}' | awk '{print $NF}')
+        P_LOST_NUM=$(( (PING_COUNT * P_LOSS_PCT) / 100 ))
+        MIN_CLR="${GREEN}"; [ "$(echo "$P_MIN" | cut -d. -f1)" -ge 150 ] && MIN_CLR="${YELLOW}"; [ "$(echo "$P_MIN" | cut -d. -f1)" -ge 250 ] && MIN_CLR="${RED_BRIGHT}"
+        MAX_CLR="${GREEN}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 150 ] && MAX_CLR="${YELLOW}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 250 ] && MAX_CLR="${RED_BRIGHT}"
+        LOST_CLR="${GREEN}"; [ "$P_LOST_NUM" -gt 0 ] && LOST_CLR="${YELLOW}"; [ "$P_LOST_NUM" -gt 2 ] && LOST_CLR="${RED_BRIGHT}"
+        printf "  Пинг (ya.ru via %s): ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d потеряно${CLR_OFF})\n" \
+               "$IFACE" "$P_MIN" "$P_MAX" "$P_LOST_NUM" "$PING_COUNT"
+    else
+        echo "  Пинг (ya.ru via $IFACE): ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}"
+    fi
+fi
+
+# --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
+echo ""
+echo "== ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM)"
+echo "=============================================================="
+P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 https://youtube.com | head -n 1 | tr -d '\r\n')
+[ -n "$P_CODE" ] && printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE" || printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
+
+if [ -d "/sys/class/net/$IFACE" ]; then
+    IF_IP=$(ip addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
+    if [ -n "$IF_IP" ]; then
+        W_OUT=$(wget --spider --server-response --no-check-certificate -4 --timeout=4 --tries=1 --bind-address="$IF_IP" https://youtube.com 2>&1)
+        W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
+        [ -n "$W_CODE" ] && printf "  %-14s %b (%s)\n" "$IFACE:" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" || \
+                           printf "  %-14s ${RED_BRIGHT}ОФЛАЙН (ПРИЧИНА: No response)${CLR_OFF}\n" "$IFACE:"
+    fi
+fi
+
+# --- БЛОК 4: СТАТУС СЛУЖБ ---
+echo ""
 echo "== СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБРАЖАЮТСЯ)"
 echo "=============================================================="
 ZB_RUN=0; zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
@@ -49,56 +103,83 @@ for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
     fi
 done
 
-# --- БЛОК 2: ПОИСК КОНФЛИКТОВ ---
+# --- БЛОК 5: ПОИСК КОНФЛИКТОВ ---
 echo ""
 echo "== ПОИСК КОНФЛИКТОВ"
 echo "=============================================================="
-
-# Флаг для контроля ПЕРВОГО напечатанного заголовка во всем разделе
-ANY_OUTPUT_PRINTED=0
-
-for cfg in zeroblock podkop; do
+tmp_global="/tmp/global_conflict.tmp"; > "$tmp_global"
+for cfg in zeroblock podkop youtubeUnblock zapret; do
     [ -f "/etc/config/$cfg" ] || continue
-    
-    HEADER_PRINTED=0
-    [ "$cfg" = "zeroblock" ] && CFG_TITLE="ZeroBlock" || CFG_TITLE="PODKOP"
-    
-    tmp_cfg="/tmp/cfg_lists.tmp"; > "$tmp_cfg"
-    
-    sections=$(uci -q show "$cfg" | grep "=section" | cut -d. -f2 | cut -d= -f1)
-    for sid in $sections; do
-        s_name=$(uci -q get "$cfg.$sid".name); [ -z "$s_name" ] && s_name="$sid"
-        lists=$(uci -q get "$cfg.$sid".community_lists | sed "s/'//g")
-        for l in $lists; do echo "$l|$s_name" >> "$tmp_cfg"; done
-        
-        # Проверка ИНФО
-        uci -q show "$cfg.$sid" | grep -Ei "russia_inside|russia_outside" >/dev/null && {
-            if [ "$HEADER_PRINTED" -eq 0 ]; then
-                [ "$ANY_OUTPUT_PRINTED" -eq 1 ] && echo ""
-                echo "$CFG_TITLE"
-                HEADER_PRINTED=1; ANY_OUTPUT_PRINTED=1
+    case "$cfg" in zeroblock) c_short="ZB" ;; podkop) c_short="PK" ;; youtubeUnblock) c_short="YU" ;; zapret) c_short="ZP" ;; esac
+    uci -q show "$cfg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
+        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$cfg.$s_id.name" 2>/dev/null || echo "$s_id")
+        val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\"")
+        for v in $val_str; do
+            case "$v" in ""|text|none|static|custom|community|all) continue ;; esac
+            echo "$v|$c_short:$s_name" >> "$tmp_global"
+            case "$v" in russia_inside|youtube) echo "youtube.com|$c_short:$s_name" >> "$tmp_global"; echo "googlevideo.com|$c_short:$s_name" >> "$tmp_global" ;; esac
+        done
+    done
+    uci -q show "$cfg" | grep -Ei "hostlist" | while read -r line; do
+        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$cfg.$s_id.name" 2>/dev/null || echo "$s_id")
+        if echo "$line" | grep -q "\-\-hostlist="; then paths=$(echo "$line" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2); else paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); fi
+        for fp in $paths; do
+            [ -z "$fp" ] && continue
+            REAL_PATH=""; [ -f "$fp" ] && REAL_PATH="$fp"; [ -z "$REAL_PATH" ] && [ -f "/etc/zapret/$fp" ] && REAL_PATH="/etc/zapret/$fp"; [ -z "$REAL_PATH" ] && [ -f "/opt/zapret/ipset/$fp" ] && REAL_PATH="/opt/zapret/ipset/$fp"
+            if [ -n "$REAL_PATH" ]; then
+                fname=$(basename "$REAL_PATH")
+                while read -r d; do
+                    case "$d" in ""|\#*) continue ;; esac
+                    dom=$(echo "$d" | awk '{print $1}')
+                    [ "$cfg" = "zapret" ] && loc="$fname" || loc="$s_name:$fname"
+                    [ -n "$dom" ] && echo "$dom|$c_short:$loc" >> "$tmp_global"
+                done < "$REAL_PATH"
             fi
-            L_NAME=$(uci -q show "$cfg.$sid" | grep -oEi "russia_inside|russia_outside" | head -1)
-            printf "  %b%s${CLR_OFF}     найден список ${YELLOW}%s${CLR_OFF} в секции: ${YELLOW}%s${CLR_OFF}\n" "${YELLOW}" "ИНФО:" "$L_NAME" "$s_name"
-        }
+        done
     done
-    
-    # Проверка КОНФЛИКТОВ
-    all_dups=$(cut -d'|' -f1 "$tmp_cfg" 2>/dev/null | sort | uniq -d)
-    for d in $all_dups; do
-        if [ "$HEADER_PRINTED" -eq 0 ]; then
-            [ "$ANY_OUTPUT_PRINTED" -eq 1 ] && echo ""
-            echo "$CFG_TITLE"
-            HEADER_PRINTED=1; ANY_OUTPUT_PRINTED=1
-        fi
-        found_in=$(grep "^$d|" "$tmp_cfg" | cut -d'|' -f2 | tr '\n' ' ' | sed 's/ $//' | sed 's/ /, /g')
-        printf "  %b%s${CLR_OFF} список ${YELLOW}'%s'${CLR_OFF} найден в: ${YELLOW}%s${CLR_OFF}\n" "${RED_BRIGHT}" "КОНФЛИКТ:" "$d" "$found_in"
-    done
-    
-    rm -f "$tmp_cfg"
 done
+tmp_cross="/tmp/cross_res.tmp"; > "$tmp_cross"
+cross_dups=$(cut -d'|' -f1 "$tmp_global" 2>/dev/null | sort | uniq -d)
+if [ -n "$cross_dups" ]; then
+    for cd in $cross_dups; do
+        p_count=$(grep "^$cd|" "$tmp_global" | cut -d'|' -f2 | cut -d':' -f1 | sort -u | wc -l)
+        if [ "$p_count" -gt 1 ]; then
+            where_key=$(grep "^$cd|" "$tmp_global" | cut -d'|' -f2 | sort -u | tr '\n' ',' | sed 's/,$//')
+            echo "$where_key|$cd" >> "$tmp_cross"
+        fi
+    done
+fi
+# --- ВЫВОД КРОСС-ПРОГРАММНЫХ ПЕРЕСЕЧЕНИЙ (ФИКС ВЫРАВНИВАНИЯ) ---
+if [ -s "$tmp_cross" ]; then
+    echo "КРОСС-ПРОГРАММНЫЕ ПЕРЕСЕЧЕНИЯ:"
+    cut -d'|' -f1 "$tmp_cross" | sort -u | while read -r key; do
+        [ -z "$key" ] && continue
+        LIST_DOMS=$(grep -F "$key|" "$tmp_cross" | cut -d'|' -f2 | tr '\n' ',' | sed 's/,$//; s/,/, /g')
+        
+        printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} ${YELLOW}%s${CLR_OFF} делят:\n" "$LIST_DOMS"
+        
+        echo "$key" | tr ',' '\n' | while read -r part; do
+            [ -z "$part" ] && continue
+            p_sh=${part%%:*}
+            s_nm=${part#*:}
+            case "$p_sh" in 
+                ZB) f="ZeroBlock" ;; 
+                PK) f="Podkop" ;; 
+                YU) f="YouTubeUnblock" ;; 
+                ZP) f="Zapret" ;; 
+            esac
+            
+            # Сначала форматируем строку (20 символов + 5 запаса), 
+            # а потом красим её целиком, чтобы не ломать отступы
+            F_LINE=$(printf "%-25s : %s" "$f" "$s_nm")
+            printf "    ${YELLOW}%s${CLR_OFF}\n" "$F_LINE"
+        done
+        echo ""
+    done
+fi
+rm -f "$tmp_global" "$tmp_cross"
 
-# --- БЛОК 3: АНАЛИЗ КОНФИГУРАЦИЙ ---
+# --- БЛОК 6: АНАЛИЗ КОНФИГУРАЦИЙ ---
 echo ""
 echo "== АНАЛИЗ КОНФИГУРАЦИЙ (ИЩЕМ YOUTUBE + GOOGLEVIDEO)"
 echo "=============================================================="
@@ -117,8 +198,7 @@ for cfg in zeroblock podkop zapret; do
             fi
         done
     else
-        any_found=0
-        sections=$(uci -q show "$cfg" | grep "=section" | cut -d. -f2 | cut -d= -f1)
+        any_found=0; sections=$(uci -q show "$cfg" | grep "=section" | cut -d. -f2 | cut -d= -f1)
         for s in $sections; do
             count=$(uci -q show "$cfg.$s" | grep -Ei "youtube|googlevideo\.com" | wc -l)
             [ "$count" -gt 0 ] && { any_found=1; printf "  %-15s найден в: ${YELLOW}%s${CLR_OFF} (%d)\n" "$cfg" "$s" "$count"; }
@@ -126,81 +206,6 @@ for cfg in zeroblock podkop zapret; do
         [ "$any_found" -eq 0 ] && printf "  %-15s ютуб найден: 0\n" "$cfg"
     fi
 done
-
-# --- БЛОК 4: ПРОВЕРКА ДОСТУПОВ ---
-echo ""
-echo "== ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM)"
-echo "=============================================================="
-P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 https://youtube.com | head -n 1 | tr -d '\r\n')
-[ -n "$P_CODE" ] && printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE" || printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
-
-if [ -d "/sys/class/net/$IFACE" ]; then
-    IF_IP=$(ip addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
-    if [ -n "$IF_IP" ]; then
-        W_OUT=$(wget --spider --server-response --no-check-certificate -4 --timeout=4 --tries=1 --bind-address="$IF_IP" https://youtube.com 2>&1)
-        W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
-        [ -n "$W_CODE" ] && printf "  %-14s %b (%s)\n" "$IFACE:" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" || printf "  %-14s ${RED_BRIGHT}ОФЛАЙН (ПРИЧИНА: No response)${CLR_OFF}\n"
-    fi
-fi
-
-# --- БЛОК 5: ИНТЕРФЕЙС awg10 (ДЕТАЛИ) ---
-if [ -d "/sys/class/net/$IFACE" ]; then
-    echo ""
-    echo "== ИНТЕРФЕЙС $IFACE (ДЕТАЛИ)"
-    echo "=============================================================="
-    PING_COUNT=10
-    
-    RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
-    TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
-    
-    printf "  Статус:      ${GREEN}UP (ON)${CLR_OFF}\n"
-    echo "  Получено:    $RX"
-    echo "  Отправлено:  $TX"
-    
-    PING_OUT=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>/dev/null)
-    if [ $? -eq 0 ]; then
-        P_MIN=$(echo "$PING_OUT" | tail -1 | awk -F'/' '{print $4}' | awk '{print $NF}')
-        P_MAX=$(echo "$PING_OUT" | tail -1 | awk -F'/' '{print $5}')
-        
-        P_LOSS_PCT=$(echo "$PING_OUT" | grep "packet loss" | awk -F'%' '{print $1}' | awk '{print $NF}')
-        P_LOST_NUM=$(( (PING_COUNT * P_LOSS_PCT) / 100 ))
-
-        # Красим MIN
-        MIN_CLR="${GREEN}"
-        [ "$(echo "$P_MIN" | cut -d. -f1)" -ge 150 ] && MIN_CLR="${YELLOW}"
-        [ "$(echo "$P_MIN" | cut -d. -f1)" -ge 250 ] && MIN_CLR="${RED_BRIGHT}"
-
-        # Красим MAX
-        MAX_CLR="${GREEN}"
-        [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 150 ] && MAX_CLR="${YELLOW}"
-        [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 250 ] && MAX_CLR="${RED_BRIGHT}"
-
-        # Красим ПОТЕРИ
-        LOST_CLR="${GREEN}"
-        [ "$P_LOST_NUM" -gt 0 ] && LOST_CLR="${YELLOW}"
-        [ "$P_LOST_NUM" -gt 2 ] && LOST_CLR="${RED_BRIGHT}"
-
-        # Вывод без ms: 17.118 / 20.414 (0 из 10 потеряно)
-        printf "  Пинг (ya.ru via %s): ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d потеряно${CLR_OFF})\n" \
-               "$IFACE" "$P_MIN" "$P_MAX" "$P_LOST_NUM" "$PING_COUNT"
-    else
-        echo "  Пинг (ya.ru via $IFACE): ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}"
-    fi
-fi
-
-# --- БЛОК 6: ПРОВЕРКА DNS ---
-echo ""
-echo "== ПРОВЕРКА DNS"
-echo "=============================================================="
-# Берем только строку Address, там и IP и порт (например, 127.0.0.1:53)
-DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
-
-printf "  DNS Server:   %s\n" "${DNS_SRV:-UNKNOWN}"
-printf "  DNS Redirect: 127.0.0.42\n"
-
-# Резолвим Facebook через локалхост и красим IP в желтый
-FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
-printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}\n" "${FB_IP:-UNKNOWN}"
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
 echo ""
