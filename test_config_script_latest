@@ -70,20 +70,15 @@ echo "=============================================================="
 for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
     if [ -f "/etc/init.d/$s" ]; then
         ST_OUT=$(/etc/init.d/$s status 2>&1 | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
-        
-        # Логика для ZeroBlock: если не running, то N/A
         if [ "$s" = "zeroblock" ]; then
             echo "$ST_OUT" | grep -q "running" || ST_OUT="unknown (status N/A)"
         fi
-
         if echo "$ST_OUT" | grep -Ei "running|active" >/dev/null; then
             ST_CLR="${GREEN}"
         else
             ST_CLR="${RED_BRIGHT}"
         fi
-
         /etc/init.d/$s enabled 2>/dev/null && { au_txt="РАЗРЕШЁН"; au_clr="${GREEN}"; } || { au_txt="ОТКЛ"; au_clr="${RED_BRIGHT}"; }
-        
         printf "  %-15s | " "$s"
         printf "${ST_CLR}%-25s${CLR_OFF}" "$ST_OUT"
         printf " | ${au_clr}${au_txt}${CLR_OFF}\n"
@@ -110,10 +105,8 @@ echo "=============================================================="
 if [ -d "/sys/class/net/$IFACE" ]; then
     [ -n "$(ip link show $IFACE | grep 'UP')" ] && IF_STATUS="${GREEN}UP (ON)${CLR_OFF}" || IF_STATUS="${RED_BRIGHT}DOWN (OFF)${CLR_OFF}"
     printf "  Статус:      %b\n" "$IF_STATUS"
-    
     RX_B=$(cat /sys/class/net/$IFACE/statistics/rx_bytes)
     TX_B=$(cat /sys/class/net/$IFACE/statistics/tx_bytes)
-    
     printf "  Получено:    %.2f MB\n" "$(echo $RX_B | awk '{print $1/1048576}')"
     printf "  Отправлено:  %.2f MB\n" "$(echo $TX_B | awk '{print $1/1048576}')"
 
@@ -121,9 +114,15 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     P_D=$(ping -I $IFACE -c 4 ya.ru 2>/dev/null)
     if [ $? -eq 0 ]; then
         STATS=$(echo "$P_D" | grep "round-trip" | sed 's/[=/]/ /g' | awk '{printf "%.1f/%.1f ms", $(NF-3), $(NF-1)}')
-        printf "${GREEN}%s${CLR_OFF}\n" "$STATS"
+        LOSS=$(echo "$P_D" | grep -o "[0-9]*% packet loss" | awk '{print $1}')
+        L_VAL=$(echo "$LOSS" | tr -d '%')
+        if [ "$L_VAL" -eq 0 ]; then
+            printf "${GREEN}%s (%s loss)${CLR_OFF}\n" "$STATS" "$LOSS"
+        else
+            printf "${YELLOW}%s (%s loss)${CLR_OFF}\n" "$STATS" "$LOSS"
+        fi
     else
-        printf "${RED_BRIGHT}ERROR${CLR_OFF}\n"
+        printf "${RED_BRIGHT}ERROR (100%% loss)${CLR_OFF}\n"
     fi
 else
     echo "  Интерфейс $IFACE не найден."
