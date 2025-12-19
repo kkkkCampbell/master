@@ -69,12 +69,24 @@ echo "== СТАТУС СЛУЖБ"
 echo "=============================================================="
 for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
     if [ -f "/etc/init.d/$s" ]; then
-        /etc/init.d/$s status 2>/dev/null | grep -q "running" && { st_txt="▶ РАБОТАЕТ"; st_clr="${GREEN}"; } || { st_txt="■ ОСТАНОВЛЕН"; st_clr="${RED_BRIGHT}"; }
+        ST_OUT=$(/etc/init.d/$s status 2>&1 | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
+        
+        # Логика для ZeroBlock: если не running, то N/A
+        if [ "$s" = "zeroblock" ]; then
+            echo "$ST_OUT" | grep -q "running" || ST_OUT="unknown (status N/A)"
+        fi
+
+        if echo "$ST_OUT" | grep -Ei "running|active" >/dev/null; then
+            ST_CLR="${GREEN}"
+        else
+            ST_CLR="${RED_BRIGHT}"
+        fi
+
         /etc/init.d/$s enabled 2>/dev/null && { au_txt="РАЗРЕШЁН"; au_clr="${GREEN}"; } || { au_txt="ОТКЛ"; au_clr="${RED_BRIGHT}"; }
+        
         printf "  %-15s | " "$s"
-        printf "${st_clr}${st_txt}${CLR_OFF}"
-        [ "$st_txt" = "▶ РАБОТАЕТ" ] && printf "     | " || printf "   | "
-        printf "${au_clr}${au_txt}${CLR_OFF}\n"
+        printf "${ST_CLR}%-25s${CLR_OFF}" "$ST_OUT"
+        printf " | ${au_clr}${au_txt}${CLR_OFF}\n"
     fi
 done
 
