@@ -161,8 +161,8 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         [ "$P_LOST_NUM" -gt 0 ] && LOST_CLR="${YELLOW}"
         [ "$P_LOST_NUM" -gt 2 ] && LOST_CLR="${RED_BRIGHT}"
 
-        # Вывод: 18.482ms / 26.401ms (0 из 10 потеряно)
-        printf "  Пинг (ya.ru via %s): ${MIN_CLR}%sms${CLR_OFF} / ${MAX_CLR}%sms${CLR_OFF} (${LOST_CLR}%d из %d потеряно${CLR_OFF})\n" \
+        # Вывод без ms: 17.118 / 20.414 (0 из 10 потеряно)
+        printf "  Пинг (ya.ru via %s): ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d потеряно${CLR_OFF})\n" \
                "$IFACE" "$P_MIN" "$P_MAX" "$P_LOST_NUM" "$PING_COUNT"
     else
         echo "  Пинг (ya.ru via $IFACE): ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}"
