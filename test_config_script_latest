@@ -46,7 +46,7 @@ for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
     fi
 done
 
-# --- БЛОК 2: ПРОВЕРКА КОНФЛИКТОВ ZEROBLOCK (НОВЫЙ) ---
+# --- БЛОК 2: ПРОВЕРКА КОНФЛИКТОВ ZEROBLOCK ---
 if echo "$INSTALLED_SERVICES" | grep -q "zeroblock"; then
     echo ""
     echo "== ПРОВЕРКА КОНФЛИКТОВ ZEROBLOCK"
@@ -58,22 +58,18 @@ if echo "$INSTALLED_SERVICES" | grep -q "zeroblock"; then
         lists=$(uci -q get zeroblock."$sid".community_lists | sed "s/'//g")
         for l in $lists; do echo "$l|$s_name" >> "$tmp_list"; done
     done
-    
-    # Поиск дублей
     all_unique_lists=$(cut -d'|' -f1 "$tmp_list" 2>/dev/null | sort | uniq -d)
     if [ -z "$all_unique_lists" ]; then
         echo "  Дубликаты списков не обнаружены. [${GREEN}✔${CLR_OFF}]"
     else
         for d in $all_unique_lists; do
-            # Получаем список секций, убираем лишние пробелы и заменяем пробелы между именами на запятую с пробелом
             found_in=$(grep "^$d|" "$tmp_list" | cut -d'|' -f2 | tr '\n' ' ' | sed 's/ $//' | sed 's/ /, /g')
             printf "  ${RED_BRIGHT}КОНФЛИКТ:${CLR_OFF} список ${YELLOW}'%s'${CLR_OFF} найден в: ${YELLOW}%s${CLR_OFF}\n" "$d" "$found_in"
         done
     fi
-
-    # Спец-списки Russia
     grep -Ei "russia_inside|russia_outside" "$tmp_list" 2>/dev/null | while read -r line; do
-         printf "  ${YELLOW}ИНФО:${CLR_OFF} найден список ${GREEN}%s${CLR_OFF} в секции: ${YELLOW}%s${CLR_OFF}\n" "$(echo "$line" | cut -d'|' -f1)" "$(echo "$line" | cut -d'|' -f2)"
+         # Добавлено 4 пробела после ИНФО: для выравнивания с КОНФЛИКТ:
+         printf "  ${YELLOW}ИНФО:    ${CLR_OFF} найден список ${GREEN}%s${CLR_OFF} в секции: ${YELLOW}%s${CLR_OFF}\n" "$(echo "$line" | cut -d'|' -f1)" "$(echo "$line" | cut -d'|' -f2)"
     done
     rm -f "$tmp_list"
 fi
@@ -84,53 +80,72 @@ echo "== АНАЛИЗ КОНФИГУРАЦИЙ (ИЩЕМ YOUTUBE + GOOGLEVIDEO)"
 echo "=============================================================="
 for cfg in zeroblock podkop zapret youtubeUnblock; do
     echo "$INSTALLED_SERVICES" | grep -q "$cfg" || continue
-    file="/etc/config/$cfg"
-    [ ! -f "$file" ] && continue
     
-    if [ "$cfg" = "youtubeUnblock" ]; then
-        any_found=0; sections=$(uci show youtubeUnblock | grep "=section" | cut -d. -f2 | cut -d= -f1)
+    if [ "$cfg" = "zapret" ]; then
+        zap_count=0
+        # ТОТ САМЫЙ РАБОЧИЙ МЕТОД
+        LISTS_PATHS=$(grep -oE "\-\-hostlist=[^ '\" ]+" /etc/config/zapret | cut -d= -f2 | sed "s/['\"]//g" | sort | uniq)
+        for f_path in $LISTS_PATHS; do
+            if [ -f "$f_path" ]; then
+                match_c=$(grep -Ei "youtube|googlevideo\.com" "$f_path" | wc -l)
+                if [ "$match_c" -gt 0 ]; then
+                    zap_count=$((zap_count + 1))
+                    exact=$(grep -Ei "^(youtube\.com|googlevideo\.com)$" "$f_path" | wc -l)
+                    subs=$((match_c - exact))
+                    printf "  %-15s найден в: ${YELLOW}%-25s${CLR_OFF}\n" "$cfg" "$(basename "$f_path")"
+                    printf "                  └─ Основные домены:  ${GREEN}%d${CLR_OFF}\n" "$exact"
+                    printf "                  └─ Субдомены/прочее: ${GREEN}%d${CLR_OFF}\n" "$subs"
+                fi
+            fi
+        done
+        [ "$zap_count" -eq 0 ] && printf "  %-15s ютуб найден: 0\n" "$cfg"
+
+    elif [ "$cfg" = "youtubeUnblock" ]; then
+        any_found=0
+        sections=$(uci -q show youtubeUnblock | grep "=section" | cut -d. -f2 | cut -d= -f1)
         for s in $sections; do
             if [ "$(uci -q get youtubeUnblock."$s".enabled)" = "1" ]; then
-                match=$(uci show youtubeUnblock."$s" | grep -Ei "youtube|googlevideo\.com")
+                match=$(uci show youtubeUnblock."$s" 2>/dev/null | grep -Ei "youtube|googlevideo\.com")
                 if [ -n "$match" ]; then
-                    any_found=1; s_name=$(uci -q get youtubeUnblock."$s".name); [ -z "$s_name" ] && s_name="$s"
+                    any_found=1
+                    s_name=$(uci -q get youtubeUnblock."$s".name); [ -z "$s_name" ] && s_name="$s"
                     printf "  %-15s найден в: ${YELLOW}%-25s${CLR_OFF} [${GREEN}✔${CLR_OFF}] (%d)\n" "$cfg" "$s_name" "$(echo "$match" | wc -l)"
                 fi
             fi
         done
         [ "$any_found" -eq 0 ] && printf "  %-15s ютуб найден: 0\n" "$cfg"
-    elif [ "$cfg" = "zapret" ]; then
-        zap_any=0; main_count=$(grep -Ei "youtube|googlevideo\.com" "$file" | wc -l)
-        [ "$main_count" -gt 0 ] && zap_any=1 && printf "  %-15s найден в: ${YELLOW}%-25s${CLR_OFF} (%d)\n" "$cfg" "$cfg" "$main_count"
-        extra_files=$(grep -o "\-\-hostlist=[^ ]*" "$file" | cut -d= -f2 | sed "s/['\"]//g")
-        for ef in $extra_files; do
-            if [ -f "$ef" ]; then
-                ecount=$(grep -Ei "youtube|googlevideo\.com" "$ef" | wc -l)
-                if [ "$ecount" -gt 0 ]; then
-                    zap_any=1; printf "  %-15s найден в: ${YELLOW}%-25s${CLR_OFF} (%d)\n" "$cfg" "$(basename "$ef")" "$ecount"
-                fi
-            fi
-        done
-        [ "$zap_any" -eq 0 ] && printf "  %-15s ютуб найден: 0\n" "$cfg"
     else
+        file="/etc/config/$cfg"
+        [ ! -f "$file" ] && continue
         count=$(grep -Ei "youtube|googlevideo\.com" "$file" | wc -l)
         [ "$count" -gt 0 ] && printf "  %-15s найден в: ${YELLOW}%-25s${CLR_OFF} (%d)\n" "$cfg" "$cfg" "$count" || printf "  %-15s ютуб найден: 0\n" "$cfg"
     fi
 done
 
-# --- БЛОК 4: СЕТЬ И РЕСУРСЫ ---
-echo ""
-echo "== ПРОВЕРКА PROXY (SING-BOX / OPERA)"
-echo "=============================================================="
-PROXY_ADDR="127.0.0.1:18080"
-P_RESP=$(curl -I -s --connect-timeout 3 -x http://$PROXY_ADDR https://youtube.com | head -n 1 | tr -d '\r\n' | tr 'a-z' 'A-Z')
-printf "  URL: https://youtube.com (%s)\n" "$PROXY_ADDR"
-[ -z "$P_RESP" ] && printf "  Статус прокси:${RED_BRIGHT} ОФЛАЙН${CLR_OFF}\n" || printf "  Статус прокси:${GREEN} ОНЛАЙН${CLR_OFF} ($P_RESP)\n"
+# --- БЛОК 4: СЕТЬ (SING-BOX / OPERA) ---
+SB_CONF="/etc/sing-box/config.json"
+if [ -f "$SB_CONF" ]; then
+    DYNAMIC_PORT=$(jq -r '.inbounds[]? | select(.tag=="Opera") | .server_port' "$SB_CONF" 2>/dev/null)
+    if [ -n "$DYNAMIC_PORT" ] && [ "$DYNAMIC_PORT" != "null" ]; then
+        echo ""
+        echo "== ПРОВЕРКА PROXY (SING-BOX / OPERA)"
+        echo "=============================================================="
+        PROXY_ADDR="127.0.0.1:$DYNAMIC_PORT"
+        P_URL="https://youtube.com"
+        P_RESP=$(curl -I -s --connect-timeout 3 -x http://$PROXY_ADDR $P_URL | head -n 1 | tr -d '\r\n' | tr 'a-z' 'A-Z')
+        if [ -z "$P_RESP" ]; then
+            printf "  URL: %s (%s) %b\n" "$P_URL" "$PROXY_ADDR" "${RED_BRIGHT}ОФЛАЙН${CLR_OFF}"
+        else
+            printf "  URL: %s (%s) %b (%s)\n" "$P_URL" "$PROXY_ADDR" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_RESP"
+        fi
+    fi
+fi
 
-echo ""
-echo "== ИНТЕРФЕЙС $IFACE"
-echo "=============================================================="
+# Проверка интерфейса
 if [ -d "/sys/class/net/$IFACE" ]; then
+    echo ""
+    echo "== ИНТЕРФЕЙС $IFACE"
+    echo "=============================================================="
     [ -n "$(ip link show $IFACE | grep 'UP')" ] && IF_STATUS="${GREEN}UP (ON)${CLR_OFF}" || IF_STATUS="${RED_BRIGHT}DOWN (OFF)${CLR_OFF}"
     printf "  Статус:      %b\n" "$IF_STATUS"
     RX_B=$(cat /sys/class/net/$IFACE/statistics/rx_bytes); TX_B=$(cat /sys/class/net/$IFACE/statistics/tx_bytes)
@@ -145,8 +160,6 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     else
         printf "${RED_BRIGHT}ERROR (100%% LOSS)${CLR_OFF}\n"
     fi
-else
-    echo "  Интерфейс $IFACE не найден."
 fi
 
 echo ""
@@ -154,8 +167,9 @@ echo "== ПРОВЕРКА DNS"
 echo "=============================================================="
 NS_L=$(nslookup facebook.com 2>/dev/null); DNS_SRV=$(echo "$NS_L" | grep "Server:" | awk '{print $2}'); FB_IP=$(echo "$NS_L" | grep "Address" | tail -n 1 | awk '{print $NF}' | cut -d: -f1)
 DNS_FWD=$(uci -q get dhcp.@dnsmasq[0].server | awk '{print $1}' | sed "s/'//g"); DNS_R_ST="${GREEN}${DNS_FWD}${CLR_OFF}"; [ -z "$DNS_FWD" ] && DNS_R_ST="${RED_BRIGHT}NOT FOUND${CLR_OFF}"
-printf "  DNS Server:  %s\n" " ${DNS_SRV}:53"; printf "  DNS Redirect: %b\n" "$DNS_R_ST"; RES="${YELLOW}${FB_IP}${CLR_OFF}"; [ -z "$FB_IP" ] && RES="${RED_BRIGHT}FAILED${CLR_OFF}"
-printf "  Facebook IP: %b\n" "$RES"
+printf "  DNS Server:  %s\n" " ${DNS_SRV}:53"; printf "  DNS Redirect: %b\n" "$DNS_R_ST"
+RES="${YELLOW}${FB_IP}${CLR_OFF}"; [ -z "$FB_IP" ] && RES="${RED_BRIGHT} FAILED${CLR_OFF}"
+printf "  Facebook IP: %b\n" " $RES"
 
 echo ""
 echo "== СИСТЕМНЫЕ РЕСУРСЫ"
