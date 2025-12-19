@@ -1,144 +1,169 @@
 #!/bin/sh
 
-# Очистка экрана
+# Путь к логу
+LOG_FILE="/root/analyzer.log"
+
+# Функция со всем кодом скрипта
+run_analysis() {
+    # Коды цветов (внутри функции они нужны для экрана)
+    CLR_OFF="\033[0m"
+    RED_BRIGHT="\033[1;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[1;33m"
+
+    # 1. Сбор системных данных
+    LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
+    MEM_TOTAL=$(free | grep Mem | awk '{print $2}')
+    MEM_USED=$(free | grep Mem | awk '{print $3}')
+    MEM_PCT=$((MEM_USED * 100 / MEM_TOTAL))
+    LAN_IP=$(ip addr show br-lan 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
+    [ -z "$LAN_IP" ] && LAN_IP=$(uci -q get network.lan.ipaddr)
+
+    NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/")
+    NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}' | sed 's/%//')
+    NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
+
+    # 2. Предварительные проверки
+    IFACE="awg10"
+    FB_LOOKUP=$(nslookup facebook.com 2>/dev/null)
+
+    # Проверка Proxy
+    PROXY_URL="https://youtube.com"
+    PROXY_CHECK=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 "$PROXY_URL" | head -n 1)
+    [ -z "$PROXY_CHECK" ] && PROXY_RES="${RED_BRIGHT}OFFLINE / TIMEOUT${CLR_OFF}" || PROXY_RES="${GREEN}ONLINE (HTTP OK)${CLR_OFF}"
+
+    # Проверка Интерфейса
+    if [ ! -d "/sys/class/net/$IFACE" ]; then
+        PING_RES="${RED_BRIGHT}NOT FOUND${CLR_OFF}"
+        IF_STATUS="${RED_BRIGHT}OFFLINE${CLR_OFF}"
+    else
+        [ -n "$(ip link show $IFACE | grep 'UP')" ] && IF_STATUS="${GREEN}UP (ON)${CLR_OFF}" || IF_STATUS="${RED_BRIGHT}DOWN (OFF)${CLR_OFF}"
+        PING_DATA=$(ping -I $IFACE -c 4 ya.ru 2>/dev/null)
+        if [ $? -eq 0 ]; then
+            STATS=$(echo "$PING_DATA" | grep "round-trip" | sed 's/[=/]/ /g' | awk '{printf "%.1f/%.1f ms", $(NF-3), $(NF-1)}')
+            PING_RES="${GREEN}$STATS${CLR_OFF}"
+        else
+            PING_RES="${RED_BRIGHT}ERROR${CLR_OFF}"
+        fi
+    fi
+
+    echo "=============================================================="
+    echo "   АНАЛИЗ КОНФИГУРАЦИЙ (YOUTUBE + GOOGLEVIDEO)"
+    echo "=============================================================="
+
+    for cfg in zeroblock podkop zapret youtubeUnblock; do
+        file="/etc/config/$cfg"
+        [ ! -f "$file" ] && continue
+        
+        if [ "$cfg" = "youtubeUnblock" ]; then
+            any_found=0
+            sections=$(uci show youtubeUnblock | grep "=section" | cut -d. -f2 | cut -d= -f1)
+            for s in $sections; do
+                if [ "$(uci -q get youtubeUnblock."$s".enabled)" = "1" ]; then
+                    match=$(uci show youtubeUnblock."$s" | grep -Ei "youtube|googlevideo\.com")
+                    if [ -n "$match" ]; then
+                        any_found=1; count=$(echo "$match" | wc -l)
+                        s_name=$(uci -q get youtubeUnblock."$s".name); [ -z "$s_name" ] && s_name="$s"
+                        printf "%-15s найден в: " "$cfg"
+                        printf "${YELLOW}%-25s${CLR_OFF} [${GREEN}✔${CLR_OFF}] (%d)\n" "$s_name" "$count"
+                    fi
+                fi
+            done
+            [ "$any_found" -eq 0 ] && printf "%-15s ютуб найден: 0\n" "$cfg"
+            
+        elif [ "$cfg" = "zapret" ]; then
+            zap_any=0
+            main_count=$(grep -Ei "youtube|googlevideo\.com" "$file" | wc -l)
+            [ "$main_count" -gt 0 ] && zap_any=1 && printf "%-15s найден в: ${YELLOW}%-25s${CLR_OFF} (%d)\n" "$cfg" "$cfg" "$main_count"
+            
+            extra_files=$(grep -o "\-\-hostlist=[^ ]*" "$file" | cut -d= -f2 | sed "s/['\"]//g")
+            for ef in $extra_files; do
+                if [ -f "$ef" ]; then
+                    ecount=$(grep -Ei "youtube|googlevideo\.com" "$ef" | wc -l)
+                    if [ "$ecount" -gt 0 ]; then
+                        zap_any=1; fname=$(basename "$ef")
+                        printf "%-15s найден в: ${YELLOW}%-25s${CLR_OFF} (%d)\n" "$cfg" "$fname" "$ecount"
+                    fi
+                fi
+            done
+            [ "$zap_any" -eq 0 ] && printf "%-15s ютуб найден: 0\n" "$cfg"
+        else
+            count=$(grep -Ei "youtube|googlevideo\.com" "$file" | wc -l)
+            [ "$count" -gt 0 ] && printf "%-15s найден в: ${YELLOW}%-25s${CLR_OFF} (%d)\n" "$cfg" "$cfg" "$count" || printf "%-15s ютуб найден: 0\n" "$cfg"
+        fi
+    done
+
+    echo -e "\n=============================================================="
+    echo "   СТАТУС СЛУЖБ"
+    echo "=============================================================="
+
+    for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
+        if [ -f "/etc/init.d/$s" ]; then
+            /etc/init.d/$s status 2>/dev/null | grep -q "running" && { st_txt="▶ РАБОТАЕТ"; st_clr="${GREEN}"; } || { st_txt="■ ОСТАНОВЛЕН"; st_clr="${RED_BRIGHT}"; }
+            /etc/init.d/$s enabled 2>/dev/null && { au_txt="РАЗРЕШЕН"; au_clr="${GREEN}"; } || { au_txt="ЗАПРЕЩЕН"; au_clr="${RED_BRIGHT}"; }
+            
+            printf "%-15s | " "$s"
+            echo -n -e "${st_clr}${st_txt}${CLR_OFF}"
+            [ "$st_txt" = "▶ РАБОТАЕТ" ] && printf "     | " || printf "   | "
+            echo -e "${au_clr}${au_txt}${CLR_OFF}"
+        fi
+    done
+
+    echo -e "\n=============================================================="
+    echo "   ПРОВЕРКА PROXY (SING-BOX / OPERA)"
+    echo "=============================================================="
+    echo -e "URL: youtube.com (127.0.0.1:18080)"
+    echo -e "Статус прокси: $PROXY_RES"
+
+    echo -e "\n=============================================================="
+    echo "   ИНТЕРФЕЙС $IFACE"
+    echo "=============================================================="
+
+    if [ -d "/sys/class/net/$IFACE" ]; then
+        echo -e "Статус:      $IF_STATUS"
+        printf "Получено:    %s\n" "$RX_HUMAN"
+        printf "Отправлено:  %s\n" "$TX_HUMAN"
+        echo -n "Пинг (ya.ru via $IFACE): " && echo -e "$PING_RES"
+    else
+        echo "Интерфейс $IFACE не найден."
+    fi
+
+    echo -e "\n=============================================================="
+    echo "   ПРОВЕРКА DNS (NSLOOKUP)"
+    echo "=============================================================="
+
+    DNS_FWD=$(uci -q get dhcp.@dnsmasq[0].server | awk '{print $1}' | sed "s/'//g")
+    [ -z "$DNS_FWD" ] && DNS_FWD="System/ISP"
+    ACTIVE_DNS=$(echo "$FB_LOOKUP" | grep "Address:" | head -n 1 | awk '{print $2}')
+    [ -z "$ACTIVE_DNS" ] && ACTIVE_DNS="${RED_BRIGHT}UNKNOWN${CLR_OFF}"
+    FB_IP=$(echo "$FB_LOOKUP" | grep "Address" | tail -n 1 | awk '{print $NF}' | cut -d: -f1)
+    [ -z "$FB_IP" ] && FB_DISPLAY="${RED_BRIGHT}FAILED${CLR_OFF}" || FB_DISPLAY="${YELLOW}${FB_IP}${CLR_OFF}"
+
+    echo -e "Активный DNS:  ${GREEN}${ACTIVE_DNS}${CLR_OFF}"
+    echo -e "DNS Redirect:  ${YELLOW}${DNS_FWD}${CLR_OFF}"
+    echo -e "Facebook IP:   ${FB_DISPLAY}"
+
+    echo -e "\n=============================================================="
+    echo "   СИСТЕМНЫЕ РЕСУРСЫ"
+    echo "=============================================================="
+    printf "LAN IP:     %s\n" "$LAN_IP"
+    printf "CPU LOAD:   %s\n" "$LOAD"
+    printf "RAM USED:   %s%%\n" "$MEM_PCT"
+    printf "NAND USED:  %s%% (%s free)\n" "$NAND_PCT" "$NAND_FREE"
+    echo "=============================================================="
+}
+
+# Магия вывода:
+# 1. Запускаем функцию
+# 2. Дублируем вывод на экран (с цветами)
+# 3. Очищаем от цветов через sed и пишем в лог
 clear
+run_analysis | tee /tmp/analyzer.tmp
+# Выводим содержимое временного файла на экран
+cat /tmp/analyzer.tmp
+# Чистим от ANSI-цветов и сохраняем в основной лог
+sed 's/\x1b\[[0-9;]*m//g' /tmp/analyzer.tmp > "$LOG_FILE"
+# Удаляем временный файл
+rm /tmp/analyzer.tmp
 
-# Коды цветов
-CLR_OFF="\033[0m"
-RED_BRIGHT="\033[1;31m"
-GREEN="\033[0;32m"
-YELLOW="\033[1;33m"
-
-# 1. Сбор системных данных
-LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
-MEM_TOTAL=$(free | grep Mem | awk '{print $2}')
-MEM_USED=$(free | grep Mem | awk '{print $3}')
-MEM_PCT=$((MEM_USED * 100 / MEM_TOTAL))
-
-# 2. Проверка интерфейса и пинга
-if [ ! -d "/sys/class/net/awg10" ]; then
-    PING_RES="${RED_BRIGHT}NOT FOUND${CLR_OFF}"
-else
-    printf "Проверка связи через awg10..."
-    PING_DATA=$(ping -I awg10 -c 4 ya.ru 2>/dev/null)
-    if [ $? -eq 0 ]; then
-        STATS=$(echo "$PING_DATA" | grep "round-trip" | sed 's/[=/]/ /g' | awk '{printf "%.1f/%.1f ms", $(NF-3), $(NF-1)}')
-        PING_RES="${GREEN}$STATS${CLR_OFF}"
-    else
-        PING_RES="${RED_BRIGHT}ERROR${CLR_OFF}"
-    fi
-    printf "\r                             \r"
-fi
-
-echo "=============================================================="
-echo "   АНАЛИЗ КОНФИГУРАЦИЙ (YOUTUBE + GOOGLEVIDEO)"
-echo "--------------------------------------------------------------"
-
-# 3. Анализ файлов
-google_warn=""
-for cfg in zeroblock podkop zapret youtubeUnblock; do
-    file="/etc/config/$cfg"
-    [ ! -f "$file" ] && continue
-    
-    if [ "$cfg" = "youtubeUnblock" ]; then
-        any_found=0
-        sections=$(uci show youtubeUnblock | grep "=section" | cut -d. -f2 | cut -d= -f1)
-        for s in $sections; do
-            enabled=$(uci -q get youtubeUnblock."$s".enabled)
-            if [ "$enabled" = "1" ]; then
-                match=$(uci show youtubeUnblock."$s" | grep -Ei "youtube|googlevideo\.com")
-                if [ -n "$match" ]; then
-                    any_found=1
-                    count=$(echo "$match" | wc -l)
-                    s_name=$(uci -q get youtubeUnblock."$s".name)
-                    [ -z "$s_name" ] && s_name="$s"
-                    printf "%-15s найден в: ${YELLOW}%-25s${CLR_OFF} [${GREEN}✔${CLR_OFF}] (%d)\n" "$cfg" "$s_name" "$count"
-                fi
-            fi
-        done
-        [ "$any_found" -eq 0 ] && printf "%-15s ютуб найден: 0\n" "$cfg"
-        
-    elif [ "$cfg" = "zapret" ]; then
-        zap_any=0
-        # Проверка основного конфига zapret
-        main_count=$(grep -Ei "youtube|googlevideo\.com" "$file" | wc -l)
-        if [ "$main_count" -gt 0 ]; then
-            zap_any=1
-            printf "%-15s найден в: ${YELLOW}%-25s${CLR_OFF} (%d)\n" "$cfg" "$cfg" "$main_count"
-        fi
-        
-        # Проверка внешних файлов zapret (каждый с новой строки)
-        extra_files=$(grep -o "\-\-hostlist=[^ ]*" "$file" | cut -d= -f2 | sed "s/['\"]//g")
-        for ef in $extra_files; do
-            if [ -f "$ef" ]; then
-                ecount=$(grep -Ei "youtube|googlevideo\.com" "$ef" | wc -l)
-                if [ "$ecount" -gt 0 ]; then
-                    zap_any=1
-                    fname=$(basename "$ef")
-                    printf "%-15s найден в: ${YELLOW}%-25s${CLR_OFF} (%d)\n" "$cfg" "$fname" "$ecount"
-                fi
-            fi
-        done
-        
-        [ "$zap_any" -eq 0 ] && printf "%-15s ютуб найден: 0\n" "$cfg"
-        
-        if grep -q "hosts-google" "$file"; then
-            google_warn="${RED_BRIGHT}ВНИМАНИЕ: в /etc/config/zapret включен hosts-google!${CLR_OFF}"
-        fi
-        
-    else
-        # Остальные конфиги (zeroblock, podkop)
-        count=$(grep -Ei "youtube|googlevideo\.com" "$file" | wc -l)
-        if [ "$count" -gt 0 ]; then
-            printf "%-15s найден в: ${YELLOW}%s${CLR_OFF} (%d)\n" "$cfg" "$cfg" "$count"
-        else
-            printf "%-15s ютуб найден: 0\n" "$cfg"
-        fi
-    fi
-done
-
-if [ -n "$google_warn" ]; then
-    echo "--------------------------------------------------------------"
-    printf "%b\n" "$google_warn"
-fi
-
-echo ""
-echo "=============================================================="
-echo "   СТАТУС СЛУЖБ"
-echo "=============================================================="
-echo "СЕРВИС          | СОСТОЯНИЕ      | АВТОЗАПУСК"
-echo "--------------------------------------------------------------"
-
-for s in zeroblock youtubeUnblock zapret ruantiblock podkop; do
-    if [ -f "/etc/init.d/$s" ]; then
-        if /etc/init.d/$s status 2>/dev/null | grep -q "running"; then
-            st_txt="▶ РАБОТАЕТ"
-            st_clr="${GREEN}"
-        else
-            st_txt="■ ОСТАНОВЛЕН"
-            st_clr="${RED_BRIGHT}"
-        fi
-        
-        if /etc/init.d/$s enabled 2>/dev/null; then
-            au_txt="РАЗРЕШЕН"
-            au_clr="${GREEN}"
-        else
-            au_txt="ЗАПРЕЩЕН"
-            au_clr="${RED_BRIGHT}"
-        fi
-
-        printf "%-15s | " "$s"
-        printf "%b%s${CLR_OFF}" "$st_clr" "$st_txt"
-        
-        case "$st_txt" in
-            "▶ РАБОТАЕТ")   printf "     | " ;;
-            "■ ОСТАНОВЛЕН") printf "   | " ;;
-        esac
-
-        printf "%b%s${CLR_OFF}\n" "$au_clr" "$au_txt"
-    fi
-done
-
-echo "--------------------------------------------------------------"
-printf "CPU LOAD (1 min): %-4s | RAM: %s%% | AWG10: %b\n" "$LOAD" "$MEM_PCT" "$PING_RES"
-echo "=============================================================="
+echo -e "\n${YELLOW}Отчет сохранен в: $LOG_FILE${CLR_OFF}"
