@@ -1,9 +1,8 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo 3
+echo 4
 sleep 5
-
 
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"
 IFACE="awg10"
@@ -137,13 +136,16 @@ done
 
 
 
-# --- БЛОК 5: ПЕРЕСЕЧЕНИЯ ДОМЕНОВ В СПИСКАХ ---
+# ==============================================================
+# БЛОК 5: ПЕРЕСЕЧЕНИЯ ДОМЕНОВ В СПИСКАХ
+# ==============================================================
+
+# --- СЕКЦИЯ Б5.1: ПОДГОТОВКА ---
 echo ""
 echo "== ПЕРЕСЕЧЕНИЯ ДОМЕНОВ В СПИСКАХ"
 echo "=============================================================="
 tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
 ACTIVE_PKGS=""
-HEADER_PRINTED=0
 
 for pkg in $CHECKING_SERVICES; do
     [ -f "/etc/init.d/$pkg" ] || continue
@@ -155,13 +157,13 @@ for pkg in $CHECKING_SERVICES; do
     ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
     tmp_p="$tmp_dir/$pkg.tmp"
 
+    # --- СЕКЦИЯ Б5.2: ПАРСИНГ ZAPRET (УМНЫЕ ФИЛЬТРЫ) ---
     if [ "$pkg" = "zapret" ]; then
         Z_OPTS=$(uci -q get zapret.config.NFQWS_OPT | tr -d "'\"")
         echo "$Z_OPTS" | sed 's/--new/\n/g' | while read -r section; do
             [ -z "$section" ] && continue
-            # Собираем эталонный ключ из всех фильтров
-            F_KEY=$(echo "$section" | grep -oE "\-\-filter-(l3|tcp|udp|l7|ssid)=[^ ]+" | sort | tr '\n' '|')
-            [ -z "$F_KEY" ] && F_KEY="[no-filters]"
+            F_KEY=$(echo "$section" | grep -oE "\-\-filter-(l3|tcp|udp|l7|ssid)=[^ ]+" | sort | tr '\n' ' ' | sed 's/ $//')
+            [ -z "$F_KEY" ] && F_KEY="any"
 
             echo "$section" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2 | while read -r fp; do
                 [ -z "$fp" ] && continue
@@ -173,60 +175,68 @@ for pkg in $CHECKING_SERVICES; do
                     while read -r d; do
                         case "$d" in ""|\#*) continue ;; esac
                         dom=$(echo "$d" | awk '{print $1}')
-                        # Канон: точка + символ после
                         if echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
-                            echo "$dom|$fname($F_KEY)" >> "$tmp_p"
+                            echo "$dom|$fname|$F_KEY" >> "$tmp_p"
                         fi
                     done < "$REAL_PATH"
                 fi
             done
         done
-    else
-        # Общий парсинг для Podkop, Zeroblock и др.
-        uci -q show "$pkg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
-            s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
-            val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for v in $val_str; do
-                dom=$(echo "$v" | awk '{print $1}')
-                [ -z "$dom" ] && continue
-                IS_M=0; case "$dom" in youtube|russia_inside|googlevideo) IS_M=1 ;; esac
-                if [ $IS_M -eq 1 ] || echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
-                    echo "$dom|$s_name" >> "$tmp_p"
-                    case "$dom" in russia_inside|youtube) echo "youtube.com|$s_name" >> "$tmp_p"; echo "googlevideo.com|$s_name" >> "$tmp_p" ;; esac
-                fi
-            done
-        done
-        # Доп. проверка hostlist для не-zapret сервисов
-        uci -q show "$pkg" | grep -Ei "hostlist" | while read -r line; do
-            s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
-            paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for fp in $paths; do
-                [ -f "$fp" ] && while read -r d; do
-                    case "$d" in ""|\#*) continue ;; esac
-                    dom=$(echo "$d" | awk '{print $1}')
-                    if echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
-                        echo "$dom|$s_name:$(basename "$fp")" >> "$tmp_p"
-                    fi
-                done < "$fp"
-            done
-        done
+        [ -f "$tmp_p" ] && cut -d'|' -f1 "$tmp_p" | sort -u > "$tmp_dir/$pkg.doms"
+        continue
     fi
+
+    # --- СЕКЦИЯ Б5.3: ОБЩИЙ ПАРСИНГ (PODKOP, ZEROBLOCK И ДР.) ---
+    uci -q show "$pkg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
+        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
+        val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for v in $val_str; do
+            dom=$(echo "$v" | awk '{print $1}')
+            [ -z "$dom" ] && continue
+            IS_M=0; case "$dom" in youtube|russia_inside|googlevideo) IS_M=1 ;; esac
+            if [ $IS_M -eq 1 ] || echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
+                echo "$dom|$s_name|default" >> "$tmp_p"
+                case "$dom" in russia_inside|youtube) 
+                    echo "youtube.com|$s_name|default" >> "$tmp_p"
+                    echo "googlevideo.com|$s_name|default" >> "$tmp_p" 
+                ;; esac
+            fi
+        done
+    done
+
+    uci -q show "$pkg" | grep -Ei "hostlist" | while read -r line; do
+        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
+        paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for fp in $paths; do
+            [ -f "$fp" ] && while read -r d; do
+                case "$d" in ""|\#*) continue ;; esac
+                dom=$(echo "$d" | awk '{print $1}')
+                if echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
+                    echo "$dom|$s_name:$(basename "$fp")|default" >> "$tmp_p"
+                fi
+            done < "$fp"
+        done
+    done
+
+    # --- СЕКЦИЯ Б5.4: ФИНАЛИЗАЦИЯ СПИСКОВ ---
     [ -f "$tmp_p" ] && cut -d'|' -f1 "$tmp_p" | sort -u > "$tmp_dir/$pkg.doms"
 done
 
-# 1. ПРОВЕРКА: ВНУТРЕННИЕ ПЕРЕСЕЧЕНИЯ
+# --- СЕКЦИЯ Б5.5: ВНУТРЕННИЕ ПЕРЕСЕЧЕНИЯ (ВЫВОД) ---
 for pkg in $ACTIVE_PKGS; do
     tmp_p="$tmp_dir/$pkg.tmp"; [ -s "$tmp_p" ] || continue
-    dups_list=$(cut -d'|' -f1 "$tmp_p" | sort | uniq -d)
-    if [ -n "$dups_list" ]; then
-        first_dup=$(echo "$dups_list" | head -n 1)
+    bad_list=$(sort "$tmp_p" | uniq -d | cut -d'|' -f1 | sort -u)
+    if [ -n "$bad_list" ]; then
         printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} Внутреннее пересечение в ${YELLOW}%s${CLR_OFF}:\n" "$pkg"
-        grep "^$first_dup|" "$tmp_p" | cut -d'|' -f2 | sort -u | while read -r sec; do
-            printf "    %-25s : %s\n" "$pkg" "$sec"
+        echo "$bad_list" | while read -r d; do
+            grep "^$d|" "$tmp_p" | cut -d'|' -f2,3 | sort -u | while read -r line; do
+                loc=$(echo "$line" | cut -d'|' -f1); cond=$(echo "$line" | cut -d'|' -f2)
+                printf "    %-25s : %s (Условия: %s)\n" "$pkg" "$loc" "$cond"
+            done
         done
-        printf "    ${BLUE}Домены:${CLR_OFF} %s\n\n" "$(echo $dups_list | tr '\n' ' ')"
+        printf "    ${BLUE}Домены:${CLR_OFF} %s\n\n" "$(echo $bad_list | tr '\n' ' ')"
     fi
 done
 
-# 2. ПРОВЕРКА: ВНЕШНИЕ ПЕРЕСЕЧЕНИЯ
+# --- СЕКЦИЯ Б5.6: ВНЕШНИЕ ПЕРЕСЕЧЕНИЯ (ВЫВОД) ---
 set -- $ACTIVE_PKGS
 while [ $# -gt 1 ]; do
     P1=$1; shift; tmp1_doms="$tmp_dir/$P1.doms"; [ -f "$tmp1_doms" ] || continue
@@ -234,16 +244,19 @@ while [ $# -gt 1 ]; do
         tmp2_doms="$tmp_dir/$P2.doms"; [ -f "$tmp2_doms" ] || continue
         all_matches=$(grep -Fxf "$tmp1_doms" "$tmp2_doms")
         if [ -n "$all_matches" ]; then
-            first_match=$(echo "$all_matches" | head -n 1)
             printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} Пересечение между ${YELLOW}%s${CLR_OFF} и ${YELLOW}%s${CLR_OFF}:\n" "$P1" "$P2"
-            grep "^$first_match|" "$tmp_dir/$P1.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P1" "$s"; done
-            grep "^$first_match|" "$tmp_dir/$P2.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P2" "$s"; done
+            echo "$all_matches" | head -n 1 | while read -r m; do
+                grep "^$m|" "$tmp_dir/$P1.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P1" "$s"; done
+                grep "^$m|" "$tmp_dir/$P2.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P2" "$s"; done
+            done
             printf "    ${BLUE}Домены:${CLR_OFF} %s\n\n" "$(echo $all_matches | tr '\n' ' ')"
         fi
     done
 done
+
 [ "$(ls "$tmp_dir"/*.doms 2>/dev/null | wc -l)" -eq 0 ] && printf "  ${GREEN}Конфликты не обнаружены!${CLR_OFF}\n"
 rm -rf "$tmp_dir"
+
 
 
 
