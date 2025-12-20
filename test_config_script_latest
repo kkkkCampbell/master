@@ -1,8 +1,20 @@
 #!/bin/sh
 # analyzer.sh
 
+# --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
+LOG_FILE="/root/analyzer.log"
+rm -f "$LOG_FILE"
+
+# Враппер для одновременного вывода в консоль и файл
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "Анализ запущен: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "Лог сохраняется в: $LOG_FILE"
+echo "--------------------------------------------------------------"
+
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"
 IFACE="awg10"
+WARNING_LISTS="russia_inside russia_outside"
 
 # --- ПОДГОТОВКА ---
 [ -z "$(opkg list-installed | grep "wget-ssl")" ] && {
@@ -226,33 +238,70 @@ done
 
 # Если файлов с доменами нет — значит вообще ничего не нашли
 [ "$(ls "$tmp_dir"/*.doms 2>/dev/null | wc -l)" -eq 0 ] && printf "  ${GREEN}Конфликты не обнаружены!${CLR_OFF}\n"
-
 rm -rf "$tmp_dir"
 
-# --- БЛОК 6: СПИСКИ (ПОЛУСОЕДИНЕНИЕ С БЛОКОМ 5) ---
 
-# Проверяем наличие списков только для тех, кто не "мертв"
-for cfg in zeroblock youtubeUnblock zapret podkop; do
+# --- 1. DRY RUN (Анализ конфликтов) ---
+for cfg in zeroblock podkop; do
     [ -f "/etc/config/$cfg" ] || continue
-    
-    # Проверка на "мертвеца" (STOPPED + DISABLED)
-    IS_RUN_6=0; /etc/init.d/$cfg status 2>/dev/null | grep -q "running" && IS_RUN_6=1
-    IS_ENA_6=0; /etc/init.d/$cfg enabled 2>/dev/null && IS_ENA_6=1
-    [ $IS_RUN_6 -eq 0 ] && [ $IS_ENA_6 -eq 0 ] && continue
-
-    TR_LISTS=$(uci -q show "$cfg" | grep -Ei "russia_inside|russia_outside" | cut -d'=' -f2 | tr -d "'\"" | sort -u)
-    
-    if [ -n "$TR_LISTS" ]; then
-        for tl in $TR_LISTS; do
-            case "$tl" in 
-                russia_inside|russia_outside) 
-                    # Убит %-15s, теперь просто пробел
-                    printf "  ${RED_BRIGHT}ВНИМАНИЕ!${CLR_OFF} %s использует список: ${YELLOW}%s${CLR_OFF}\n" "$cfg" "$tl" 
-                    ;; 
+    SIDS=$(uci show "$cfg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
+    for sid in $SIDS; do
+        RAW=$(uci -q get "$cfg.$sid.community_lists" | tr -d "'\"" | tr ' ,' '  ')
+        for item in $RAW; do
+            [ -z "$item" ] && continue
+            case " $ALL_ITEMS " in
+                *" $item "*) 
+                    case " $CONFLICT_LISTS " in 
+                        *" $item "*) ;; 
+                        *) CONFLICT_LISTS="$CONFLICT_LISTS $item" ;;
+                    esac
+                    ;;
+                *) ALL_ITEMS="$ALL_ITEMS $item" ;;
             esac
         done
-    fi
+    done
 done
+
+# --- 2. ОСНОВНОЙ ВЫВОД ---
+for cfg in zeroblock podkop; do
+    [ -f "/etc/config/$cfg" ] || continue
+
+    # # Алерты (текстовый лог дружелюбен)
+    # for wl in $WARNING_LISTS; do
+        # uci -q show "$cfg" | grep -q "$wl" && \
+        # printf "  !!! ВНИМАНИЕ! %s использует: %s\n" "$cfg" "$wl"
+    # done
+
+    # Списки
+    SIDS=$(uci show "$cfg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
+    for sid in $SIDS; do
+        RAW=$(uci -q get "$cfg.$sid.community_lists" | tr -d "'\"" | tr ' ' ',' | sed 's/,,*/,/g' | tr ',' ' ')
+        [ -z "$RAW" ] && continue
+        
+        printf "  %-10s %-10s списки: " "$cfg" "$sid"
+        FIRST=1
+        for item in $RAW; do
+            [ $FIRST -eq 0 ] && printf "${BLUE},${CLR_OFF}"
+            FIRST=0
+
+            # Проверка ТРЕВОЖНЫЙ (Желтый + !!!)
+            IS_W=0
+            for wl in $WARNING_LISTS; do [ "$item" = "$wl" ] && IS_W=1 && break; done
+
+            if [ $IS_W -eq 1 ]; then
+                printf "!_${YELLOW}%s${CLR_OFF}" "$item"
+            else
+                # Проверка КОНФЛИКТНЫЙ (Красный + !!!)
+                case " $CONFLICT_LISTS " in
+                    *" $item "*) printf "!!!_${RED_BRIGHT}%s${CLR_OFF}" "$item" ;;
+                    *)           printf "${BLUE}%s${CLR_OFF}" "$item" ;;
+                esac
+            fi
+        done
+        printf "\n"
+    done
+done
+
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
 echo ""
@@ -261,3 +310,12 @@ echo "=============================================================="
 printf "  LAN IP: %s\n" "$LAN_IP"
 printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE"
 echo "=============================================================="
+
+# --- БЛОК 8: ОЧИСТКА ЛОГА ОТ ЦВЕТОВЫХ КОДОВ ---
+# Просто берем созданный файл и вырезаем из него ANSI escape sequences
+
+# Блок 8: Очистка лога
+if [ -f "$LOG_FILE" ]; then
+    # Вырезаем вообще все ANSI escape sequences (включая очистку экрана \033[H\033[J)
+    sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"
+fi
