@@ -1,8 +1,8 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo 4
-sleep 6
+echo "4.1"
+sleep 5
 
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
 IFACE="awg10"
@@ -113,7 +113,7 @@ for s in $CHECKING_SERVICES; do
     if [ -f "/etc/init.d/$s" ]; then
         ST_CLR="${RED_BRIGHT}"; S_NAME_CLR=""
         if [ "$s" = "podkop" ]; then
-            ST_OUT="UNDEFINED"; [ "$CHAOS" -eq 1 ] && { ST_CLR="${RED_BRIGHT}"; S_NAME_CLR="${RED_BRIGHT}"; } || ST_CLR="${BLUE}"
+            ST_OUT="UNDEFINED"; [ "$CHAOS" -eq 1 ] && { ST_CLR="${RED_BRIGHT}"; S_NAME_CLR="${RED_BRIGHT}"; } || ST_CLR="${CYAN}"
         elif [ "$s" = "zeroblock" ]; then
             [ $ZB_RUN -eq 1 ] && { ST_OUT="RUNNING"; ST_CLR="${GREEN}"; } || ST_OUT="STOPPED"
             [ "$CHAOS" -eq 1 ] && { ST_CLR="${RED_BRIGHT}"; S_NAME_CLR="${RED_BRIGHT}"; }
@@ -122,7 +122,8 @@ for s in $CHECKING_SERVICES; do
             [ $SB_ALIVE -eq 0 ] && netstat -ltn 2>/dev/null | grep -q ":18080" && SB_ALIVE=1
             if [ $SB_ALIVE -eq 1 ]; then
                 if [ "$CHAOS" -eq 1 ]; then ST_OUT="MANAGED BY CHAOS!"; ST_CLR="${RED_BRIGHT}"; S_NAME_CLR="${RED_BRIGHT}"
-                elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then ST_OUT="MANAGED BY PODKOP!"; ST_CLR="${YELLOW}"
+                # ВОТ ТУТ ПОЗЕЛЕНЕЛО:
+                elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then ST_OUT="MANAGED BY PODKOP!"; ST_CLR="${GREEN}"
                 else ST_OUT="RUNNING (MANAGED BY ZB)"; ST_CLR="${GREEN}"; fi
             else ST_OUT="STOPPED"; fi
         else
