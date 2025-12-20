@@ -39,13 +39,12 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     echo "== ИНТЕРФЕЙС $IFACE (ДЕТАЛИ)"
     echo "=============================================================="
     PING_COUNT=10
-    
     RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     
     printf "  Статус:      ${GREEN}UP (ON)${CLR_OFF}\n"
-    echo "  Получено:    $RX"
-    echo "  Отправлено:  $TX"
+    # Склеиваем RX и TX в одну строку с выравниванием
+    printf "  Получено:    %-10s   Отправлено:  %s\n" "$RX" "$TX"
     
     PING_OUT=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>/dev/null)
     if [ $? -eq 0 ]; then
@@ -143,7 +142,7 @@ for pkg in $PKGS; do
     IS_RUNNING=0; /etc/init.d/$pkg status 2>/dev/null | grep -q "running" && IS_RUNNING=1
     IS_ENABLED=0; /etc/init.d/$pkg enabled 2>/dev/null && IS_ENABLED=1
 
-    # Если STOPPED (0) И DISABLED (0) — нахер из отчета
+    # Если STOPPED (0) И DISABLED (0) — убираем из отчета
     [ $IS_RUNNING -eq 0 ] && [ $IS_ENABLED -eq 0 ] && continue
 
     ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
