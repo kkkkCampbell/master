@@ -125,139 +125,135 @@ for s in zeroblock youtubeUnblock zapret ruantiblock podkop sing-box; do
     fi
 done
 
-# --- БЛОК 5: ПОИСК КОНФЛИКТОВ ---
+# --- БЛОК 5: ПЕРЕСЕЧЕНИЯ ДОМЕНОВ В СПИСКАХ ---
 echo ""
-echo "== ПОИСК КОНФЛИКТОВ"
+echo "== ПЕРЕСЕЧЕНИЯ ДОМЕНОВ В СПИСКАХ"
 echo "=============================================================="
 
-tmp_global="/tmp/global_conflict.tmp"; > "$tmp_global"
+tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
+PKGS="zeroblock podkop youtubeUnblock zapret"
+ACTIVE_PKGS=""
 
-# Теперь проверяем наличие сервиса в init.d ПЕРЕД парсингом
-for cfg in zeroblock podkop youtubeUnblock zapret; do
-    [ -f "/etc/init.d/$cfg" ] || continue  # НЕТ СЕРВИСА — ИДЕМ МИМО
-    [ -f "/etc/config/$cfg" ] || continue
+# 1. СБОР ДАННЫХ (ТОЛЬКО ДЛЯ ЖИВЫХ ИЛИ ВКЛЮЧЕННЫХ СЕРВИСОВ)
+for pkg in $PKGS; do
+    [ -f "/etc/init.d/$pkg" ] || continue
+    [ -f "/etc/config/$pkg" ] || continue
+
+    # ЛОГИКА "МЕРТВЕЦА": Проверяем статус и автозагрузку
+    IS_RUNNING=0; /etc/init.d/$pkg status 2>/dev/null | grep -q "running" && IS_RUNNING=1
+    IS_ENABLED=0; /etc/init.d/$pkg enabled 2>/dev/null && IS_ENABLED=1
+
+    # Если STOPPED (0) И DISABLED (0) — нахер из отчета
+    [ $IS_RUNNING -eq 0 ] && [ $IS_ENABLED -eq 0 ] && continue
+
+    ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
+    tmp_p="$tmp_dir/$pkg.tmp"
     
-    case "$cfg" in
-        zeroblock) c_short="ZB" ;;
-        podkop)    c_short="PK" ;;
-        youtubeUnblock) c_short="YU" ;;
-        zapret)    c_short="ZP" ;;
-    esac
+    # --- ДАЛЕЕ ВЕСЬ ТВОЙ ПАРСИНГ БЕЗ ИЗМЕНЕНИЙ ---
+    case "$pkg" in zeroblock) c_short="ZB" ;; podkop) c_short="PK" ;; youtubeUnblock) c_short="YU" ;; zapret) c_short="ZP" ;; esac
 
-    # 1. ПАРСИМ UCI
-    uci -q show "$cfg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
-        s_id=$(echo "$line" | cut -d. -f2)
-        s_name=$(uci -q get "$cfg.$s_id.name" 2>/dev/null || echo "$s_id")
-        val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\"")
-        for v in $val_str; do
+    uci -q show "$pkg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
+        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
+        val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for v in $val_str; do
             case "$v" in ""|text|none|static|custom|community|all) continue ;; esac
-            echo "$v|$c_short:$s_name" >> "$tmp_global"
-            case "$v" in
-                russia_inside|youtube)
-                    echo "youtube.com|$c_short:$s_name" >> "$tmp_global"
-                    echo "googlevideo.com|$c_short:$s_name" >> "$tmp_global"
-                ;;
-            esac
+            echo "$v|$s_name" >> "$tmp_p"
+            case "$v" in russia_inside|youtube) echo "youtube.com|$s_name" >> "$tmp_p"; echo "googlevideo.com|$s_name" >> "$tmp_p" ;; esac
         done
     done
 
-    # 2. ПАРСИМ ХОСТЛИСТЫ
-    uci -q show "$cfg" | grep -Ei "hostlist" | while read -r line; do
-        s_id=$(echo "$line" | cut -d. -f2)
-        s_name=$(uci -q get "$cfg.$s_id.name" 2>/dev/null || echo "$s_id")
-        if echo "$line" | grep -q "\-\-hostlist="; then
-            paths=$(echo "$line" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d'=' -f2)
-        else
-            paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\"")
-        fi
+    uci -q show "$pkg" | grep -Ei "hostlist" | while read -r line; do
+        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
+        if echo "$line" | grep -q "\-\-hostlist="; then paths=$(echo "$line" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2); else paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); fi
         for fp in $paths; do
             [ -z "$fp" ] && continue
-            REAL_PATH=""
-            [ -f "$fp" ] && REAL_PATH="$fp"
-            [ -z "$REAL_PATH" ] && [ -f "/etc/zapret/$fp" ] && REAL_PATH="/etc/zapret/$fp"
-            [ -z "$REAL_PATH" ] && [ -f "/opt/zapret/ipset/$fp" ] && REAL_PATH="/opt/zapret/ipset/$fp"
+            REAL_PATH=""; [ -f "$fp" ] && REAL_PATH="$fp"; [ -z "$REAL_PATH" ] && [ -f "/etc/zapret/$fp" ] && REAL_PATH="/etc/zapret/$fp"; [ -z "$REAL_PATH" ] && [ -f "/opt/zapret/ipset/$fp" ] && REAL_PATH="/opt/zapret/ipset/$fp"
             if [ -n "$REAL_PATH" ]; then
                 fname=$(basename "$REAL_PATH")
                 while read -r d; do
                     case "$d" in ""|\#*) continue ;; esac
-                    dom=$(echo "$d" | awk '{print $1}')
-                    [ "$cfg" = "zapret" ] && loc="$fname" || loc="$s_name:$fname"
-                    [ -n "$dom" ] && echo "$dom|$c_short:$loc" >> "$tmp_global"
+                    dom=$(echo "$d" | awk '{print $1}'); [ "$pkg" = "zapret" ] && loc="$fname" || loc="$s_name:$fname"
+                    [ -n "$dom" ] && echo "$dom|$loc" >> "$tmp_p"
                 done < "$REAL_PATH"
             fi
         done
     done
+    [ -f "$tmp_p" ] && cut -d'|' -f1 "$tmp_p" | sort -u > "$tmp_dir/$pkg.doms"
 done
 
-# --- ВЫВОД КРОСС-ПРОГРАММНЫХ ПЕРЕСЕЧЕНИЙ ---
-tmp_cross="/tmp/cross_res.tmp"; > "$tmp_cross"
-cross_dups=$(cut -d'|' -f1 "$tmp_global" 2>/dev/null | sort | uniq -d)
+# 2. ПРОВЕРКА: ВНУТРЕННИЕ ПЕРЕСЕЧЕНИЯ
+for pkg in $ACTIVE_PKGS; do
+    tmp_p="$tmp_dir/$pkg.tmp"
+    [ -s "$tmp_p" ] || continue
+    
+    dups=$(cut -d'|' -f1 "$tmp_p" | sort | uniq -d | head -n 1)
+    if [ -n "$dups" ]; then
+        printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} Внутреннее пересечение в ${YELLOW}%s${CLR_OFF}:\n" "$pkg"
+        grep "^$dups|" "$tmp_p" | cut -d'|' -f2 | sort -u | while read -r sec; do
+            printf "    %-25s : %s\n" "$pkg" "$sec"
+        done
+        echo ""
+    fi
+done
 
-if [ -n "$cross_dups" ]; then
-    for cd in $cross_dups; do
-        p_count=$(grep "^$cd|" "$tmp_global" | cut -d'|' -f2 | cut -d':' -f1 | sort -u | wc -l)
-        if [ "$p_count" -gt 1 ]; then
-            where_key=$(grep "^$cd|" "$tmp_global" | cut -d'|' -f2 | sort -u | tr '\n' ',' | sed 's/,$//')
-            echo "$where_key|$cd" >> "$tmp_cross"
+# 3. ПРОВЕРКА: ВНЕШНИЕ ПЕРЕСЕЧЕНИЯ (КАСКАД ПО ТВОЕЙ ЛОГИКЕ)
+set -- $ACTIVE_PKGS
+while [ $# -gt 1 ]; do
+    P1=$1
+    shift
+    tmp1_doms="$tmp_dir/$P1.doms"
+    [ -f "$tmp1_doms" ] || continue
+    
+    for P2 in "$@"; do
+        tmp2_doms="$tmp_dir/$P2.doms"
+        [ -f "$tmp2_doms" ] || continue
+        
+        # Ищем первый попавшийся общий домен
+        match=$(grep -Fxf "$tmp1_doms" "$tmp2_doms" | head -n 1)
+        
+        if [ -n "$match" ]; then
+            printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} Пересечение между ${YELLOW}%s${CLR_OFF} и ${YELLOW}%s${CLR_OFF}:\n" "$P1" "$P2"
+            # Секции из первой проги
+            grep "^$match|" "$tmp_dir/$P1.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do
+                printf "    %-25s : %s\n" "$P1" "$s"
+            done
+            # Секции из второй проги
+            grep "^$match|" "$tmp_dir/$P2.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do
+                printf "    %-25s : %s\n" "$P2" "$s"
+            done
+            echo ""
         fi
     done
-fi
+done
 
-if [ -s "$tmp_cross" ]; then
-    echo "КРОСС-ПРОГРАММНЫЕ ПЕРЕСЕЧЕНИЯ:"
-    cut -d'|' -f1 "$tmp_cross" | sort -u | while read -r key; do
-        [ -z "$key" ] && continue
-        LIST_DOMS=$(grep -F "$key|" "$tmp_cross" | cut -d'|' -f2 | tr '\n' ',' | sed 's/,$//; s/,/, /g')
-        printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} ${YELLOW}%s${CLR_OFF} делят:\n" "$LIST_DOMS"
-        
-        echo "$key" | tr ',' '\n' | while read -r part; do
-            [ -z "$part" ] && continue
-            p_sh=${part%%:*}
-            s_nm=${part#*:}
-            case "$p_sh" in 
-                ZB) f="ZeroBlock" ;; 
-                PK) f="Podkop" ;; 
-                YU) f="YouTubeUnblock" ;; 
-                ZP) f="Zapret" ;; 
+# Если файлов с доменами нет — значит вообще ничего не нашли
+[ "$(ls "$tmp_dir"/*.doms 2>/dev/null | wc -l)" -eq 0 ] && printf "  ${GREEN}Конфликты не обнаружены!${CLR_OFF}\n"
+
+rm -rf "$tmp_dir"
+
+# --- БЛОК 6: СПИСКИ (ПОЛУСОЕДИНЕНИЕ С БЛОКОМ 5) ---
+
+# Проверяем наличие списков только для тех, кто не "мертв"
+for cfg in zeroblock youtubeUnblock zapret podkop; do
+    [ -f "/etc/config/$cfg" ] || continue
+    
+    # Проверка на "мертвеца" (STOPPED + DISABLED)
+    IS_RUN_6=0; /etc/init.d/$cfg status 2>/dev/null | grep -q "running" && IS_RUN_6=1
+    IS_ENA_6=0; /etc/init.d/$cfg enabled 2>/dev/null && IS_ENA_6=1
+    [ $IS_RUN_6 -eq 0 ] && [ $IS_ENA_6 -eq 0 ] && continue
+
+    TR_LISTS=$(uci -q show "$cfg" | grep -Ei "russia_inside|russia_outside" | cut -d'=' -f2 | tr -d "'\"" | sort -u)
+    
+    if [ -n "$TR_LISTS" ]; then
+        for tl in $TR_LISTS; do
+            case "$tl" in 
+                russia_inside|russia_outside) 
+                    # Убит %-15s, теперь просто пробел
+                    printf "  ${RED_BRIGHT}ВНИМАНИЕ!${CLR_OFF} %s использует список: ${YELLOW}%s${CLR_OFF}\n" "$cfg" "$tl" 
+                    ;; 
             esac
-            
-            F_LINE=$(printf "%-25s : %s" "$f" "$s_nm")
-            printf "    ${YELLOW}%s${CLR_OFF}\n" "$F_LINE"
         done
-    done
-else
-    # Вот она, та самая «зеленая рожа»
-    printf "  ${GREEN}Конфликты не обнаружены!${CLR_OFF}\n"
-fi
-rm -f "$tmp_global" "$tmp_cross"
-
-# # --- БЛОК 6: АНАЛИЗ КОНФИГУРАЦИЙ ---
-# echo ""
-# echo "== АНАЛИЗ КОНФИГУРАЦИЙ (ИЩЕМ YOUTUBE + GOOGLEVIDEO)"
-# echo "=============================================================="
-# for cfg in zeroblock podkop zapret; do
-    # [ -f "/etc/init.d/$cfg" ] || continue
-    # if [ "$cfg" = "zapret" ]; then
-        # LISTS_PATHS=$(grep -oE "\-\-hostlist=[^ '\" ]+" /etc/config/zapret | cut -d= -f2 | sed "s/['\"]//g" | sort | uniq)
-        # for f_path in $LISTS_PATHS; do
-            # if [ -f "$f_path" ]; then
-                # match_c=$(grep -Ei "youtube|googlevideo\.com" "$f_path" | wc -l)
-                # if [ "$match_c" -gt 0 ]; then
-                    # printf "  %-15s найден в: ${YELLOW}%s${CLR_OFF}\n" "$cfg" "$(basename "$f_path")"
-                    # printf "                  └─ Основные домены:  ${GREEN}%d${CLR_OFF}\n" "$(grep -Ei "^(youtube\.com|googlevideo\.com)$" "$f_path" | wc -l)"
-                    # printf "                  └─ Субдомены/прочее: ${GREEN}%d${CLR_OFF}\n" "$((match_c - $(grep -Ei "^(youtube\.com|googlevideo\.com)$" "$f_path" | wc -l)))"
-                # fi
-            # fi
-        # done
-    # else
-        # any_found=0; sections=$(uci -q show "$cfg" | grep "=section" | cut -d. -f2 | cut -d= -f1)
-        # for s in $sections; do
-            # count=$(uci -q show "$cfg.$s" | grep -Ei "youtube|googlevideo\.com" | wc -l)
-            # [ "$count" -gt 0 ] && { any_found=1; printf "  %-15s найден в: ${YELLOW}%s${CLR_OFF} (%d)\n" "$cfg" "$s" "$count"; }
-        # done
-        # [ "$any_found" -eq 0 ] && printf "  %-15s ютуб найден: 0\n" "$cfg"
-    # fi
-# done
+    fi
+done
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
 echo ""
