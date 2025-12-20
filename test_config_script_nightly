@@ -1,8 +1,9 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo 2
+echo 3
 sleep 5
+
 
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"
 IFACE="awg10"
@@ -142,6 +143,7 @@ echo "== ПЕРЕСЕЧЕНИЯ ДОМЕНОВ В СПИСКАХ"
 echo "=============================================================="
 tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
 ACTIVE_PKGS=""
+HEADER_PRINTED=0
 
 for pkg in $CHECKING_SERVICES; do
     [ -f "/etc/init.d/$pkg" ] || continue
@@ -153,12 +155,11 @@ for pkg in $CHECKING_SERVICES; do
     ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
     tmp_p="$tmp_dir/$pkg.tmp"
 
-    # --- СПЕЦ-ПАРСИНГ ДЛЯ ZAPRET ---
     if [ "$pkg" = "zapret" ]; then
         Z_OPTS=$(uci -q get zapret.config.NFQWS_OPT | tr -d "'\"")
         echo "$Z_OPTS" | sed 's/--new/\n/g' | while read -r section; do
             [ -z "$section" ] && continue
-            # Собираем эталонный ключ из всех фильтров в секции
+            # Собираем эталонный ключ из всех фильтров
             F_KEY=$(echo "$section" | grep -oE "\-\-filter-(l3|tcp|udp|l7|ssid)=[^ ]+" | sort | tr '\n' '|')
             [ -z "$F_KEY" ] && F_KEY="[no-filters]"
 
@@ -172,31 +173,46 @@ for pkg in $CHECKING_SERVICES; do
                     while read -r d; do
                         case "$d" in ""|\#*) continue ;; esac
                         dom=$(echo "$d" | awk '{print $1}')
-                        [ ${#dom} -lt 3 ] && continue
-                        echo "$dom|$fname($F_KEY)" >> "$tmp_p"
+                        # Канон: точка + символ после
+                        if echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
+                            echo "$dom|$fname($F_KEY)" >> "$tmp_p"
+                        fi
                     done < "$REAL_PATH"
                 fi
             done
         done
-        [ -f "$tmp_p" ] && cut -d'|' -f1 "$tmp_p" | sort -u > "$tmp_dir/$pkg.doms"
-        continue
-    fi
-
-    # --- ОБЩИЙ ПАРСИНГ ДЛЯ ОСТАЛЬНЫХ (Podkop, Zeroblock и т.д.) ---
-    uci -q show "$pkg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
-        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
-        val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for v in $val_str; do
-            case "$v" in ""|text|none|static|custom|community|all|disabled|vpn|udp|tcp|socks|http|0|1) continue ;; esac
-            [ ${#v} -lt 3 ] && continue
-            echo "$v|$s_name" >> "$tmp_p"
-            case "$v" in russia_inside|youtube) echo "youtube.com|$s_name"; echo "googlevideo.com|$s_name" ;; esac >> "$tmp_p"
+    else
+        # Общий парсинг для Podkop, Zeroblock и др.
+        uci -q show "$pkg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
+            s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
+            val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for v in $val_str; do
+                dom=$(echo "$v" | awk '{print $1}')
+                [ -z "$dom" ] && continue
+                IS_M=0; case "$dom" in youtube|russia_inside|googlevideo) IS_M=1 ;; esac
+                if [ $IS_M -eq 1 ] || echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
+                    echo "$dom|$s_name" >> "$tmp_p"
+                    case "$dom" in russia_inside|youtube) echo "youtube.com|$s_name" >> "$tmp_p"; echo "googlevideo.com|$s_name" >> "$tmp_p" ;; esac
+                fi
+            done
         done
-    done
-    # (Тут остается твой стандартный блок с hostlist для остальных сервисов...)
+        # Доп. проверка hostlist для не-zapret сервисов
+        uci -q show "$pkg" | grep -Ei "hostlist" | while read -r line; do
+            s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
+            paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for fp in $paths; do
+                [ -f "$fp" ] && while read -r d; do
+                    case "$d" in ""|\#*) continue ;; esac
+                    dom=$(echo "$d" | awk '{print $1}')
+                    if echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
+                        echo "$dom|$s_name:$(basename "$fp")" >> "$tmp_p"
+                    fi
+                done < "$fp"
+            done
+        done
+    fi
     [ -f "$tmp_p" ] && cut -d'|' -f1 "$tmp_p" | sort -u > "$tmp_dir/$pkg.doms"
 done
 
-# 1. ВНУТРЕННИЕ ПЕРЕСЕЧЕНИЯ
+# 1. ПРОВЕРКА: ВНУТРЕННИЕ ПЕРЕСЕЧЕНИЯ
 for pkg in $ACTIVE_PKGS; do
     tmp_p="$tmp_dir/$pkg.tmp"; [ -s "$tmp_p" ] || continue
     dups_list=$(cut -d'|' -f1 "$tmp_p" | sort | uniq -d)
@@ -210,7 +226,7 @@ for pkg in $ACTIVE_PKGS; do
     fi
 done
 
-# 2. ВНЕШНИЕ ПЕРЕСЕЧЕНИЯ
+# 2. ПРОВЕРКА: ВНЕШНИЕ ПЕРЕСЕЧЕНИЯ
 set -- $ACTIVE_PKGS
 while [ $# -gt 1 ]; do
     P1=$1; shift; tmp1_doms="$tmp_dir/$P1.doms"; [ -f "$tmp1_doms" ] || continue
@@ -226,9 +242,7 @@ while [ $# -gt 1 ]; do
         fi
     done
 done
-
-# Если папка пуста или в ней нет .doms файлов - значит ничего не нашли
-[ -z "$(ls "$tmp_dir"/*.doms 2>/dev/null)" ] && printf "  ${GREEN}Конфликты не обнаружены!${CLR_OFF}\n"
+[ "$(ls "$tmp_dir"/*.doms 2>/dev/null | wc -l)" -eq 0 ] && printf "  ${GREEN}Конфликты не обнаружены!${CLR_OFF}\n"
 rm -rf "$tmp_dir"
 
 
