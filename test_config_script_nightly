@@ -1,16 +1,27 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "4.1"
+echo "4.3"
 sleep 5
+
+# --- ЦВЕТА ---
 
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
 IFACE="awg10"
-WARNING_LISTS="russia_inside russia_outside"
+
+# --- СПИСКИ ДЛЯ АЛЕРТОВ ---
+
+# Синонимы: любые два списка отсюда в одном или разных конфигах = дубль (!!!)
+SAME_AS_LIST="youtube russia_inside"
+# Предупреждение (!): просто подсветить желтым
+WARNING_LISTS="russia_inside russia_outside cloudflare"
+
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
+
 CHECKING_SERVICES="zeroblock podkop sing-box youtubeUnblock zapret ruantiblock"
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
+
 LOG_FILE="/root/analyzer.log"
 rm -f "$LOG_FILE"
 
@@ -135,10 +146,10 @@ for s in $CHECKING_SERVICES; do
 done
 
 # ==============================================================
-# БЛОК 5: ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ ZAPRET
+# БЛОК 5: ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ КОНФИГУРАЦИИ
 # ==============================================================
 
-# --- СЕКЦИЯ Б5.1: ПОДГОТОВКА ---
+# --- СЕКЦИЯ Б5.1: ПОДГОТОВКА И ФИЛЬТРАЦИЯ ЖИВЫХ СЕРВИСОВ ---
 echo ""
 echo "== ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ КОНФИГУРАЦИИ"
 echo "=============================================================="
@@ -146,8 +157,11 @@ tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
 ACTIVE_PKGS=""
 
 for pkg in $CHECKING_SERVICES; do
+    # Проверка на существование
     [ -f "/etc/init.d/$pkg" ] || continue
     [ -f "/etc/config/$pkg" ] || continue
+
+    # Правило: Нет сервиса или он STOPPED + DISABLED — вон из теста
     IS_RUNNING=0; /etc/init.d/$pkg status 2>/dev/null | grep -q "running" && IS_RUNNING=1
     IS_ENABLED=0; /etc/init.d/$pkg enabled 2>/dev/null && IS_ENABLED=1
     [ $IS_RUNNING -eq 0 ] && [ $IS_ENABLED -eq 0 ] && continue
@@ -155,7 +169,7 @@ for pkg in $CHECKING_SERVICES; do
     ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
     tmp_p="$tmp_dir/$pkg.tmp"
 
-    # --- СЕКЦИЯ Б5.2: ПАРСИНГ ZAPRET ---
+    # --- СЕКЦИЯ Б5.2: ПАРСИНГ ZAPRET (СПЕЦИФИЧНЫЙ) ---
     if [ "$pkg" = "zapret" ]; then
         Z_OPTS=$(uci -q get zapret.config.NFQWS_OPT | tr -d "'\"")
         echo "$Z_OPTS" | sed 's/--new/\n/g' | while read -r section; do
@@ -183,7 +197,7 @@ for pkg in $CHECKING_SERVICES; do
         continue
     fi
 
-    # --- СЕКЦИЯ Б5.3: ОБЩИЙ ПАРСИНГ (PODKOP, ZEROBLOCK И ДР.) ---
+    # --- СЕКЦИЯ Б5.3: ОБЩИЙ ПАРСИНГ (ZEROBLOCK, PODKOP И ДР.) ---
     uci -q show "$pkg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
         s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
         val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for v in $val_str; do
@@ -192,6 +206,7 @@ for pkg in $CHECKING_SERVICES; do
             IS_M=0; case "$dom" in youtube|russia_inside|googlevideo) IS_M=1 ;; esac
             if [ $IS_M -eq 1 ] || echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
                 echo "$dom|$s_name|default" >> "$tmp_p"
+                # Резолвим виртуальные группы в реальные домены для поиска пересечений
                 case "$dom" in russia_inside|youtube) 
                     echo "youtube.com|$s_name|default" >> "$tmp_p"
                     echo "googlevideo.com|$s_name|default" >> "$tmp_p" 
@@ -200,6 +215,7 @@ for pkg in $CHECKING_SERVICES; do
         done
     done
 
+    # Парсинг внешних файлов хостлистов (если есть)
     uci -q show "$pkg" | grep -Ei "hostlist" | while read -r line; do
         s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
         paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for fp in $paths; do
@@ -215,8 +231,9 @@ for pkg in $CHECKING_SERVICES; do
     [ -f "$tmp_p" ] && cut -d'|' -f1 "$tmp_p" | sort -u > "$tmp_dir/$pkg.doms"
 done
 
-# --- СЕКЦИЯ Б5.5: ВНУТРЕННИЕ ПЕРЕСЕЧЕНИЯ (ВЫВОД) ---
+# --- СЕКЦИЯ Б5.5: ВНУТРЕННИЕ ПЕРЕСЕЧЕНИЯ ---
 for pkg in $ACTIVE_PKGS; do
+    # Zapret пропускаем (его проверяет Б5.7 "Колымага")
     [ "$pkg" = "zapret" ] && continue
 
     tmp_p="$tmp_dir/$pkg.tmp"; [ -s "$tmp_p" ] || continue
@@ -229,12 +246,11 @@ for pkg in $ACTIVE_PKGS; do
                 printf "    %-25s : %s (Условия: %s)\n" "$pkg" "$loc" "$cond"
             done
         done
-        # Используем яркий CYAN вместо мрачного синего
         printf "    ${CYAN}Домены:${CLR_OFF} %s\n\n" "$(echo $bad_list | tr '\n' ' ')"
     fi
 done
 
-# --- СЕКЦИЯ Б5.6: ВНЕШНИЕ ПЕРЕСЕЧЕНИЯ (ВЫВОД) ---
+# --- СЕКЦИЯ Б5.6: ВНЕШНИЕ ПЕРЕСЕЧЕНИЯ (МЕЖДУ СЕРВИСАМИ) ---
 set -- $ACTIVE_PKGS
 while [ $# -gt 1 ]; do
     P1=$1; shift; tmp1_doms="$tmp_dir/$P1.doms"; [ -f "$tmp1_doms" ] || continue
@@ -243,6 +259,7 @@ while [ $# -gt 1 ]; do
         all_matches=$(grep -Fxf "$tmp1_doms" "$tmp2_doms")
         if [ -n "$all_matches" ]; then
             printf "  !!! ${RED_BRIGHT}КРИТ:${CLR_OFF} Пересечение между ${YELLOW}%s${CLR_OFF} и ${YELLOW}%s${CLR_OFF}:\n" "$P1" "$P2"
+            # Показываем, откуда ноги растут (первый попавшийся дубль для примера)
             echo "$all_matches" | head -n 1 | while read -r m; do
                 grep "^$m|" "$tmp_dir/$P1.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P1" "$s"; done
                 grep "^$m|" "$tmp_dir/$P2.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P2" "$s"; done
@@ -252,7 +269,7 @@ while [ $# -gt 1 ]; do
     done
 done
 
-# --- СЕКЦИЯ Б5.7: КОЛЫМАГА (АНАЛИЗ ДУБЛЕЙ ФИЛЬТРОВ ZAPRET) ---
+# --- СЕКЦИЯ Б5.7: КОЛЫМАГА (АНАЛИЗ ZAPRET И ЧИСТКА) ---
 CONF_Z="/etc/config/zapret"
 if [ -f "$CONF_Z" ]; then
     F_TYPES="l3 tcp udp l7 ssid"
@@ -263,65 +280,69 @@ if [ -f "$CONF_Z" ]; then
                 HLISTS=$(sed -n "/$full_f/,/--new/p" "$CONF_Z" | grep "\-\-hostlist=" | cut -d= -f2)
                 if [ "$(echo "$HLISTS" | wc -l)" -gt "$(echo "$HLISTS" | sort -u | wc -l)" ]; then
                     printf "  !!! ${RED_BRIGHT}КРИТ:${CLR_OFF} В ZAPRET секция ${CYAN}%s${CLR_OFF} дублирует хостлисты.\n" "$full_f"
-					echo
                 fi
             fi
         done
     done
 fi
-
 rm -rf "$tmp_dir"
+
+
 
 # --- БЛОК 6: СПИСКИ (LDDPR 5 + "СКАЛЬПЕЛЬ") ---
 
+
+
 ALL_ITEMS=""; CONFLICT_LISTS=""
-# Используем CHECKING_SERVICES для анализа листов
-for cfg in $CHECKING_SERVICES; do
-    [ -f "/etc/config/$cfg" ] || continue
-    # В анализе листов участвуют только те сервисы, что используют community_lists (zeroblock и podkop)
-    [ "$cfg" != "zeroblock" ] && [ "$cfg" != "podkop" ] && continue
+
+# 1. СОБИРАЕМ КОНФЛИКТЫ (Живые сервисы из ACTIVE_PKGS)
+for pkg in $ACTIVE_PKGS; do
+    [ "$pkg" != "zeroblock" ] && [ "$pkg" != "podkop" ] && continue
     
-    SIDS=$(uci show "$cfg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
+    SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
     for sid in $SIDS; do
-        RAW=$(uci -q get "$cfg.$sid.community_lists" | tr -d "'\"" | tr ' ,' '  ')
+        RAW=$(uci -q get "$pkg.$sid.community_lists" | tr -d "'\"" | tr ' ,' '  ')
         for item in $RAW; do
             [ -z "$item" ] && continue
-            MATCH_FOUND=0
-            case " $ALL_ITEMS " in *" $item "*) MATCH_FOUND=1 ;; esac
             
-            # Умная проверка пересечений (youtube <-> russia_inside)
-            if [ "$item" = "youtube" ]; then
-                case " $ALL_ITEMS " in *" russia_inside "*) MATCH_FOUND=1 ;; esac
-            elif [ "$item" = "russia_inside" ]; then
-                case " $ALL_ITEMS " in *" youtube "*) MATCH_FOUND=1 ;; esac
+            IS_DUP=0
+            # ПРОВЕРКА А: Физический дубль имени (твой случай с block)
+            if echo " $ALL_ITEMS " | grep -q " $item "; then
+                IS_DUP=1
             fi
+
+            # ПРОВЕРКА Б: Синонимы (SAME_AS_LIST)
+            case " $SAME_AS_LIST " in *" $item "*)
+                for sibling in $SAME_AS_LIST; do
+                    if [ "$item" != "$sibling" ] && echo " $ALL_ITEMS " | grep -q " $sibling "; then
+                        IS_DUP=1
+                        # Добавляем "брата", чтобы он тоже покраснел при выводе
+                        case " $CONFLICT_LISTS " in *" $sibling "*) ;; *) CONFLICT_LISTS="$CONFLICT_LISTS $sibling" ;; esac
+                    fi
+                done
+            ;; esac
             
-            if [ $MATCH_FOUND -eq 1 ]; then
+            if [ $IS_DUP -eq 1 ]; then
                 case " $CONFLICT_LISTS " in *" $item "*) ;; *) CONFLICT_LISTS="$CONFLICT_LISTS $item" ;; esac
-                if [ "$item" = "youtube" ]; then CONFLICT_LISTS="$CONFLICT_LISTS russia_inside"; fi
-                if [ "$item" = "russia_inside" ]; then CONFLICT_LISTS="$CONFLICT_LISTS youtube"; fi
-            else
-                ALL_ITEMS="$ALL_ITEMS $item"
             fi
+
+            ALL_ITEMS="$ALL_ITEMS $item"
         done
     done
 done
 
-# ВЫВОД РЕЗУЛЬТАТОВ БЛОКА 6
-for cfg in $CHECKING_SERVICES; do
-    [ -f "/etc/config/$cfg" ] || continue
-    [ "$cfg" != "zeroblock" ] && [ "$cfg" != "podkop" ] && continue
+# 2. ВЫВОДИМ СПИСКИ ТОЛЬКО ДЛЯ ТЕХ, КТО В ACTIVE_PKGS
+for pkg in $ACTIVE_PKGS; do
+    [ "$pkg" != "zeroblock" ] && [ "$pkg" != "podkop" ] && continue
 
-    SIDS=$(uci show "$cfg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
+    SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
     for sid in $SIDS; do
-        # Формируем чистый список для вывода
-        RAW=$(uci -q get "$cfg.$sid.community_lists" | tr -d "'\"" | tr ' ' ',' | sed 's/,,*/,/g' | tr ',' ' ')
+        RAW=$(uci -q get "$pkg.$sid.community_lists" | tr -d "'\"" | tr ' ' ',' | sed 's/,,*/,/g' | tr ',' ' ')
         [ -z "$RAW" ] && continue
         
-        printf "  %-10s %-10s списки: " "$cfg" "$sid"
+        printf "  %-10s %-10s списки: " "$pkg" "$sid"
         FIRST=1
         for item in $RAW; do
-            # Разделитель теперь светлый CYAN
             [ $FIRST -eq 0 ] && printf "${CYAN},${CLR_OFF}"
             FIRST=0
             
@@ -329,13 +350,10 @@ for cfg in $CHECKING_SERVICES; do
             IS_WARN=0; for wl in $WARNING_LISTS; do [ "$item" = "$wl" ] && IS_WARN=1 && break; done
 
             if [ $IS_CONFLICT -eq 1 ]; then 
-                # !!! ПЕРЕСЕЧЕНИЕ (КРИТ)
                 printf "!!!_${RED_BRIGHT}%s${CLR_OFF}" "$item"
             elif [ $IS_WARN -eq 1 ]; then 
-                # ! ПРЕДУПРЕЖДЕНИЕ
                 printf "!_${YELLOW}%s${CLR_OFF}" "$item"
             else 
-                # ОБЫЧНЫЙ СПИСОК (Светло-синий/Cyan)
                 printf "${CYAN}%s${CLR_OFF}" "$item"
             fi
         done
