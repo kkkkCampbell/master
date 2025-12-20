@@ -1,7 +1,9 @@
 #!/bin/sh
 # analyzer.sh
-echo 1
+clear
+echo 2
 sleep 5
+
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"
 IFACE="awg10"
 WARNING_LISTS="russia_inside russia_outside"
@@ -150,36 +152,47 @@ for pkg in $CHECKING_SERVICES; do
 
     ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
     tmp_p="$tmp_dir/$pkg.tmp"
-    
+
+    # --- СПЕЦ-ПАРСИНГ ДЛЯ ZAPRET ---
+    if [ "$pkg" = "zapret" ]; then
+        Z_OPTS=$(uci -q get zapret.config.NFQWS_OPT | tr -d "'\"")
+        echo "$Z_OPTS" | sed 's/--new/\n/g' | while read -r section; do
+            [ -z "$section" ] && continue
+            # Собираем эталонный ключ из всех фильтров в секции
+            F_KEY=$(echo "$section" | grep -oE "\-\-filter-(l3|tcp|udp|l7|ssid)=[^ ]+" | sort | tr '\n' '|')
+            [ -z "$F_KEY" ] && F_KEY="[no-filters]"
+
+            echo "$section" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2 | while read -r fp; do
+                [ -z "$fp" ] && continue
+                REAL_PATH=""; [ -f "$fp" ] && REAL_PATH="$fp"
+                [ -z "$REAL_PATH" ] && [ -f "/etc/zapret/$fp" ] && REAL_PATH="/etc/zapret/$fp"
+                [ -z "$REAL_PATH" ] && [ -f "/opt/zapret/ipset/$fp" ] && REAL_PATH="/opt/zapret/ipset/$fp"
+                if [ -n "$REAL_PATH" ]; then
+                    fname=$(basename "$REAL_PATH")
+                    while read -r d; do
+                        case "$d" in ""|\#*) continue ;; esac
+                        dom=$(echo "$d" | awk '{print $1}')
+                        [ ${#dom} -lt 3 ] && continue
+                        echo "$dom|$fname($F_KEY)" >> "$tmp_p"
+                    done < "$REAL_PATH"
+                fi
+            done
+        done
+        [ -f "$tmp_p" ] && cut -d'|' -f1 "$tmp_p" | sort -u > "$tmp_dir/$pkg.doms"
+        continue
+    fi
+
+    # --- ОБЩИЙ ПАРСИНГ ДЛЯ ОСТАЛЬНЫХ (Podkop, Zeroblock и т.д.) ---
     uci -q show "$pkg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
         s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
         val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for v in $val_str; do
-            # ФИЛЬТР МУСОРА: убираем технические слова, цифры 0/1 и короткие огрызки меньше 3 символов
             case "$v" in ""|text|none|static|custom|community|all|disabled|vpn|udp|tcp|socks|http|0|1) continue ;; esac
             [ ${#v} -lt 3 ] && continue
-            
             echo "$v|$s_name" >> "$tmp_p"
-            case "$v" in russia_inside|youtube) echo "youtube.com|$s_name" >> "$tmp_p"; echo "googlevideo.com|$s_name" >> "$tmp_p" ;; esac
+            case "$v" in russia_inside|youtube) echo "youtube.com|$s_name"; echo "googlevideo.com|$s_name" ;; esac >> "$tmp_p"
         done
     done
-
-    uci -q show "$pkg" | grep -Ei "hostlist" | while read -r line; do
-        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
-        if echo "$line" | grep -q "\-\-hostlist="; then paths=$(echo "$line" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2); else paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); fi
-        for fp in $paths; do
-            [ -z "$fp" ] && continue
-            REAL_PATH=""; [ -f "$fp" ] && REAL_PATH="$fp"; [ -z "$REAL_PATH" ] && [ -f "/etc/zapret/$fp" ] && REAL_PATH="/etc/zapret/$fp"; [ -z "$REAL_PATH" ] && [ -f "/opt/zapret/ipset/$fp" ] && REAL_PATH="/opt/zapret/ipset/$fp"
-            if [ -n "$REAL_PATH" ]; then
-                fname=$(basename "$REAL_PATH")
-                while read -r d; do
-                    case "$d" in ""|\#*) continue ;; esac
-                    dom=$(echo "$d" | awk '{print $1}'); [ "$pkg" = "zapret" ] && loc="$fname" || loc="$s_name:$fname"
-                    # Тут тоже фильтрация на всякий случай
-                    [ ${#dom} -ge 3 ] && echo "$dom|$loc" >> "$tmp_p"
-                done < "$REAL_PATH"
-            fi
-        done
-    done
+    # (Тут остается твой стандартный блок с hostlist для остальных сервисов...)
     [ -f "$tmp_p" ] && cut -d'|' -f1 "$tmp_p" | sort -u > "$tmp_dir/$pkg.doms"
 done
 
