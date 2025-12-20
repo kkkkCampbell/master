@@ -1,0 +1,289 @@
+#!/bin/sh
+# analyzer.sh
+
+CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"
+IFACE="awg10"
+WARNING_LISTS="russia_inside russia_outside"
+# --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
+CHECKING_SERVICES="zeroblock podkop sing-box youtubeUnblock zapret ruantiblock"
+
+# --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
+LOG_FILE="/root/analyzer.log"
+rm -f "$LOG_FILE"
+
+clear
+for i in $(seq 1 12); do echo ""; done
+
+# Враппер для одновременного вывода в консоль и файл
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "Анализ запущен: $(date '+%Y-%m-%d %H:%M:%S')"
+echo -e "Лог сохраняется в: ${YELLOW}$LOG_FILE${CLR_OFF}"
+echo "--------------------------------------------------------------"
+
+# --- ПОДГОТОВКА ---
+[ -z "$(opkg list-installed | grep "wget-ssl")" ] && {
+  opkg update && 
+  opkg install wget-ssl;
+}
+
+echo ""
+
+# Сбор данных для системных ресурсов
+LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
+MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
+MEM_P=$((MEM_U * 100 / MEM_T))
+LAN_IP=$(ip addr show br-lan 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
+[ -z "$LAN_IP" ] && LAN_IP=$(uci -q get network.lan.ipaddr)
+NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
+
+# --- БЛОК 1: ПРОВЕРКА DNS ---
+echo "== ПРОВЕРКА DNS"
+echo "=============================================================="
+DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
+printf "  DNS Server:   %s\n" "${DNS_SRV:-UNKNOWN}"
+printf "  DNS Redirect: 127.0.0.42\n"
+FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
+printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}\n" "${FB_IP:-UNKNOWN}"
+
+# --- БЛОК 2: ИНТЕРФЕЙС awg10 (ДЕТАЛИ) ---
+if [ -d "/sys/class/net/$IFACE" ]; then
+    echo ""
+    echo "== ИНТЕРФЕЙС $IFACE (ДЕТАЛИ)"
+    echo "=============================================================="
+    PING_COUNT=10
+    RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
+    TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
+    
+    printf "  Статус:      ${GREEN}UP (ON)${CLR_OFF}\n"
+    printf "  Получено:    %-10s    Отправлено:  %s\n" "$RX" "$TX"
+    
+    printf "  Пинг (ya.ru via %s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
+    PING_OUT=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>/dev/null)
+    EXIT_CODE=$?
+    printf "\r\033[K"
+
+    if [ $EXIT_CODE -eq 0 ]; then
+        P_MIN=$(echo "$PING_OUT" | tail -1 | awk -F'/' '{print $4}' | awk '{print $NF}')
+        P_MAX=$(echo "$PING_OUT" | tail -1 | awk -F'/' '{print $5}')
+        P_LOSS_PCT=$(echo "$PING_OUT" | grep "packet loss" | awk -F'%' '{print $1}' | awk '{print $NF}')
+        P_LOST_NUM=$(( (PING_COUNT * P_LOSS_PCT) / 100 ))
+
+        MIN_CLR="${GREEN}"; [ "$(echo "$P_MIN" | cut -d. -f1)" -ge 150 ] && MIN_CLR="${YELLOW}"; [ "$(echo "$P_MIN" | cut -d. -f1)" -ge 250 ] && MIN_CLR="${RED_BRIGHT}"
+        MAX_CLR="${GREEN}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 150 ] && MAX_CLR="${YELLOW}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 250 ] && MAX_CLR="${RED_BRIGHT}"
+        LOST_CLR="${GREEN}"; [ "$P_LOST_NUM" -gt 0 ] && LOST_CLR="${YELLOW}"; [ "$P_LOST_NUM" -gt 2 ] && LOST_CLR="${RED_BRIGHT}"
+
+        printf "  Пинг (ya.ru via %s): ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d потеряно${CLR_OFF})\n" \
+               "$IFACE" "$P_MIN" "$P_MAX" "$P_LOST_NUM" "$PING_COUNT"
+    else
+        printf "  Пинг (ya.ru via %s): ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}\n" "$IFACE"
+    fi
+fi
+
+# --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
+echo ""
+echo "== ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM)"
+echo "=============================================================="
+P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 https://youtube.com | head -n 1 | tr -d '\r\n')
+[ -n "$P_CODE" ] && printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE" || printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
+
+if [ -d "/sys/class/net/$IFACE" ]; then
+    IF_IP=$(ip addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
+    if [ -n "$IF_IP" ]; then
+        W_OUT=$(wget --spider --server-response --no-check-certificate -4 --timeout=4 --tries=1 --bind-address="$IF_IP" https://youtube.com 2>&1)
+        W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
+        [ -n "$W_CODE" ] && \
+            printf "  %-14s %b (%s)\n" "$IFACE:" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" || \
+            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН (ПРИЧИНА: No response)${CLR_OFF}\n" "$IFACE:"
+    fi
+fi
+
+# --- БЛОК 4: СТАТУС СЛУЖБ ---
+echo ""
+echo "== СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБРАЖАЮТСЯ)"
+echo "=============================================================="
+ZB_RUN=0; zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
+PK_INST=0; [ -f "/etc/init.d/podkop" ] && PK_INST=1
+CHAOS=0; [ $ZB_RUN -eq 1 ] && [ $PK_INST -eq 1 ] && CHAOS=1
+
+# Используем CHECKING_SERVICES
+for s in $CHECKING_SERVICES; do
+    if [ -f "/etc/init.d/$s" ]; then
+        ST_CLR="${RED_BRIGHT}"; S_NAME_CLR=""
+        if [ "$s" = "podkop" ]; then
+            ST_OUT="UNDEFINED"; [ "$CHAOS" -eq 1 ] && { ST_CLR="${RED_BRIGHT}"; S_NAME_CLR="${RED_BRIGHT}"; } || ST_CLR="${BLUE}"
+        elif [ "$s" = "zeroblock" ]; then
+            [ $ZB_RUN -eq 1 ] && { ST_OUT="RUNNING"; ST_CLR="${GREEN}"; } || ST_OUT="STOPPED"
+            [ "$CHAOS" -eq 1 ] && { ST_CLR="${RED_BRIGHT}"; S_NAME_CLR="${RED_BRIGHT}"; }
+        elif [ "$s" = "sing-box" ]; then
+            SB_ALIVE=0; /etc/init.d/sing-box status 2>/dev/null | grep -q "running" && SB_ALIVE=1
+            [ $SB_ALIVE -eq 0 ] && netstat -ltn 2>/dev/null | grep -q ":18080" && SB_ALIVE=1
+            if [ $SB_ALIVE -eq 1 ]; then
+                if [ "$CHAOS" -eq 1 ]; then ST_OUT="MANAGED BY CHAOS!"; ST_CLR="${RED_BRIGHT}"; S_NAME_CLR="${RED_BRIGHT}"
+                elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then ST_OUT="MANAGED BY PODKOP!"; ST_CLR="${YELLOW}"
+                else ST_OUT="RUNNING (MANAGED BY ZB)"; ST_CLR="${GREEN}"; fi
+            else ST_OUT="STOPPED"; fi
+        else
+            /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_OUT="RUNNING"; ST_CLR="${GREEN}"; } || ST_OUT="STOPPED"
+        fi
+        /etc/init.d/$s enabled 2>/dev/null && { au_txt="РАЗРЕШЁН"; au_clr="${GREEN}"; } || { au_txt="ОТКЛ"; au_clr="${RED_BRIGHT}"; }
+        printf "  %b%-15s${CLR_OFF} | ${ST_CLR}%-25s${CLR_OFF} | ${au_clr}${au_txt}${CLR_OFF}\n" "$S_NAME_CLR" "$s" "$(echo "$ST_OUT" | tr 'a-z' 'A-Z')"
+    fi
+done
+
+
+
+# --- БЛОК 5: ПЕРЕСЕЧЕНИЯ ДОМЕНОВ В СПИСКАХ ---
+echo ""
+echo "== ПЕРЕСЕЧЕНИЯ ДОМЕНОВ В СПИСКАХ"
+echo "=============================================================="
+tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
+# Используем CHECKING_SERVICES для доменного анализа
+ACTIVE_PKGS=""
+
+for pkg in $CHECKING_SERVICES; do
+    [ -f "/etc/init.d/$pkg" ] || continue
+    [ -f "/etc/config/$pkg" ] || continue
+    IS_RUNNING=0; /etc/init.d/$pkg status 2>/dev/null | grep -q "running" && IS_RUNNING=1
+    IS_ENABLED=0; /etc/init.d/$pkg enabled 2>/dev/null && IS_ENABLED=1
+    [ $IS_RUNNING -eq 0 ] && [ $IS_ENABLED -eq 0 ] && continue
+
+    ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
+    tmp_p="$tmp_dir/$pkg.tmp"
+    
+    uci -q show "$pkg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
+        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
+        val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for v in $val_str; do
+            case "$v" in ""|text|none|static|custom|community|all) continue ;; esac
+            echo "$v|$s_name" >> "$tmp_p"
+            case "$v" in russia_inside|youtube) echo "youtube.com|$s_name" >> "$tmp_p"; echo "googlevideo.com|$s_name" >> "$tmp_p" ;; esac
+        done
+    done
+
+    uci -q show "$pkg" | grep -Ei "hostlist" | while read -r line; do
+        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
+        if echo "$line" | grep -q "\-\-hostlist="; then paths=$(echo "$line" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2); else paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); fi
+        for fp in $paths; do
+            [ -z "$fp" ] && continue
+            REAL_PATH=""; [ -f "$fp" ] && REAL_PATH="$fp"; [ -z "$REAL_PATH" ] && [ -f "/etc/zapret/$fp" ] && REAL_PATH="/etc/zapret/$fp"; [ -z "$REAL_PATH" ] && [ -f "/opt/zapret/ipset/$fp" ] && REAL_PATH="/opt/zapret/ipset/$fp"
+            if [ -n "$REAL_PATH" ]; then
+                fname=$(basename "$REAL_PATH")
+                while read -r d; do
+                    case "$d" in ""|\#*) continue ;; esac
+                    dom=$(echo "$d" | awk '{print $1}'); [ "$pkg" = "zapret" ] && loc="$fname" || loc="$s_name:$fname"
+                    [ -n "$dom" ] && echo "$dom|$loc" >> "$tmp_p"
+                done < "$REAL_PATH"
+            fi
+        done
+    done
+    [ -f "$tmp_p" ] && cut -d'|' -f1 "$tmp_p" | sort -u > "$tmp_dir/$pkg.doms"
+done
+
+# Внутренние пересечения
+for pkg in $ACTIVE_PKGS; do
+    tmp_p="$tmp_dir/$pkg.tmp"; [ -s "$tmp_p" ] || continue
+    # Находим все дубликаты
+    dups_list=$(cut -d'|' -f1 "$tmp_p" | sort | uniq -d)
+    if [ -n "$dups_list" ]; then
+        # Берем первый для старой логики поиска секций
+        first_dup=$(echo "$dups_list" | head -n 1)
+        printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} Внутреннее пересечение в ${YELLOW}%s${CLR_OFF}:\n" "$pkg"
+        grep "^$first_dup|" "$tmp_p" | cut -d'|' -f2 | sort -u | while read -r sec; do
+            printf "    %-25s : %s\n" "$pkg" "$sec"
+        done
+        # Вывод всех проблемных доменов одной строкой
+        printf "    ${BLUE}Домены:${CLR_OFF} %s\n\n" "$(echo $dups_list | tr '\n' ' ')"
+    fi
+done
+
+# Внешние пересечения
+set -- $ACTIVE_PKGS
+while [ $# -gt 1 ]; do
+    P1=$1; shift; tmp1_doms="$tmp_dir/$P1.doms"; [ -f "$tmp1_doms" ] || continue
+    for P2 in "$@"; do
+        tmp2_doms="$tmp_dir/$P2.doms"; [ -f "$tmp2_doms" ] || continue
+        # Находим все общие домены
+        all_matches=$(grep -Fxf "$tmp1_doms" "$tmp2_doms")
+        if [ -n "$all_matches" ]; then
+            first_match=$(echo "$all_matches" | head -n 1)
+            printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} Пересечение между ${YELLOW}%s${CLR_OFF} и ${YELLOW}%s${CLR_OFF}:\n" "$P1" "$P2"
+            grep "^$first_match|" "$tmp_dir/$P1.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P1" "$s"; done
+            grep "^$first_match|" "$tmp_dir/$P2.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P2" "$s"; done
+            # Вывод всех общих доменов одной строкой
+            printf "    ${BLUE}Домены:${CLR_OFF} %s\n\n" "$(echo $all_matches | tr '\n' ' ')"
+        fi
+    done
+done
+[ "$(ls "$tmp_dir"/*.doms 2>/dev/null | wc -l)" -eq 0 ] && printf "  ${GREEN}Конфликты не обнаружены!${CLR_OFF}\n"
+rm -rf "$tmp_dir"
+
+
+# --- БЛОК 6: СПИСКИ (LDDPR 5 + "СКАЛЬПЕЛЬ") ---
+ALL_ITEMS=""; CONFLICT_LISTS=""
+# Используем CHECKING_SERVICES для анализа листов (только для тех, где есть конфиг)
+for cfg in $CHECKING_SERVICES; do
+    [ -f "/etc/config/$cfg" ] || continue
+    # В анализе листов участвуют только zeroblock и podkop (согласно твоей просьбе ранее)
+    [ "$cfg" != "zeroblock" ] && [ "$cfg" != "podkop" ] && continue
+    
+    SIDS=$(uci show "$cfg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
+    for sid in $SIDS; do
+        RAW=$(uci -q get "$cfg.$sid.community_lists" | tr -d "'\"" | tr ' ,' '  ')
+        for item in $RAW; do
+            [ -z "$item" ] && continue
+            MATCH_FOUND=0
+            case " $ALL_ITEMS " in *" $item "*) MATCH_FOUND=1 ;; esac
+            if [ "$item" = "youtube" ]; then
+                case " $ALL_ITEMS " in *" russia_inside "*) MATCH_FOUND=1 ;; esac
+            elif [ "$item" = "russia_inside" ]; then
+                case " $ALL_ITEMS " in *" youtube "*) MATCH_FOUND=1 ;; esac
+            fi
+            if [ $MATCH_FOUND -eq 1 ]; then
+                case " $CONFLICT_LISTS " in *" $item "*) ;; *) CONFLICT_LISTS="$CONFLICT_LISTS $item" ;; esac
+                if [ "$item" = "youtube" ]; then CONFLICT_LISTS="$CONFLICT_LISTS russia_inside"; fi
+                if [ "$item" = "russia_inside" ]; then CONFLICT_LISTS="$CONFLICT_LISTS youtube"; fi
+            else
+                ALL_ITEMS="$ALL_ITEMS $item"
+            fi
+        done
+    done
+done
+
+# ОСНОВНОЙ ВЫВОД БЛОКА 6
+for cfg in $CHECKING_SERVICES; do
+    [ -f "/etc/config/$cfg" ] || continue
+    [ "$cfg" != "zeroblock" ] && [ "$cfg" != "podkop" ] && continue
+
+    SIDS=$(uci show "$cfg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
+    for sid in $SIDS; do
+        RAW=$(uci -q get "$cfg.$sid.community_lists" | tr -d "'\"" | tr ' ' ',' | sed 's/,,*/,/g' | tr ',' ' ')
+        [ -z "$RAW" ] && continue
+        printf "  %-10s %-10s списки: " "$cfg" "$sid"
+        FIRST=1
+        for item in $RAW; do
+            [ $FIRST -eq 0 ] && printf "${BLUE},${CLR_OFF}"
+            FIRST=0
+            IS_CONFLICT=0; case " $CONFLICT_LISTS " in *" $item "*) IS_CONFLICT=1 ;; esac
+            IS_WARN=0; for wl in $WARNING_LISTS; do [ "$item" = "$wl" ] && IS_WARN=1 && break; done
+
+            if [ $IS_CONFLICT -eq 1 ]; then printf "!!!_${RED_BRIGHT}%s${CLR_OFF}" "$item"
+            elif [ $IS_WARN -eq 1 ]; then printf "!_${YELLOW}%s${CLR_OFF}" "$item"
+            else printf "${BLUE}%s${CLR_OFF}" "$item"
+            fi
+        done
+        printf "\n"
+    done
+done
+
+# --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
+echo ""
+echo "== СИСТЕМНЫЕ РЕСУРСЫ"
+echo "=============================================================="
+printf "  LAN IP: %s\n" "$LAN_IP"
+printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE"
+echo "=============================================================="
+
+# Блок 8: Очистка лога
+if [ -f "$LOG_FILE" ]; then
+    sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"
+fi
