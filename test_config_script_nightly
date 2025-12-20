@@ -262,6 +262,7 @@ if [ -f "$CONF_Z" ]; then
                 HLISTS=$(sed -n "/$full_f/,/--new/p" "$CONF_Z" | grep "\-\-hostlist=" | cut -d= -f2)
                 if [ "$(echo "$HLISTS" | wc -l)" -gt "$(echo "$HLISTS" | sort -u | wc -l)" ]; then
                     printf "  !!! ${RED_BRIGHT}КРИТ:${CLR_OFF} В ZAPRET секция ${CYAN}%s${CLR_OFF} дублирует хостлисты.\n" "$full_f"
+					echo
                 fi
             fi
         done
