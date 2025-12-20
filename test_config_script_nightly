@@ -1,10 +1,10 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo 4
+echo 5
 sleep 5
 
-CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"
+CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
 IFACE="awg10"
 WARNING_LISTS="russia_inside russia_outside"
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
@@ -109,7 +109,6 @@ ZB_RUN=0; zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
 PK_INST=0; [ -f "/etc/init.d/podkop" ] && PK_INST=1
 CHAOS=0; [ $ZB_RUN -eq 1 ] && [ $PK_INST -eq 1 ] && CHAOS=1
 
-# Используем CHECKING_SERVICES
 for s in $CHECKING_SERVICES; do
     if [ -f "/etc/init.d/$s" ]; then
         ST_CLR="${RED_BRIGHT}"; S_NAME_CLR=""
@@ -134,15 +133,13 @@ for s in $CHECKING_SERVICES; do
     fi
 done
 
-
-
 # ==============================================================
-# БЛОК 5: ПЕРЕСЕЧЕНИЯ ДОМЕНОВ В СПИСКАХ
+# БЛОК 5: ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ ZAPRET
 # ==============================================================
 
 # --- СЕКЦИЯ Б5.1: ПОДГОТОВКА ---
 echo ""
-echo "== ПЕРЕСЕЧЕНИЯ ДОМЕНОВ В СПИСКАХ"
+echo "== ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ КОНФИГУРАЦИИ"
 echo "=============================================================="
 tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
 ACTIVE_PKGS=""
@@ -157,28 +154,27 @@ for pkg in $CHECKING_SERVICES; do
     ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
     tmp_p="$tmp_dir/$pkg.tmp"
 
-    # --- СЕКЦИЯ Б5.2: ПАРСИНГ ZAPRET (УМНЫЕ ФИЛЬТРЫ) ---
+    # --- СЕКЦИЯ Б5.2: ПАРСИНГ ZAPRET ---
     if [ "$pkg" = "zapret" ]; then
         Z_OPTS=$(uci -q get zapret.config.NFQWS_OPT | tr -d "'\"")
         echo "$Z_OPTS" | sed 's/--new/\n/g' | while read -r section; do
             [ -z "$section" ] && continue
             F_KEY=$(echo "$section" | grep -oE "\-\-filter-(l3|tcp|udp|l7|ssid)=[^ ]+" | sort | tr '\n' ' ' | sed 's/ $//')
             [ -z "$F_KEY" ] && F_KEY="any"
-
             echo "$section" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2 | while read -r fp; do
                 [ -z "$fp" ] && continue
-                REAL_PATH=""; [ -f "$fp" ] && REAL_PATH="$fp"
-                [ -z "$REAL_PATH" ] && [ -f "/etc/zapret/$fp" ] && REAL_PATH="/etc/zapret/$fp"
-                [ -z "$REAL_PATH" ] && [ -f "/opt/zapret/ipset/$fp" ] && REAL_PATH="/opt/zapret/ipset/$fp"
-                if [ -n "$REAL_PATH" ]; then
-                    fname=$(basename "$REAL_PATH")
+                RP=""; [ -f "$fp" ] && RP="$fp"
+                [ -z "$RP" ] && [ -f "/etc/zapret/$fp" ] && RP="/etc/zapret/$fp"
+                [ -z "$RP" ] && [ -f "/opt/zapret/ipset/$fp" ] && RP="/opt/zapret/ipset/$fp"
+                if [ -n "$RP" ]; then
+                    fname=$(basename "$RP")
                     while read -r d; do
                         case "$d" in ""|\#*) continue ;; esac
                         dom=$(echo "$d" | awk '{print $1}')
                         if echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
                             echo "$dom|$fname|$F_KEY" >> "$tmp_p"
                         fi
-                    done < "$REAL_PATH"
+                    done < "$RP"
                 fi
             done
         done
@@ -215,13 +211,13 @@ for pkg in $CHECKING_SERVICES; do
             done < "$fp"
         done
     done
-
-    # --- СЕКЦИЯ Б5.4: ФИНАЛИЗАЦИЯ СПИСКОВ ---
     [ -f "$tmp_p" ] && cut -d'|' -f1 "$tmp_p" | sort -u > "$tmp_dir/$pkg.doms"
 done
 
 # --- СЕКЦИЯ Б5.5: ВНУТРЕННИЕ ПЕРЕСЕЧЕНИЯ (ВЫВОД) ---
 for pkg in $ACTIVE_PKGS; do
+    [ "$pkg" = "zapret" ] && continue
+
     tmp_p="$tmp_dir/$pkg.tmp"; [ -s "$tmp_p" ] || continue
     bad_list=$(sort "$tmp_p" | uniq -d | cut -d'|' -f1 | sort -u)
     if [ -n "$bad_list" ]; then
@@ -232,7 +228,8 @@ for pkg in $ACTIVE_PKGS; do
                 printf "    %-25s : %s (Условия: %s)\n" "$pkg" "$loc" "$cond"
             done
         done
-        printf "    ${BLUE}Домены:${CLR_OFF} %s\n\n" "$(echo $bad_list | tr '\n' ' ')"
+        # Используем яркий CYAN вместо мрачного синего
+        printf "    ${CYAN}Домены:${CLR_OFF} %s\n\n" "$(echo $bad_list | tr '\n' ' ')"
     fi
 done
 
@@ -244,31 +241,42 @@ while [ $# -gt 1 ]; do
         tmp2_doms="$tmp_dir/$P2.doms"; [ -f "$tmp2_doms" ] || continue
         all_matches=$(grep -Fxf "$tmp1_doms" "$tmp2_doms")
         if [ -n "$all_matches" ]; then
-            printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} Пересечение между ${YELLOW}%s${CLR_OFF} и ${YELLOW}%s${CLR_OFF}:\n" "$P1" "$P2"
+            printf "  !!! ${RED_BRIGHT}КРИТ:${CLR_OFF} Пересечение между ${YELLOW}%s${CLR_OFF} и ${YELLOW}%s${CLR_OFF}:\n" "$P1" "$P2"
             echo "$all_matches" | head -n 1 | while read -r m; do
                 grep "^$m|" "$tmp_dir/$P1.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P1" "$s"; done
                 grep "^$m|" "$tmp_dir/$P2.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P2" "$s"; done
             done
-            printf "    ${BLUE}Домены:${CLR_OFF} %s\n\n" "$(echo $all_matches | tr '\n' ' ')"
+            printf "    ${CYAN}Домены:${CLR_OFF} %s\n\n" "$(echo $all_matches | tr '\n' ' ')"
         fi
     done
 done
 
-[ "$(ls "$tmp_dir"/*.doms 2>/dev/null | wc -l)" -eq 0 ] && printf "  ${GREEN}Конфликты не обнаружены!${CLR_OFF}\n"
+# --- СЕКЦИЯ Б5.7: КОЛЫМАГА (АНАЛИЗ ДУБЛЕЙ ФИЛЬТРОВ ZAPRET) ---
+CONF_Z="/etc/config/zapret"
+if [ -f "$CONF_Z" ]; then
+    F_TYPES="l3 tcp udp l7 ssid"
+    for ft in $F_TYPES; do
+        F_FOUND=$(grep -oE "\-\-filter-$ft=[0-9,]+" "$CONF_Z" | sort -u)
+        for full_f in $F_FOUND; do
+            if [ $(grep -c -e "$full_f" "$CONF_Z") -gt 1 ]; then
+                HLISTS=$(sed -n "/$full_f/,/--new/p" "$CONF_Z" | grep "\-\-hostlist=" | cut -d= -f2)
+                if [ "$(echo "$HLISTS" | wc -l)" -gt "$(echo "$HLISTS" | sort -u | wc -l)" ]; then
+                    printf "  !!! ${RED_BRIGHT}КРИТ:${CLR_OFF} В ZAPRET секция ${CYAN}%s${CLR_OFF} дублирует хостлисты.\n" "$full_f"
+                fi
+            fi
+        done
+    done
+fi
+
 rm -rf "$tmp_dir"
-
-
-
 
 # --- БЛОК 6: СПИСКИ (LDDPR 5 + "СКАЛЬПЕЛЬ") ---
 
-
-
 ALL_ITEMS=""; CONFLICT_LISTS=""
-# Используем CHECKING_SERVICES для анализа листов (только для тех, где есть конфиг)
+# Используем CHECKING_SERVICES для анализа листов
 for cfg in $CHECKING_SERVICES; do
     [ -f "/etc/config/$cfg" ] || continue
-    # В анализе листов участвуют только zeroblock и podkop (согласно твоей просьбе ранее)
+    # В анализе листов участвуют только те сервисы, что используют community_lists (zeroblock и podkop)
     [ "$cfg" != "zeroblock" ] && [ "$cfg" != "podkop" ] && continue
     
     SIDS=$(uci show "$cfg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
@@ -278,11 +286,14 @@ for cfg in $CHECKING_SERVICES; do
             [ -z "$item" ] && continue
             MATCH_FOUND=0
             case " $ALL_ITEMS " in *" $item "*) MATCH_FOUND=1 ;; esac
+            
+            # Умная проверка пересечений (youtube <-> russia_inside)
             if [ "$item" = "youtube" ]; then
                 case " $ALL_ITEMS " in *" russia_inside "*) MATCH_FOUND=1 ;; esac
             elif [ "$item" = "russia_inside" ]; then
                 case " $ALL_ITEMS " in *" youtube "*) MATCH_FOUND=1 ;; esac
             fi
+            
             if [ $MATCH_FOUND -eq 1 ]; then
                 case " $CONFLICT_LISTS " in *" $item "*) ;; *) CONFLICT_LISTS="$CONFLICT_LISTS $item" ;; esac
                 if [ "$item" = "youtube" ]; then CONFLICT_LISTS="$CONFLICT_LISTS russia_inside"; fi
@@ -294,26 +305,36 @@ for cfg in $CHECKING_SERVICES; do
     done
 done
 
-# ОСНОВНОЙ ВЫВОД БЛОКА 6
+# ВЫВОД РЕЗУЛЬТАТОВ БЛОКА 6
 for cfg in $CHECKING_SERVICES; do
     [ -f "/etc/config/$cfg" ] || continue
     [ "$cfg" != "zeroblock" ] && [ "$cfg" != "podkop" ] && continue
 
     SIDS=$(uci show "$cfg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
     for sid in $SIDS; do
+        # Формируем чистый список для вывода
         RAW=$(uci -q get "$cfg.$sid.community_lists" | tr -d "'\"" | tr ' ' ',' | sed 's/,,*/,/g' | tr ',' ' ')
         [ -z "$RAW" ] && continue
+        
         printf "  %-10s %-10s списки: " "$cfg" "$sid"
         FIRST=1
         for item in $RAW; do
-            [ $FIRST -eq 0 ] && printf "${BLUE},${CLR_OFF}"
+            # Разделитель теперь светлый CYAN
+            [ $FIRST -eq 0 ] && printf "${CYAN},${CLR_OFF}"
             FIRST=0
+            
             IS_CONFLICT=0; case " $CONFLICT_LISTS " in *" $item "*) IS_CONFLICT=1 ;; esac
             IS_WARN=0; for wl in $WARNING_LISTS; do [ "$item" = "$wl" ] && IS_WARN=1 && break; done
 
-            if [ $IS_CONFLICT -eq 1 ]; then printf "!!!_${RED_BRIGHT}%s${CLR_OFF}" "$item"
-            elif [ $IS_WARN -eq 1 ]; then printf "!_${YELLOW}%s${CLR_OFF}" "$item"
-            else printf "${BLUE}%s${CLR_OFF}" "$item"
+            if [ $IS_CONFLICT -eq 1 ]; then 
+                # !!! ПЕРЕСЕЧЕНИЕ (КРИТ)
+                printf "!!!_${RED_BRIGHT}%s${CLR_OFF}" "$item"
+            elif [ $IS_WARN -eq 1 ]; then 
+                # ! ПРЕДУПРЕЖДЕНИЕ
+                printf "!_${YELLOW}%s${CLR_OFF}" "$item"
+            else 
+                # ОБЫЧНЫЙ СПИСОК (Светло-синий/Cyan)
+                printf "${CYAN}%s${CLR_OFF}" "$item"
             fi
         done
         printf "\n"
@@ -329,6 +350,4 @@ printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "
 echo "=============================================================="
 
 # Блок 8: Очистка лога
-if [ -f "$LOG_FILE" ]; then
-    sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"
-fi
+if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
