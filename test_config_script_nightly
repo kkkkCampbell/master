@@ -1,8 +1,8 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo 5
-sleep 5
+echo 4
+sleep 6
 
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
 IFACE="awg10"
