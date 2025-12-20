@@ -5,6 +5,9 @@
 LOG_FILE="/root/analyzer.log"
 rm -f "$LOG_FILE"
 
+clear
+echo; echo; echo; echo; echo; echo; echo; echo; echo; echo; echo; echo
+
 # Враппер для одновременного вывода в консоль и файл
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -22,7 +25,6 @@ WARNING_LISTS="russia_inside russia_outside"
   opkg install wget-ssl;
 }
 
-clear
 echo ""
 
 # Сбор данных для системных ресурсов (для Блока 7)
