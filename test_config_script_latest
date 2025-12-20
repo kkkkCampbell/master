@@ -1,6 +1,11 @@
 #!/bin/sh
 # analyzer.sh
 
+CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"
+IFACE="awg10"
+WARNING_LISTS="russia_inside russia_outside"
+CHECKING_SERVICES="zeroblock podkop sing-box youtubeUnblock zapret ruantiblock"
+
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 LOG_FILE="/root/analyzer.log"
 rm -f "$LOG_FILE"
@@ -12,12 +17,9 @@ echo; echo; echo; echo; echo; echo; echo; echo; echo; echo; echo; echo
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "Анализ запущен: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "Лог сохраняется в: $LOG_FILE"
+echo -e "Лог сохраняется в: ${YELLOW}$LOG_FILE${CLR_OFF}"
 echo "--------------------------------------------------------------"
 
-CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"
-IFACE="awg10"
-WARNING_LISTS="russia_inside russia_outside"
 
 # --- ПОДГОТОВКА ---
 [ -z "$(opkg list-installed | grep "wget-ssl")" ] && {
