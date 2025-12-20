@@ -1,16 +1,27 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "4.1"
+echo "4.2"
 sleep 5
+
+# --- ЦВЕТА ---
 
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
 IFACE="awg10"
-WARNING_LISTS="russia_inside russia_outside"
+
+# --- СПИСКИ ДЛЯ АЛЕРТОВ ---
+
+# Синонимы: любые два списка отсюда в одном или разных конфигах = дубль (!!!)
+SAME_AS_LIST="youtube russia_inside"
+# Предупреждение (!): просто подсветить желтым
+WARNING_LISTS="russia_inside russia_outside cloudflare"
+
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
+
 CHECKING_SERVICES="zeroblock podkop sing-box youtubeUnblock zapret ruantiblock"
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
+
 LOG_FILE="/root/analyzer.log"
 rm -f "$LOG_FILE"
 
@@ -274,11 +285,11 @@ rm -rf "$tmp_dir"
 
 # --- БЛОК 6: СПИСКИ (LDDPR 5 + "СКАЛЬПЕЛЬ") ---
 
+# --- БЛОК 6: СПИСКИ (LDDPR 5 + "СКАЛЬПЕЛЬ") ---
+
 ALL_ITEMS=""; CONFLICT_LISTS=""
-# Используем CHECKING_SERVICES для анализа листов
 for cfg in $CHECKING_SERVICES; do
     [ -f "/etc/config/$cfg" ] || continue
-    # В анализе листов участвуют только те сервисы, что используют community_lists (zeroblock и podkop)
     [ "$cfg" != "zeroblock" ] && [ "$cfg" != "podkop" ] && continue
     
     SIDS=$(uci show "$cfg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
@@ -287,41 +298,44 @@ for cfg in $CHECKING_SERVICES; do
         for item in $RAW; do
             [ -z "$item" ] && continue
             MATCH_FOUND=0
+            
+            # 1. Проверка на физический дубль (такое же имя файла/списка)
             case " $ALL_ITEMS " in *" $item "*) MATCH_FOUND=1 ;; esac
             
-            # Умная проверка пересечений (youtube <-> russia_inside)
-            if [ "$item" = "youtube" ]; then
-                case " $ALL_ITEMS " in *" russia_inside "*) MATCH_FOUND=1 ;; esac
-            elif [ "$item" = "russia_inside" ]; then
-                case " $ALL_ITEMS " in *" youtube "*) MATCH_FOUND=1 ;; esac
-            fi
+            # 2. Проверка через "ОДНО И ТО ЖЕ" (SAME_AS_LIST)
+            case " $SAME_AS_LIST " in *" $item "*)
+                for sibling in $SAME_AS_LIST; do
+                    # Если мы уже видели "брата" этого списка раньше
+                    if case " $ALL_ITEMS " in *" $sibling "*) true ;; *) false ;; esac; then
+                        MATCH_FOUND=1
+                        # Добавляем "брата" в список конфликтов, чтобы он тоже покраснел
+                        case " $CONFLICT_LISTS " in *" $sibling "*) ;; *) CONFLICT_LISTS="$CONFLICT_LISTS $sibling" ;; esac
+                    fi
+                done
+            ;; esac
             
             if [ $MATCH_FOUND -eq 1 ]; then
                 case " $CONFLICT_LISTS " in *" $item "*) ;; *) CONFLICT_LISTS="$CONFLICT_LISTS $item" ;; esac
-                if [ "$item" = "youtube" ]; then CONFLICT_LISTS="$CONFLICT_LISTS russia_inside"; fi
-                if [ "$item" = "russia_inside" ]; then CONFLICT_LISTS="$CONFLICT_LISTS youtube"; fi
-            else
-                ALL_ITEMS="$ALL_ITEMS $item"
             fi
+            # Запоминаем, что этот список (или его синоним) мы встретили
+            ALL_ITEMS="$ALL_ITEMS $item"
         done
     done
 done
 
-# ВЫВОД РЕЗУЛЬТАТОВ БЛОКА 6
+# --- ВЫВОД РЕЗУЛЬТАТОВ БЛОКА 6 ---
 for cfg in $CHECKING_SERVICES; do
     [ -f "/etc/config/$cfg" ] || continue
     [ "$cfg" != "zeroblock" ] && [ "$cfg" != "podkop" ] && continue
 
     SIDS=$(uci show "$cfg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
     for sid in $SIDS; do
-        # Формируем чистый список для вывода
         RAW=$(uci -q get "$cfg.$sid.community_lists" | tr -d "'\"" | tr ' ' ',' | sed 's/,,*/,/g' | tr ',' ' ')
         [ -z "$RAW" ] && continue
         
         printf "  %-10s %-10s списки: " "$cfg" "$sid"
         FIRST=1
         for item in $RAW; do
-            # Разделитель теперь светлый CYAN
             [ $FIRST -eq 0 ] && printf "${CYAN},${CLR_OFF}"
             FIRST=0
             
@@ -329,13 +343,10 @@ for cfg in $CHECKING_SERVICES; do
             IS_WARN=0; for wl in $WARNING_LISTS; do [ "$item" = "$wl" ] && IS_WARN=1 && break; done
 
             if [ $IS_CONFLICT -eq 1 ]; then 
-                # !!! ПЕРЕСЕЧЕНИЕ (КРИТ)
                 printf "!!!_${RED_BRIGHT}%s${CLR_OFF}" "$item"
             elif [ $IS_WARN -eq 1 ]; then 
-                # ! ПРЕДУПРЕЖДЕНИЕ
                 printf "!_${YELLOW}%s${CLR_OFF}" "$item"
             else 
-                # ОБЫЧНЫЙ СПИСОК (Светло-синий/Cyan)
                 printf "${CYAN}%s${CLR_OFF}" "$item"
             fi
         done
