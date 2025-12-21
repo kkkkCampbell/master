@@ -409,16 +409,24 @@ done
 
 # --- БЛОК ДОПОЛНИТЕЛЬНОЙ ИНФОРМАЦИИ (ПЕРЕСЕЧЕНИЯ) ---
 if [ $PK_INST -eq 1 ]; then
-    # Берем данные по тем адресам, что ты дал
+    # 1. Получаем DNS настройки
     PK_DNS=$(uci -q get podkop.settings.dns_server)
     PK_B_DNS=$(uci -q get podkop.settings.bootstrap_dns_server)
 
-    # Выводим, только если там не пусто
+    # 2. Получаем версию (вызываем напрямую)
+    PK_VER=$(podkop show_version 2>/dev/null)
+
+    # Выводим DNS, только если там не пусто
     if [ -n "$PK_DNS" ] || [ -n "$PK_B_DNS" ]; then
         [ -n "$PK_DNS" ] && printf "  podkop DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "$PK_DNS"
         [ -n "$PK_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$PK_B_DNS"
-        echo "=============================================================="
     fi
+
+    # Печатаем версию в конце вывода блока
+    if [ -n "$PK_VER" ]; then
+        printf "  Версия podkop: ${YELLOW}%s${CLR_OFF}\n" "$PK_VER"
+    fi
+    echo "=============================================================="
 fi
 
 
