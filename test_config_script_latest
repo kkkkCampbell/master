@@ -1,7 +1,7 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "4.7"
+echo "0.0.2"
 sleep 5
 
 # --- ЦВЕТА ---
