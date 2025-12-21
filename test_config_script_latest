@@ -1,7 +1,7 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "0.0.2"
+echo "0.0.3"
 sleep 5
 
 # --- ЦВЕТА ---
@@ -68,7 +68,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     
     printf "  Статус:      ${GREEN}UP (ON)${CLR_OFF}\n"
-    printf "  Получено:    %-10s    Отправлено:  %s\n" "$RX" "$TX"
+    printf "  Получено/Отправлено:    ${RX} / ${TX}\n"
     
     printf "  Пинг (ya.ru via %s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
     PING_OUT=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>/dev/null)
