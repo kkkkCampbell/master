@@ -1,7 +1,7 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "0.0.3"
+echo "0.0.4"
 sleep 5
 
 # --- ЦВЕТА ---
@@ -71,14 +71,15 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     printf "  Получено/Отправлено:    ${RX} / ${TX}\n"
     
     printf "  Пинг (ya.ru via %s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
-    PING_OUT=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>/dev/null)
+    # Захватываем stderr для анализа причин падения
+    PING_RAW=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>&1)
     EXIT_CODE=$?
     printf "\r\033[K"
 
     if [ $EXIT_CODE -eq 0 ]; then
-        P_MIN=$(echo "$PING_OUT" | tail -1 | awk -F'/' '{print $4}' | awk '{print $NF}')
-        P_MAX=$(echo "$PING_OUT" | tail -1 | awk -F'/' '{print $5}')
-        P_LOSS_PCT=$(echo "$PING_OUT" | grep "packet loss" | awk -F'%' '{print $1}' | awk '{print $NF}')
+        P_MIN=$(echo "$PING_RAW" | tail -1 | awk -F'/' '{print $4}' | awk '{print $NF}')
+        P_MAX=$(echo "$PING_RAW" | tail -1 | awk -F'/' '{print $5}')
+        P_LOSS_PCT=$(echo "$PING_RAW" | grep "packet loss" | awk -F'%' '{print $1}' | awk '{print $NF}')
         P_LOST_NUM=$(( (PING_COUNT * P_LOSS_PCT) / 100 ))
 
         MIN_CLR="${GREEN}"; [ "$(echo "$P_MIN" | cut -d. -f1)" -ge 150 ] && MIN_CLR="${YELLOW}"; [ "$(echo "$P_MIN" | cut -d. -f1)" -ge 250 ] && MIN_CLR="${RED_BRIGHT}"
@@ -89,6 +90,9 @@ if [ -d "/sys/class/net/$IFACE" ]; then
                "$IFACE" "$P_MIN" "$P_MAX" "$P_LOST_NUM" "$PING_COUNT"
     else
         printf "  Пинг (ya.ru via %s): ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}\n" "$IFACE"
+        # Выделяем причину (первая строка ошибки)
+        _P_ERR=$(echo "$PING_RAW" | head -n 1 | sed "s/ping: //")
+        printf "  ! Ошибка: ${YELLOW}%s${CLR_OFF}\n" "$_P_ERR"
     fi
 fi
 
@@ -96,18 +100,50 @@ fi
 echo ""
 echo "== ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM)"
 echo "=============================================================="
-P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 https://youtube.com | head -n 1 | tr -d '\r\n')
-[ -n "$P_CODE" ] && printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE" || printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
 
+# Флаг для запуска теста резолва
+NEED_RESOLVE_TEST=0
+
+# 1. Проверка OPERA
+P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 https://youtube.com | head -n 1 | tr -d '\r\n')
+if [ -n "$P_CODE" ]; then
+    printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
+else
+    printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
+    NEED_RESOLVE_TEST=1
+fi
+
+# 2. Проверка интерфейса
 if [ -d "/sys/class/net/$IFACE" ]; then
     IF_IP=$(ip addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
     if [ -n "$IF_IP" ]; then
         W_OUT=$(wget --spider --server-response --no-check-certificate -4 --timeout=4 --tries=1 --bind-address="$IF_IP" https://youtube.com 2>&1)
         W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
-        [ -n "$W_CODE" ] && \
-            printf "  %-14s %b (%s)\n" "$IFACE:" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" || \
-            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН (ПРИЧИНА: No response)${CLR_OFF}\n" "$IFACE:"
+        
+        if [ -n "$W_CODE" ]; then
+            printf "  %-14s %b (%s)\n" "$IFACE:" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE"
+        else
+            _W_ERR=$(echo "$W_OUT" | grep -iE "failed|error|unable|can't|wget:" | tail -n 1 | sed 's/wget: //')
+            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE:"
+            printf "  ! ПРИЧИНА: ${YELLOW}%s${CLR_OFF}\n" "${_W_ERR:-No response}"
+            NEED_RESOLVE_TEST=1
+        fi
     fi
+fi
+
+# 3. Скрытый тест на резолв (запускается при ошибках выше)
+if [ "$NEED_RESOLVE_TEST" -eq 1 ]; then
+    echo "--------------------------------------------------------------"
+    printf "  ! Диагностика DNS (youtube.com):\n"
+    
+    # Запускаем резолв, убираем "Non-authoritative answer" и пустые строки
+    # sed добавляет отступ для красоты
+    nslookup youtube.com 2>&1 | \
+        grep -v "Non-authoritative answer" | \
+        grep -vE "^[[:space:]]*$" | \
+        sed 's/^/    /'
+    
+    echo "--------------------------------------------------------------"
 fi
 
 # --- БЛОК 4: СТАТУС СЛУЖБ ---
