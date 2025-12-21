@@ -1,7 +1,7 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "4.4"
+echo "4.6"
 sleep 5
 
 # --- ЦВЕТА ---
@@ -121,61 +121,37 @@ CHAOS=0; [ $ZB_RUN -eq 1 ] && [ $PK_INST -eq 1 ] && CHAOS=1
 for s in $CHECKING_SERVICES; do
     [ -f "/etc/init.d/$s" ] || continue
 
-    # Сброс переменных
+    # Сброс переменных для каждой итерации
     ST_T=""; ST_C="${RED_BRIGHT}"; S_C=""; M_T=""; M_C=""
 
-    if [ "$s" = "podkop" ]; then
-        ST_T="UNDEFINED"; ST_C="${CYAN}"
-        [ "$CHAOS" -eq 1 ] && { ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"; }
-
-    elif [ "$s" = "zeroblock" ]; then
-        [ $ZB_RUN -eq 1 ] && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
-        [ "$CHAOS" -eq 1 ] && { ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"; }
-
-    elif [ "$s" = "sing-box" ]; then
-        # ЧЕСТНАЯ ПРОВЕРКА
-        PID_SB=$(pidof sing-box)
-        PORT_SB=$(netstat -ltn 2>/dev/null | grep -q ":18080" && echo 1 || echo 0)
-        
-        if [ -n "$PID_SB" ] && [ "$PORT_SB" -eq 1 ]; then
-            SB_ALIVE=1
-            M_T="(R)"; M_C="${GREEN}"
+    if [ "$s" = "sing-box" ]; then
+        # Честная проверка процесса без порта-насруллы
+        if [ -n "$(pidof sing-box)" ]; then
+            SB_ALIVE=1; ST_T="RUNNING"; ST_C="${GREEN}"
         else
-            SB_ALIVE=0
-            M_T="(S)"; M_C="${RED_BRIGHT}"
+            SB_ALIVE=0; ST_T="STOPPED"; ST_C="${RED_BRIGHT}"
         fi
 
-        if [ $SB_ALIVE -eq 1 ]; then
-            if [ "$CHAOS" -eq 1 ]; then ST_T="MANAGED BY CHAOS!"; ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"
-            elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then ST_T="MANAGED BY PODKOP!"; ST_C="${GREEN}"
-            else ST_T="RUNNING (MANAGED BY ZB)"; ST_C="${GREEN}"; fi
-        else
-            if [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then ST_T="MANAGED BY PODKOP!"; ST_C="${GREEN}"
-            else ST_T="STOPPED"; ST_C="${RED_BRIGHT}"; fi
+        # Добавляем оркестратора в хвост
+        if [ "$CHAOS" -eq 1 ]; then 
+            ST_T="$ST_T (MANAGED BY CHAOS!)"; ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"
+        elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then 
+            ST_T="$ST_T (MANAGED BY PODKOP)"
+        elif [ $ZB_RUN -eq 1 ]; then
+            ST_T="$ST_T (MANAGED BY ZB)"
         fi
 
     else
-        # Все остальные службы
+        # Стандартные службы
         /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
     fi
 
     # СТАТУС АВТОЗАПУСКА
-	# --- ЕДИНЫЙ ВЫВОД (Хирургическое выравнивание) ---
     /etc/init.d/$s enabled 2>/dev/null && { au_t="РАЗРЕШЁН"; au_c="${GREEN}"; } || { au_t="ОТКЛ"; au_c="${RED_BRIGHT}"; }
 
-    # Собираем статусную строку (текст + маркер) в одну временную переменную
-    # Внимание: тут только текст, БЕЗ цветов, чтобы printf правильно посчитал ширину!
-    FULL_ST_T="$(echo "$ST_T" | tr 'a-z' 'A-Z')"
-    [ -n "$M_T" ] && FULL_ST_T="$FULL_ST_T $M_T"
-
-    # 1. Печатаем начало (имя сервиса)
+    # ВЫВОД СТРОКИ (Жесткое выравнивание 30 символов)
     printf "  %b%-15s${CLR_OFF} | " "$S_C" "$s"
-
-    # 2. Печатаем статус с ЖЕСТКИМ выравниванием в 30 символов
-    # Мы используем ST_C для цвета всей фразы, включая маркер
-    printf "${ST_C}%-30s${CLR_OFF} | " "$FULL_ST_T"
-
-    # 3. Печатаем автозапуск
+    printf "${ST_C}%-30s${CLR_OFF} | " "$(echo "$ST_T" | tr 'a-z' 'A-Z')"
     printf "${au_c}%s${CLR_OFF}\n" "$au_t"
 done
 
