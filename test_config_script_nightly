@@ -1,34 +1,33 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "4.3"
+echo "4.4"
 sleep 5
 
 # --- ЦВЕТА ---
-
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
+# Функция для печати цветного текста без переноса строки
+# cprint "ЦВЕТ" "ТЕКСТ"
+cprint() {
+    printf "${1}%s${CLR_OFF}" "$2"
+}
+
 IFACE="awg10"
 
 # --- СПИСКИ ДЛЯ АЛЕРТОВ ---
-
-# Синонимы: любые два списка отсюда в одном или разных конфигах = дубль (!!!)
 SAME_AS_LIST="youtube russia_inside"
-# Предупреждение (!): просто подсветить желтым
 WARNING_LISTS="russia_inside russia_outside cloudflare"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
-
 CHECKING_SERVICES="zeroblock podkop sing-box youtubeUnblock zapret ruantiblock"
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
-
 LOG_FILE="/root/analyzer.log"
 rm -f "$LOG_FILE"
 
 clear
 for i in $(seq 1 12); do echo ""; done
 
-# Враппер для одновременного вывода в консоль и файл
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "Анализ запущен: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -43,7 +42,6 @@ echo "--------------------------------------------------------------"
 
 echo ""
 
-# Сбор данных для системных ресурсов
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
 MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
 MEM_P=$((MEM_U * 100 / MEM_T))
@@ -121,28 +119,64 @@ PK_INST=0; [ -f "/etc/init.d/podkop" ] && PK_INST=1
 CHAOS=0; [ $ZB_RUN -eq 1 ] && [ $PK_INST -eq 1 ] && CHAOS=1
 
 for s in $CHECKING_SERVICES; do
-    if [ -f "/etc/init.d/$s" ]; then
-        ST_CLR="${RED_BRIGHT}"; S_NAME_CLR=""
-        if [ "$s" = "podkop" ]; then
-            ST_OUT="UNDEFINED"; [ "$CHAOS" -eq 1 ] && { ST_CLR="${RED_BRIGHT}"; S_NAME_CLR="${RED_BRIGHT}"; } || ST_CLR="${CYAN}"
-        elif [ "$s" = "zeroblock" ]; then
-            [ $ZB_RUN -eq 1 ] && { ST_OUT="RUNNING"; ST_CLR="${GREEN}"; } || ST_OUT="STOPPED"
-            [ "$CHAOS" -eq 1 ] && { ST_CLR="${RED_BRIGHT}"; S_NAME_CLR="${RED_BRIGHT}"; }
-        elif [ "$s" = "sing-box" ]; then
-            SB_ALIVE=0; /etc/init.d/sing-box status 2>/dev/null | grep -q "running" && SB_ALIVE=1
-            [ $SB_ALIVE -eq 0 ] && netstat -ltn 2>/dev/null | grep -q ":18080" && SB_ALIVE=1
-            if [ $SB_ALIVE -eq 1 ]; then
-                if [ "$CHAOS" -eq 1 ]; then ST_OUT="MANAGED BY CHAOS!"; ST_CLR="${RED_BRIGHT}"; S_NAME_CLR="${RED_BRIGHT}"
-                # ВОТ ТУТ ПОЗЕЛЕНЕЛО:
-                elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then ST_OUT="MANAGED BY PODKOP!"; ST_CLR="${GREEN}"
-                else ST_OUT="RUNNING (MANAGED BY ZB)"; ST_CLR="${GREEN}"; fi
-            else ST_OUT="STOPPED"; fi
+    [ -f "/etc/init.d/$s" ] || continue
+
+    # Сброс переменных
+    ST_T=""; ST_C="${RED_BRIGHT}"; S_C=""; M_T=""; M_C=""
+
+    if [ "$s" = "podkop" ]; then
+        ST_T="UNDEFINED"; ST_C="${CYAN}"
+        [ "$CHAOS" -eq 1 ] && { ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"; }
+
+    elif [ "$s" = "zeroblock" ]; then
+        [ $ZB_RUN -eq 1 ] && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
+        [ "$CHAOS" -eq 1 ] && { ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"; }
+
+    elif [ "$s" = "sing-box" ]; then
+        # ЧЕСТНАЯ ПРОВЕРКА
+        PID_SB=$(pidof sing-box)
+        PORT_SB=$(netstat -ltn 2>/dev/null | grep -q ":18080" && echo 1 || echo 0)
+        
+        if [ -n "$PID_SB" ] && [ "$PORT_SB" -eq 1 ]; then
+            SB_ALIVE=1
+            M_T="(R)"; M_C="${GREEN}"
         else
-            /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_OUT="RUNNING"; ST_CLR="${GREEN}"; } || ST_OUT="STOPPED"
+            SB_ALIVE=0
+            M_T="(S)"; M_C="${RED_BRIGHT}"
         fi
-        /etc/init.d/$s enabled 2>/dev/null && { au_txt="РАЗРЕШЁН"; au_clr="${GREEN}"; } || { au_txt="ОТКЛ"; au_clr="${RED_BRIGHT}"; }
-        printf "  %b%-15s${CLR_OFF} | ${ST_CLR}%-25s${CLR_OFF} | ${au_clr}${au_txt}${CLR_OFF}\n" "$S_NAME_CLR" "$s" "$(echo "$ST_OUT" | tr 'a-z' 'A-Z')"
+
+        if [ $SB_ALIVE -eq 1 ]; then
+            if [ "$CHAOS" -eq 1 ]; then ST_T="MANAGED BY CHAOS!"; ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"
+            elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then ST_T="MANAGED BY PODKOP!"; ST_C="${GREEN}"
+            else ST_T="RUNNING (MANAGED BY ZB)"; ST_C="${GREEN}"; fi
+        else
+            if [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then ST_T="MANAGED BY PODKOP!"; ST_C="${GREEN}"
+            else ST_T="STOPPED"; ST_C="${RED_BRIGHT}"; fi
+        fi
+
+    else
+        # Все остальные службы
+        /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
     fi
+
+    # СТАТУС АВТОЗАПУСКА
+	# --- ЕДИНЫЙ ВЫВОД (Хирургическое выравнивание) ---
+    /etc/init.d/$s enabled 2>/dev/null && { au_t="РАЗРЕШЁН"; au_c="${GREEN}"; } || { au_t="ОТКЛ"; au_c="${RED_BRIGHT}"; }
+
+    # Собираем статусную строку (текст + маркер) в одну временную переменную
+    # Внимание: тут только текст, БЕЗ цветов, чтобы printf правильно посчитал ширину!
+    FULL_ST_T="$(echo "$ST_T" | tr 'a-z' 'A-Z')"
+    [ -n "$M_T" ] && FULL_ST_T="$FULL_ST_T $M_T"
+
+    # 1. Печатаем начало (имя сервиса)
+    printf "  %b%-15s${CLR_OFF} | " "$S_C" "$s"
+
+    # 2. Печатаем статус с ЖЕСТКИМ выравниванием в 30 символов
+    # Мы используем ST_C для цвета всей фразы, включая маркер
+    printf "${ST_C}%-30s${CLR_OFF} | " "$FULL_ST_T"
+
+    # 3. Печатаем автозапуск
+    printf "${au_c}%s${CLR_OFF}\n" "$au_t"
 done
 
 # ==============================================================
