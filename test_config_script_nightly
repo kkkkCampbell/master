@@ -1,7 +1,7 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "0.0.4"
+echo "0.0.5"
 sleep 5
 
 # --- ЦВЕТА ---
@@ -67,8 +67,8 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     
-    printf "  Статус:      ${GREEN}UP (ON)${CLR_OFF}\n"
-    printf "  Получено/Отправлено:    ${RX} / ${TX}\n"
+    printf "  Статус                : ${GREEN}UP (ON)${CLR_OFF}\n"
+    printf "  Получено/Отправлено   : ${RX} / ${TX}\n"
     
     printf "  Пинг (ya.ru via %s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
     # Захватываем stderr для анализа причин падения
@@ -121,10 +121,10 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
         
         if [ -n "$W_CODE" ]; then
-            printf "  %-14s %b (%s)\n" "$IFACE:" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE"
+            printf "  %-14s %b (%s)\n" "$IFACE        :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE"
         else
             _W_ERR=$(echo "$W_OUT" | grep -iE "failed|error|unable|can't|wget:" | tail -n 1 | sed 's/wget: //')
-            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE:"
+            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE        :"
             printf "  ! ПРИЧИНА: ${YELLOW}%s${CLR_OFF}\n" "${_W_ERR:-No response}"
             NEED_RESOLVE_TEST=1
         fi
@@ -223,7 +223,18 @@ for pkg in $CHECKING_SERVICES; do
             F_KEY=$(echo "$section" | grep -oE "\-\-filter-(l3|tcp|udp|l7|ssid)=[^ ]+" | sort | tr '\n' ' ' | sed 's/ $//')
             [ -z "$F_KEY" ] && F_KEY="any"
             echo "$section" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2 | while read -r fp; do
-                [ -z "$fp" ] && continue
+			
+			
+			# здесь проверяем хостлист на пустоту
+			#echo "$fp"
+			if ! grep -q '[[:alnum:][:punct:]]' "$fp" ; then
+				printf "  ${RED_BRIGHT}Файл $(basename "$fp") пустой! ${CLR_OFF}Автофикс... "
+				echo "example.com" >"$fp"; /etc/init.d/zapret restart >/dev/null 2>&1
+				echo -e "${GREEN}Выполнено! ${CLR_OFF}"
+			fi
+            
+
+				[ -z "$fp" ] && continue
                 RP=""; [ -f "$fp" ] && RP="$fp"
                 [ -z "$RP" ] && [ -f "/etc/zapret/$fp" ] && RP="/etc/zapret/$fp"
                 [ -z "$RP" ] && [ -f "/opt/zapret/ipset/$fp" ] && RP="/opt/zapret/ipset/$fp"
