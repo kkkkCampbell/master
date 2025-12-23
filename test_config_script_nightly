@@ -21,7 +21,7 @@ SAME_AS_LIST="youtube russia_inside"
 WARNING_LISTS="russia_inside russia_outside cloudflare"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
-CHECKING_SERVICES="zeroblock podkop sing-box youtubeUnblock zapret ruantiblock"
+CHECKING_SERVICES="zeroblock podkop sing-box zapret zapret2 youtubeUnblock ruantiblock"
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 LOG_FILE="/root/analyzer.log"
