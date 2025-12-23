@@ -1,11 +1,12 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "0.0.5"
-sleep 5
+echo "0.0.6"
+sleep 3
 
 # --- ЦВЕТА ---
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
+
 # Функция для печати цветного текста без переноса строки
 # cprint "ЦВЕТ" "ТЕКСТ"
 cprint() {
@@ -13,6 +14,7 @@ cprint() {
 }
 
 IFACE="awg10"
+FIRST_IN="0"
 
 # --- СПИСКИ ДЛЯ АЛЕРТОВ ---
 SAME_AS_LIST="youtube russia_inside"
@@ -202,6 +204,7 @@ echo "=============================================================="
 tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
 ACTIVE_PKGS=""
 
+
 for pkg in $CHECKING_SERVICES; do
     # Проверка на существование
     [ -f "/etc/init.d/$pkg" ] || continue
@@ -223,16 +226,13 @@ for pkg in $CHECKING_SERVICES; do
             F_KEY=$(echo "$section" | grep -oE "\-\-filter-(l3|tcp|udp|l7|ssid)=[^ ]+" | sort | tr '\n' ' ' | sed 's/ $//')
             [ -z "$F_KEY" ] && F_KEY="any"
             echo "$section" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2 | while read -r fp; do
-			
-			
-			# здесь проверяем хостлист на пустоту
-			#echo "$fp"
-			if ! grep -q '[[:alnum:][:punct:]]' "$fp" ; then
-				printf "  ${RED_BRIGHT}Файл $(basename "$fp") пустой! ${CLR_OFF}Автофикс... "
-				echo "example.com" >"$fp"; /etc/init.d/zapret restart >/dev/null 2>&1
-				echo -e "${GREEN}Выполнено! ${CLR_OFF}"
+
+			if ! grep -q '[[:alnum:][:punct:]]' "$fp"; then
+				printf "  ${RED_BRIGHT}Файл $(basename "$fp") пустой! ${CLR_OFF}\n"
+				# Автофикс... 
+				# echo "example.com" >"$fp"; /etc/init.d/zapret restart >/dev/null 2>&1
+				# echo -e "${GREEN}Выполнено! ${CLR_OFF}"
 			fi
-            
 
 				[ -z "$fp" ] && continue
                 RP=""; [ -f "$fp" ] && RP="$fp"
