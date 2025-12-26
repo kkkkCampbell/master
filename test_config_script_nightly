@@ -181,13 +181,7 @@ for s in $CHECKING_SERVICES; do
 
     else
         # Стандартные службы
-        # /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
-		if /etc/init.d/$s status >/dev/null 2>&1; then
-			ST_T="RUNNING"
-			ST_C="${GREEN}"
-		else
-			ST_T="STOPPED"
-		fi
+        /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
     fi
 
     # СТАТУС АВТОЗАПУСКА
