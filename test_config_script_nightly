@@ -54,7 +54,7 @@ LAN_IP=$(ip addr show br-lan 2>/dev/null | grep -w inet | awk '{print $2}' | cut
 NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
 
 # --- БЛОК 1: ПРОВЕРКА DNS ---
-printf "== ПРОВЕРКА DNS  (echo $VERSION)"
+printf "== ПРОВЕРКА DNS  ($VERSION)"; echo
 echo "=============================================================="
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
 printf "  DNS Server:   %s\n" "${DNS_SRV:-UNKNOWN}"
