@@ -113,7 +113,7 @@ echo "=============================================================="
 NEED_RESOLVE_TEST=0
 
 # 1. Проверка OPERA
-P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 https://youtube.com | head -n 1 | tr -d '\r\n')
+P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 https://www.youtube.com | head -n 1 | tr -d '\r\n')
 if [ -n "$P_CODE" ]; then
     printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
 else
@@ -121,19 +121,26 @@ else
     NEED_RESOLVE_TEST=1
 fi
 
-# 2. Проверка интерфейса
+# 2. Проверка интерфейса awg10
 if [ -d "/sys/class/net/$IFACE" ]; then
-    IF_IP=$(ip addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
+    IF_IP=$(ip addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
+    
     if [ -n "$IF_IP" ]; then
-        W_OUT=$(wget --spider --server-response --no-check-certificate -4 --timeout=4 --tries=1 --bind-address="$IF_IP" https://youtube.com 2>&1)
-        W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
+        # Сохраняем вывод во временную переменную
+        W_OUT=$(wget --spider --server-response --no-check-certificate -4 --timeout=4 --tries=1 --bind-address="$IF_IP" https://www.youtube.com 2>&1)
         
+        # Код ответа ищем строго в строках с HTTP/
+        W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
+
         if [ -n "$W_CODE" ]; then
             printf "  %-14s %b (%s)\n" "$IFACE        :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE"
         else
-            _W_ERR=$(echo "$W_OUT" | grep -iE "failed|error|unable|can't|wget:" | tail -n 1 | sed 's/wget: //')
+            # Ищем ПРИЧИНУ: исключаем строки с заголовками (начинаются с пробелов) 
+            # и выцепляем последнюю строку от самого wget
+            _W_ERR=$(echo "$W_OUT" | grep -v "^ " | grep -iE "failed|error|unable|can't|wget:" | tail -n 1 | sed 's/wget: //')
+            
             printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE        :"
-            printf "  ! ПРИЧИНА: ${YELLOW}%s${CLR_OFF}\n" "${_W_ERR:-No response}"
+            printf "  ! ПРИЧИНА: ${YELLOW}%s${CLR_OFF}\n" "${_W_ERR:-No response from wget}"
             NEED_RESOLVE_TEST=1
         fi
     fi
