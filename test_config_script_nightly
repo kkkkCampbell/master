@@ -1,7 +1,7 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "0.0.7"
+echo "0.0.8"
 sleep 3
 
 # --- ЦВЕТА ---
@@ -28,6 +28,10 @@ CHECKING_SERVICES="zeroblock podkop sing-box zapret zapret2 youtubeUnblock ruant
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 LOG_FILE="/root/analyzer.log"
 rm -f "$LOG_FILE"
+
+# --- ПРОВЕРКА ВЕРСИЙ ПОДКОП ---
+PK_VER_OBSOLETE="0.5"
+PK_VER_MIN="0.7"
 
 clear
 for i in $(seq 1 12); do echo ""; done
@@ -184,6 +188,7 @@ for s in $CHECKING_SERVICES; do
     else
         # Стандартные службы
         /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
+		/etc/init.d/$s status 2>/dev/null | grep -q "not running" && { ST_T="STOPPED"; ST_C="${RED_BRIGHT}"; }
     fi
 
     # СТАТУС АВТОЗАПУСКА
@@ -426,8 +431,43 @@ if [ $PK_INST -eq 1 ]; then
     PK_DNS=$(uci -q get podkop.settings.dns_server)
     PK_B_DNS=$(uci -q get podkop.settings.bootstrap_dns_server)
 
-    # 2. Получаем версию (вызываем напрямую)
-    PK_VER=$(podkop show_version 2>/dev/null)
+    # # 2. Получаем версию (вызываем напрямую)
+    # PK_VER=$(podkop show_version 2>&1 /dev/null)
+	
+	# 2. Получаем версию подкопа
+	PK_VER_RAW=$(podkop show_version 2>&1)
+	PK_VER=""
+	PK_OLD_FLAG=0
+
+	# Проверка на "древность" по наличию start/stop в выводе
+	if echo "$PK_VER_RAW" | grep -qE "start|stop"; then
+		PK_OLD_FLAG=1
+		# Попытка достать версию через opkg
+		PK_VER=$(opkg list-installed podkop | awk '{print $3}')
+	else
+		PK_VER=$PK_VER_RAW
+	fi
+	
+	# --- ПРОВЕРКА ВЕРСИЙ ПОДКОП ---
+
+	# Очищаем версию: убираем 'v', отсекаем всё после дефиса, оставляем X.Y
+	CLEAN_VER=$(echo "$PK_VER" | sed 's/^v//' | cut -d'-' -f1 | cut -d'.' -f1,2)
+
+	# Логика определения цвета
+	PK_COLOR=$GREEN  # По умолчанию зеленый
+	if [ -n "$CLEAN_VER" ]; then
+		# Передаем переменные внутрь awk через -v
+		PK_STATUS=$(awk -v ver="$CLEAN_VER" -v obs="$PK_VER_OBSOLETE" -v min="$PK_VER_MIN" 'BEGIN {
+			if (ver < obs) print "RED";
+			else if (ver < min) print "YELLOW";
+			else print "NORMAL";
+		}')
+
+		case "$PK_STATUS" in
+			RED)    PK_COLOR=$RED_BRIGHT ;;
+			YELLOW) PK_COLOR=$YELLOW ;;
+		esac
+	fi
 
     # Выводим DNS, только если там не пусто
     if [ -n "$PK_DNS" ] || [ -n "$PK_B_DNS" ]; then
@@ -437,7 +477,7 @@ if [ $PK_INST -eq 1 ]; then
 
     # Печатаем версию в конце вывода блока
     if [ -n "$PK_VER" ]; then
-        printf "  Версия podkop: ${YELLOW}%s${CLR_OFF}\n" "$PK_VER"
+        printf "  Версия podkop: ${PK_COLOR}%s${CLR_OFF}\n" "$PK_VER"
     fi
     echo "=============================================================="
 fi
