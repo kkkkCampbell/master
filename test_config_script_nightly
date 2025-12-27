@@ -508,7 +508,7 @@ fi
 echo ""
 echo "== СИСТЕМНЫЕ РЕСУРСЫ"
 echo "=============================================================="
-printf "  LAN IP: %s\n" "$LAN_IP"
+printf "  LAN IP: %s\n" "$LAN_IP (${VERSION})"
 printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE"
 echo "=============================================================="
 
