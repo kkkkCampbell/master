@@ -1,7 +1,7 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "0.0.8"
+echo "0.0.9"
 sleep 3
 
 # --- ЦВЕТА ---
@@ -123,20 +123,21 @@ fi
 
 # 2. Проверка интерфейса awg10
 if [ -d "/sys/class/net/$IFACE" ]; then
+    # Получаем IP интерфейса и чистим от мусора
     IF_IP=$(ip addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
     
     if [ -n "$IF_IP" ]; then
-        # Сохраняем вывод во временную переменную
+        # Полный вызов wget со всеми ключами, без сокращений
         W_OUT=$(wget --spider --server-response --no-check-certificate -4 --timeout=4 --tries=1 --bind-address="$IF_IP" https://www.youtube.com 2>&1)
         
-        # Код ответа ищем строго в строках с HTTP/
+        # Парсим код ответа (200 OK, 301, 302 и т.д.)
         W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
 
         if [ -n "$W_CODE" ]; then
+            # Если код есть — это ОНЛАЙН
             printf "  %-14s %b (%s)\n" "$IFACE        :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE"
         else
-            # Ищем ПРИЧИНУ: исключаем строки с заголовками (начинаются с пробелов) 
-            # и выцепляем последнюю строку от самого wget
+            # Если кода нет — выцепляем системную ошибку wget, игнорируя строки заголовков (те, что с пробелом в начале)
             _W_ERR=$(echo "$W_OUT" | grep -v "^ " | grep -iE "failed|error|unable|can't|wget:" | tail -n 1 | sed 's/wget: //')
             
             printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE        :"
@@ -145,6 +146,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         fi
     fi
 fi
+
 
 # 3. Скрытый тест на резолв (запускается при ошибках выше)
 if [ "$NEED_RESOLVE_TEST" -eq 1 ]; then
