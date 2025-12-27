@@ -130,14 +130,14 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         # Полный вызов wget со всеми ключами, без сокращений
         W_OUT=$(wget --spider --server-response --no-check-certificate -4 --timeout=4 --tries=1 --bind-address="$IF_IP" https://www.youtube.com 2>&1)
         
-        # Парсим код ответа (200 OK, 301, 302 и т.д.)
-        W_CODE=$(echo "$W_OUT" | grep "HTTP/" | awk '{print $2, $3}' | head -n 1)
+        # Выцепляем полную строку ответа сервера (например, HTTP/1.1 200 OK)
+        W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
 
         if [ -n "$W_CODE" ]; then
-            # Если код есть — это ОНЛАЙН
+            # Вывод полного ответа в строке ОНЛАЙН
             printf "  %-14s %b (%s)\n" "$IFACE        :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE"
         else
-            # Если кода нет — выцепляем системную ошибку wget, игнорируя строки заголовков (те, что с пробелом в начале)
+            # Если кода нет — выцепляем системную ошибку wget, игнорируя строки заголовков
             _W_ERR=$(echo "$W_OUT" | grep -v "^ " | grep -iE "failed|error|unable|can't|wget:" | tail -n 1 | sed 's/wget: //')
             
             printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE        :"
