@@ -162,6 +162,7 @@ ZB_RUN=0; zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
 PK_INST=0; [ -f "/etc/init.d/podkop" ] && PK_INST=1
 CHAOS=0; [ $ZB_RUN -eq 1 ] && [ $PK_INST -eq 1 ] && CHAOS=1
 
+  
 for s in $CHECKING_SERVICES; do
     [ -f "/etc/init.d/$s" ] || continue
 
@@ -184,11 +185,19 @@ for s in $CHECKING_SERVICES; do
         elif [ $ZB_RUN -eq 1 ]; then
             ST_T="$ST_T (MANAGED BY ZB)"
         fi
-
+		
+		if [ "$s" = "podkop" ] && [ "$SB_ALIVE" -eq 1 ]; then
+			ST_T="RUNNING"; ST_C="${GREEN}"
+		fi
     else
         # Стандартные службы
         /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
-		/etc/init.d/$s status 2>/dev/null | grep -q "not running" && { ST_T="STOPPED"; ST_C="${RED_BRIGHT}"; }
+		
+		# Для запрет2 отдельная проверка
+		if [ "$s" = "zapret2" ]; then
+			/etc/init.d/zapret2 status 2>/dev/null | grep -q "not running" && { ST_T="STOPPED"; ST_C="${RED_BRIGHT}"; }
+		fi
+
     fi
 
     # СТАТУС АВТОЗАПУСКА
