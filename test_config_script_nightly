@@ -1,7 +1,7 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "0.0.11"
+echo "0.0.12"
 sleep 3
 
 # --- ЦВЕТА ---
@@ -61,8 +61,8 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
 echo "== ПРОВЕРКА DNS  (${VERSION})"
 echo "=============================================================="
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
-printf "  DNS Server:   %s\n" "${DNS_SRV:-UNKNOWN}"
-printf "  DNS Redirect: 127.0.0.42\n"
+printf "  DNS Server:   %s" "${DNS_SRV:-UNKNOWN} |"
+printf " DNS Redirect: 127.0.0.42\n"
 FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}\n" "${FB_IP:-UNKNOWN}"
 
@@ -75,8 +75,8 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     
-    printf "  Статус                : ${GREEN}UP (ON)${CLR_OFF}\n"
-    printf "  Получено/Отправлено   : ${RX} / ${TX}\n"
+    printf "  Статус                : ${GREEN}UP (ON)${CLR_OFF}  ↓${RX} / ↑${TX}\n"
+    # printf "  Получено/Отправлено   : ↓${RX} / ↑${TX}\n"
     
     printf "  Пинг (ya.ru via %s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
     # Захватываем stderr для анализа причин падения
@@ -509,7 +509,7 @@ fi
 
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
-echo ""
+
 echo "== СИСТЕМНЫЕ РЕСУРСЫ"
 echo "=============================================================="
 printf "  LAN IP: %s\n" "$LAN_IP (${VERSION})"
