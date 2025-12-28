@@ -1,7 +1,7 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "0.0.10"
+echo "0.0.11"
 sleep 3
 
 # --- ЦВЕТА ---
@@ -198,9 +198,13 @@ for s in $CHECKING_SERVICES; do
             ST_T="$ST_T (MANAGED BY ZB)"
         fi
 		
-		if [ "$s" = "podkop" ] && [ "$SB_ALIVE" -eq 1 ]; then
-			ST_T="RUNNING"; ST_C="${GREEN}"
+		# Статус подкопа определяется по статусу sing-box
+		if [ "$s" = "podkop" ]; then
+			if [ -n "$(pidof sing-box)" ]; then
+				ST_T="RUNNING"; ST_C="${GREEN}"
+			fi
 		fi
+		
     else
         # Стандартные службы
         /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
