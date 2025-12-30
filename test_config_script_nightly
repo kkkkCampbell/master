@@ -176,9 +176,9 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         fi
 
         if [ -n "$W_CODE" ]; then
-            printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv4) :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" "$TLS_VER"
+            printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv4)          :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" "$TLS_VER"
         else
-            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4) :"
+            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4)          :"
             echo "------------------------------------------------------"
             echo "$W_OUT" | sed 's/^/  / '
             echo "------------------------------------------------------"
@@ -199,9 +199,9 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         fi
 
         if [ -n "$W_CODE6" ]; then
-            printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv6) :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE6" "$TLS_VER6"
+            printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv6)         :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE6" "$TLS_VER6"
         else
-            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv6) :"
+            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv6)          :"
         fi
     fi
 fi
