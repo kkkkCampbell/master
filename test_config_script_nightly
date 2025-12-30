@@ -58,7 +58,7 @@ if [ -z "$(opkg list-installed | grep "wget-ssl")" ]; then
 		
 		# Проверяем на ключевые слова об ошибках
 		if grep -qi "failed\|error\|unable\|not found" /tmp/opkg_update_log; then
-			log_warn "Обнаружены ошибки в логе, повтор..."
+			echo -e "${RED_BRIGHT}Обнаружены ошибки в логе, повтор...${CLR_OFF}"
 		else
 			# Нет ключевых слов об ошибках
 			echo -e "${GREEN}Списки обновлены (без явных ошибок)${CLR_OFF}"
