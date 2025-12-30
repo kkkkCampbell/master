@@ -42,14 +42,16 @@ echo "Анализ запущен: $(date '+%Y-%m-%d %H:%M:%S')"
 echo -e "Лог сохраняется в: ${YELLOW}$LOG_FILE${CLR_OFF}"
 echo "--------------------------------------------------------------"
 
-# --- ПОДГОТОВКА ---
+
+# --- УСТАНОВКА ЗАВИСИМОСТЕЙ ---
+
 _i=1
 _retries=2
 _opkg_timeout=3
 _tmp_conf="/tmp/opkg_safe.conf"
 _update_log="/tmp/opkg_update_log"
 
-# --- ПОДГОТОВКА КОНФИГА ---
+# --- ПОДГОТОВКА КОНФИГА OPKG ---
 cat /etc/opkg.conf > "$_tmp_conf"
 sed -i '/http_timeout/d' "$_tmp_conf"
 echo "option http_timeout $_opkg_timeout" >> "$_tmp_conf"
@@ -63,7 +65,7 @@ if ! opkg list-installed | grep -q "wget-ssl"; then
         # Обновляем списки с перенаправлением в лог
         # Используем временный конфиг
         if opkg -f "$_tmp_conf" update > "$_update_log" 2>&1; then
-            # Проверяем лог на наличие реальных сетевых ошибок (wget returned 4, etc)
+            # Проверяем лог на наличие сетевых ошибок и ошибок opkg
             if grep -qiE "failed|error|unable|not found|returned [1-9]|bad address|refused|timeout" "$_update_log"; then
                 echo -e "${RED_BRIGHT}В логе найдены ошибки скачивания, повтор...${CLR_OFF}"
             else
@@ -84,7 +86,9 @@ if ! opkg list-installed | grep -q "wget-ssl"; then
             } {print}' "$_update_log"
             
             rm -f "$_tmp_conf"
-            exit 1
+			echo
+            echo -e "${RED_BRIGHT}!!!_некоторые проверки будут некорректными_!!!${CLR_OFF}"
+			sleep 3
         fi
         
         sleep 2
