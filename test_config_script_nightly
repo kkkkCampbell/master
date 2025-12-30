@@ -1,7 +1,7 @@
 #!/bin/sh
 # analyzer.sh
 clear
-echo "0.0.12"
+echo "0.0.13"
 sleep 3
 
 # --- ЦВЕТА ---
@@ -34,7 +34,7 @@ PK_VER_OBSOLETE="0.5"
 PK_VER_MIN="0.7"
 
 clear
-for i in $(seq 1 12); do echo ""; done
+for i in $(seq 1 4); do echo ""; done
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -43,10 +43,50 @@ echo -e "Лог сохраняется в: ${YELLOW}$LOG_FILE${CLR_OFF}"
 echo "--------------------------------------------------------------"
 
 # --- ПОДГОТОВКА ---
-[ -z "$(opkg list-installed | grep "wget-ssl")" ] && {
-  opkg update && 
-  opkg install wget-ssl;
-}
+_i=1
+_retries=3
+
+# --- УСТАНАВЛИВАЕМ НЕОБХОДИМЫЕ ПАКЕТЫ ---
+
+if [ -z "$(opkg list-installed | grep "wget-ssl")" ]; then 
+
+	# Обновление списка пакетов с проверкой ошибок в логе
+	while [ "$_i" -le "$_retries" ]; do
+		echo -e "${YELLOW}Попытка обновления списка пакетов:${CLR_OFF} ($_i/$_retries)"
+		
+		opkg update > /tmp/opkg_update_log 2>&1
+		
+		# Проверяем на ключевые слова об ошибках
+		if grep -qi "failed\|error\|unable\|not found" /tmp/opkg_update_log; then
+			log_warn "Обнаружены ошибки в логе, повтор..."
+		else
+			# Нет ключевых слов об ошибках
+			echo -e "${GREEN}Списки обновлены (без явных ошибок)${CLR_OFF}"
+			OPKG_UPDATED=1
+			opkg install wget-ssl
+			break
+		fi
+		
+		if [ "$_i" -eq "$_retries" ]; then
+			log_error "Не удалось обновить список пакетов после $_retries попыток"
+			echo ""
+			echo "=== АНАЛИЗ ЛОГА ==="
+			
+			# Показываем только строки с ошибками в цвете 208
+			awk 'tolower($0) ~ /failed|error|unable|not found|bad address|wget returned/ {
+				print "\033[38;5;208m" $0 "\033[0m"
+				next
+			}
+			{print}' /tmp/opkg_update_log
+			
+			echo "=== КОНЕЦ ==="
+			exit 1
+		fi
+		
+		sleep 2
+		_i=$((_i + 1))
+	done
+fi
 
 echo ""
 
@@ -58,7 +98,7 @@ LAN_IP=$(ip addr show br-lan 2>/dev/null | grep -w inet | awk '{print $2}' | cut
 NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
 
 # --- БЛОК 1: ПРОВЕРКА DNS ---
-echo "== ПРОВЕРКА DNS  (${VERSION})"
+echo "== ПРОВЕРКА DNS  (Прошивка: ${VERSION})"
 echo "=============================================================="
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
 printf "  DNS Server:   %s" "${DNS_SRV:-UNKNOWN} |"
@@ -512,10 +552,11 @@ fi
 
 echo "== СИСТЕМНЫЕ РЕСУРСЫ"
 echo "=============================================================="
-printf "  LAN IP: %s\n" "$LAN_IP (${VERSION})"
+printf "  LAN IP: %s\n" "$LAN_IP (Прошивка: ${VERSION})"
 printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE"
-echo "=============================================================="
+printf "  " 
 crontab -l
+echo "=============================================================="
 
 # Блок 8: Очистка лога
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
