@@ -44,7 +44,7 @@ echo "--------------------------------------------------------------"
 
 # --- ПОДГОТОВКА ---
 _i=1
-_retries=3
+_retries=2
 
 # --- УСТАНАВЛИВАЕМ НЕОБХОДИМЫЕ ПАКЕТЫ ---
 
@@ -54,7 +54,7 @@ if [ -z "$(opkg list-installed | grep "wget-ssl")" ]; then
 	while [ "$_i" -le "$_retries" ]; do
 		echo -e "${YELLOW}Попытка обновления списка пакетов:${CLR_OFF} ($_i/$_retries)"
 		
-		opkg update > /tmp/opkg_update_log 2>&1
+		opkg update timeout=4 > /tmp/opkg_update_log 2>&1
 		
 		# Проверяем на ключевые слова об ошибках
 		if grep -qi "failed\|error\|unable\|not found" /tmp/opkg_update_log; then
