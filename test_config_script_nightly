@@ -53,9 +53,17 @@ if [ -z "$(opkg list-installed | grep "wget-ssl")" ]; then
 	# Обновление списка пакетов с проверкой ошибок в логе
 	while [ "$_i" -le "$_retries" ]; do
 		echo -e "${YELLOW}Попытка обновления списка пакетов:${CLR_OFF} ($_i/$_retries)"
+
+		# Сохраняем копию 'opkg.conf' во временный файл
+		cp /etc/opkg.conf /tmp/opkg.conf.bak
+		echo "option http_timeout 3" >> /etc/opkg.conf # уменьшаем время ожидания ответа от реп
+
+		# Обновляем списки софта
+		opkg update > /tmp/opkg_update_log 2>&1
 		
-		opkg update timeout=4 > /tmp/opkg_update_log 2>&1
-		
+		# Восстанавливаем оригинальный конфиг 'opkg.conf'
+		mv /tmp/opkg.conf.bak /etc/opkg.conf
+
 		# Проверяем на ключевые слова об ошибках
 		if grep -qi "failed\|error\|unable\|not found" /tmp/opkg_update_log; then
 			echo -e "${RED_BRIGHT}Обнаружены ошибки в логе, повтор...${CLR_OFF}"
