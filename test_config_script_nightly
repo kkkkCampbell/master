@@ -1,10 +1,9 @@
 #!/bin/sh
 # analyzer.sh
-ifdown awg10
+ifdown awg10 && ifup awg10
 clear
-echo "0.0.17"
+echo "0.0.18"
 sleep 3
-ifup awg10
 
 # --- ЦВЕТА ---
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
