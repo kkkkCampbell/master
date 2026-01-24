@@ -2,7 +2,7 @@
 # analyzer.sh
 ifdown awg10 && ifup awg10
 clear
-echo "0.0.18"
+echo "0.0.19"
 sleep 3
 
 # --- ЦВЕТА ---
@@ -101,7 +101,28 @@ fi
 [ -f "$_tmp_conf" ] && rm "$_tmp_conf"
 
 echo ""
-sleep 5
+
+# Накручиваем счётчики авг10
+TABLE_ID="105"
+TEST_URL="http://speedtest.tele2.net/10MB.zip"
+ROUNDS=1
+
+IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
+ip route add default dev "$IFACE" table "$TABLE_ID"
+ip rule add from "$IF_IP4"/32 table "$TABLE_ID"
+
+for i in $(seq 1 "$ROUNDS"); do
+	wget -O /dev/null \
+		--bind-address="$IF_IP4" \
+		--timeout=5 \
+		--tries=1 \
+		"$TEST_URL" >/dev/null 2>&1 || true
+	sleep 1
+done
+
+ip rule del from "$IF_IP4"/32 table "$TABLE_ID"
+ip route flush table "$TABLE_ID"
+
 
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
 MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
