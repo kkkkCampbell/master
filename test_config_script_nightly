@@ -103,7 +103,7 @@ fi
 echo ""
 
 # Накручиваем счётчики авг10
-TABLE_ID="105"
+TABLE_ID=1$(date +%s | tail -c 4)
 TEST_URL="http://speedtest.tele2.net/10MB.zip"
 ROUNDS=1
 
