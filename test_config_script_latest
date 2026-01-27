@@ -1,7 +1,8 @@
 #!/bin/sh
 # analyzer.sh
+ifdown awg10 && ifup awg10
 clear
-echo "0.0.6"
+echo "0.0.7"
 sleep 3
 
 # --- ЦВЕТА ---
@@ -101,6 +102,28 @@ fi
 
 echo ""
 
+# Накручиваем счётчики авг10
+TABLE_ID=1$(date +%s | tail -c 4)
+TEST_URL="http://speedtest.tele2.net/10MB.zip"
+ROUNDS=1
+
+IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
+ip route add default dev "$IFACE" table "$TABLE_ID"
+ip rule add from "$IF_IP4"/32 table "$TABLE_ID"
+
+for i in $(seq 1 "$ROUNDS"); do
+	wget -O /dev/null \
+		--bind-address="$IF_IP4" \
+		--timeout=5 \
+		--tries=1 \
+		"$TEST_URL" >/dev/null 2>&1 || true
+	sleep 1
+done
+
+ip rule del from "$IF_IP4"/32 table "$TABLE_ID"
+ip route flush table "$TABLE_ID"
+
+
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
 MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
 MEM_P=$((MEM_U * 100 / MEM_T))
@@ -109,8 +132,7 @@ LAN_IP=$(ip addr show br-lan 2>/dev/null | grep -w inet | awk '{print $2}' | cut
 NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
 
 # --- БЛОК 1: ПРОВЕРКА DNS ---
-echo "== ПРОВЕРКА DNS  (Прошивка: ${VERSION})"
-echo "=============================================================="
+echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
 printf "  DNS Server:   %s" "${DNS_SRV:-UNKNOWN} |"
 printf " DNS Redirect: 127.0.0.42\n"
@@ -122,9 +144,8 @@ printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}\n" "${FB_IP:-UNKNOWN}"
 # --- БЛОК 2: ИНТЕРФЕЙС awg10 (ДЕТАЛИ) ---
 NEED_RESOLVE_TEST=0
 if [ -d "/sys/class/net/$IFACE" ]; then
-    echo ""
-    echo "== ИНТЕРФЕЙС $IFACE (ДЕТАЛИ)"
-    echo "=============================================================="
+	echo ""
+    echo "= ИНТЕРФЕЙС awg10 (ДЕТАЛИ):"
     PING_COUNT=10
     RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
@@ -161,8 +182,7 @@ fi
 
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
 echo ""
-echo "== ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM)"
-echo "=============================================================="
+echo "= ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM):"
 
 # Инициализируем флаг нулем в самом начале
 NEED_RESOLVE_TEST=0
@@ -237,8 +257,8 @@ fi
 
 # --- БЛОК 4: СТАТУС СЛУЖБ ---
 echo ""
-echo "== СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБРАЖАЮТСЯ)"
-echo "=============================================================="
+echo "= СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБРАЖАЮТСЯ):"
+# echo "=============================================================="
 ZB_RUN=0; zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
 PK_INST=0; [ -f "/etc/init.d/podkop" ] && PK_INST=1
 CHAOS=0; [ $ZB_RUN -eq 1 ] && [ $PK_INST -eq 1 ] && CHAOS=1
@@ -300,8 +320,7 @@ done
 
 # --- СЕКЦИЯ Б5.1: ПОДГОТОВКА И ФИЛЬТРАЦИЯ ЖИВЫХ СЕРВИСОВ ---
 echo ""
-echo "== ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ КОНФИГУРАЦИИ"
-echo "=============================================================="
+echo "= ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ КОНФИГУРАЦИИ:"
 tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
 ACTIVE_PKGS=""
 
@@ -573,18 +592,18 @@ if [ $PK_INST -eq 1 ]; then
     if [ -n "$PK_VER" ]; then
         printf "  Версия podkop: ${PK_COLOR}%s${CLR_OFF}\n" "$PK_VER"
     fi
-    echo "=============================================================="
 fi
 
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
 
-echo "== СИСТЕМНЫЕ РЕСУРСЫ"
-echo "=============================================================="
+echo ""
+echo "= СИСТЕМНЫЕ РЕСУРСЫ:"
 printf "  LAN IP: %s\n" "$LAN_IP (Прошивка: ${VERSION})"
 printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE"
 crontab -l | sed 's/^/  /'
-echo "=============================================================="
+
 
 # Блок 8: Очистка лога
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
+echo ""
