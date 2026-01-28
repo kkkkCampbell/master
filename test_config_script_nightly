@@ -239,14 +239,14 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     if [ -n "$IF_IP4" ]; then
 #        W_OUT=$(wget --bind-address="$IF_IP4" --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -4 --read-timeout=10 --timeout=10 --tries=1 "$TEST_URL" 2>&1)
         W_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
-		--retry 0 --insecure --tlsv1.3 "$TEST_URL" 2>&1)
+		--retry 3 --insecure --tlsv1.3 "$TEST_URL" 2>&1)
         W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
         TLS_VER="TLSv1.3"
 
         if [ -z "$W_CODE" ]; then
 #            W_OUT=$(wget --bind-address="$IF_IP4" --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -4 --read-timeout=10 --timeout=10 --tries=1 "$TEST_URL" 2>&1)
 			W_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
-			--retry 0 --insecure --tlsv1.2 "$TEST_URL" 2>&1)
+			--retry 3 --insecure --tlsv1.2 "$TEST_URL" 2>&1)
 			W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
             TLS_VER="TLSv1.2"
         fi
