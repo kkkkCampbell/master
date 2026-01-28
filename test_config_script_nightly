@@ -666,7 +666,7 @@ fi
 echo ""
 echo "= СИСТЕМНЫЕ РЕСУРСЫ:"
 printf "  LAN IP: %s\n" "$LAN_IP (Прошивка: ${VERSION})"
-printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE\n"
+printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE"
 crontab -l | sed 's/^/  /'
 if opkg list-installed | grep -q "wdoc"; then
 	printf "  ${RED_BRIGHT}!!!_WatchDoc установлен${CLR_OFF}\n"
