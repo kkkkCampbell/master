@@ -652,7 +652,10 @@ fi
 echo ""
 echo "= СИСТЕМНЫЕ РЕСУРСЫ:"
 printf "  LAN IP: %s\n" "$LAN_IP (Прошивка: ${VERSION})"
-printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE"
+printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE\n"
+if opkg list-installed | grep -q "^zapret2"; then
+	printf "  $(uci show zapret2 | grep 'custom_scripts')\n"
+fi
 crontab -l | sed 's/^/  /'
 
 
