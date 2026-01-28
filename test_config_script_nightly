@@ -2,7 +2,7 @@
 # analyzer.sh
 ifdown awg10 && ifup awg10
 clear
-echo "0.0.20"
+echo "0.0.21"
 sleep 8
 
 # --- ЦВЕТА ---
@@ -144,8 +144,9 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
 # --- БЛОК 1: ПРОВЕРКА DNS ---
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
+DNS_REDIR=$(uci get dhcp.@dnsmasq[0].server)
 printf "  DNS Server:   %s" "${DNS_SRV:-UNKNOWN} |"
-printf " DNS Redirect: 127.0.0.42\n"
+printf " DNS Redirect: $DNS_REDIR\n"
 FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}\n" "${FB_IP:-UNKNOWN}"
 
