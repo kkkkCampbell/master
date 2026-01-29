@@ -2,7 +2,7 @@
 # analyzer.sh
 ifdown awg10 && ifup awg10
 clear
-echo "0.0.23"
+echo "0.0.24"
 echo "Перезапускаем интерфейсы"
 sleep 8
 
@@ -182,8 +182,8 @@ fi
 
 # --- ОПРЕДЕЛЯЕМ СОСТОЯНИЕ СЕРВИСОВ И ОСТАНАВЛИВАЕМ МЕШАЮЩИЕ ---
 active=""
-/etc/init.d/zeroblock stop 2>&1 >/dev/null
-/etc/init.d/podkop stop >/dev/null 2>&1
+[ -f /etc/init.d/zeroblock ] && /etc/init.d/zeroblock stop >/dev/null 2>&1
+[ -f /etc/init.d/podkop ] && /etc/init.d/podkop stop >/dev/null 2>&1
 
 # zeroblock - проверка автозапуска
 if [ -L "/etc/rc.d/S??zeroblock" ] || ls /etc/rc.d/S??zeroblock 2>/dev/null | grep -q .; then
@@ -196,9 +196,10 @@ if ls /etc/rc.d/S??podkop 1>/dev/null 2>&1; then
 fi
 
 # zapret2
-if zapret2 status | grep -q "zapret2 is running"; then
-    active="$active zapret2"
-
+if [ -f /etc/init.d/zapret2 ]; then
+	if zapret2 status | grep -q "zapret2 is running"; then
+		active="$active zapret2"
+	fi
 fi
 
 # service zapret status
@@ -316,7 +317,12 @@ for prog in $active; do
         /etc/init.d/podkop start 2>&1 >/dev/null
     fi
 done
-sleep 5
+for i in $(seq 1 10); do
+    if /etc/init.d/sing-box status 2>/dev/null | grep -q "running"; then
+        break
+    fi
+    sleep 1
+done
 
 # ip rule del from "$IF_IP4"/32 table "$TABLE_ID"
 # ip route flush table "$TABLE_ID"
