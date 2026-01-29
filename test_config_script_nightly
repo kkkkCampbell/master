@@ -148,7 +148,9 @@ DNS_REDIR=$(uci get dhcp.@dnsmasq[0].server)
 printf "  DNS Server:   %s" "${DNS_SRV:-UNKNOWN} |"
 printf " DNS Redirect: $DNS_REDIR\n"
 FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
-printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}\n" "${FB_IP:-UNKNOWN}"
+YT_IP=$(nslookup youtube.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
+printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}" "${FB_IP:-UNKNOWN} | "
+printf "  YouTube IP:  ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
 
 
 
