@@ -3,6 +3,7 @@
 ifdown awg10 && ifup awg10
 clear
 echo "0.0.23"
+echo "Перезапускаем интерфейсы"
 sleep 8
 
 # --- ЦВЕТА ---
