@@ -2,7 +2,7 @@
 # analyzer.sh
 ifdown awg10 && ifup awg10
 clear
-echo "0.0.21"
+echo "0.0.22"
 sleep 8
 
 # --- ЦВЕТА ---
@@ -150,8 +150,7 @@ printf " DNS Redirect: $DNS_REDIR\n"
 FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 YT_IP=$(nslookup youtube.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}" "${FB_IP:-UNKNOWN} | "
-printf "  YouTube IP:  ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
-
+printf "YouTube IP:  ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
 
 
 # --- БЛОК 2: ИНТЕРФЕЙС awg10 (ДЕТАЛИ) ---
@@ -192,6 +191,35 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     fi
 fi
 
+# --- ОПРЕДЕЛЯЕМ СОСТОЯНИЕ СЕРВИСОВ И ОСТАНАВЛИВАЕМ МЕШАЮЩИЕ ---
+active=""
+
+# zeroblock - проверка автозапуска
+if [ -L "/etc/rc.d/S??zeroblock" ] || ls /etc/rc.d/S??zeroblock 2>/dev/null | grep -q .; then
+    active="$active zeroblock"
+    /etc/init.d/zeroblock stop 2>&1 >/dev/null
+fi
+
+# zapret2
+if zapret2 status | grep -q "zapret2 is running"; then
+    active="$active zapret2"
+    /etc/init.d/zapret2 stop 2>&1 >/dev/null
+fi
+
+# service zapret status
+output=$(/etc/init.d/zapret status) 2>&1 >/dev/null
+if [ "$output" = "running" ]; then
+    active="$active zapret"
+    /etc/init.d/zapret stop 2>&1 >/dev/null
+fi
+
+# podkop - проверка автозапуска
+if ls /etc/rc.d/S??podkop 1>/dev/null 2>&1; then
+    active="$active podkop"
+    /etc/init.d/podkop stop >/dev/null 2>&1
+fi
+
+printf "  ${YELLOW}Программы для перезапуска: $active${CLR_OFF}\n"
 
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
 TEST_URL="https://youtube.com"
@@ -286,6 +314,19 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     fi
 fi
 
+
+# --- ЗАПУСКАЕМ РАНЕЕ ОСТАНОВЛЕННЫЕ СЕРВИСЫ
+for prog in $active; do
+    if [ "$prog" = "zeroblock" ]; then
+        /etc/init.d/zeroblock start 2>&1 >/dev/null
+    elif [ "$prog" = "zapret2" ]; then
+        /etc/init.d/zapret2 start 2>&1 >/dev/null
+    elif [ "$prog" = "zapret" ]; then
+        /etc/init.d/zapret start 2>&1 >/dev/null
+    elif [ "$prog" = "podkop" ]; then
+        /etc/init.d/podkop start 2>&1 >/dev/null
+    fi
+done
 # ip rule del from "$IF_IP4"/32 table "$TABLE_ID"
 # ip route flush table "$TABLE_ID"
 
