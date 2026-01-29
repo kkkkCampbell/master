@@ -107,32 +107,16 @@ fi
 
 echo ""
 
-# Накручиваем счётчики авг10
+# --- НАКРУЧИВАЕМ СЧЁТЧКИКИ AWG10 ---
+
 # TABLE_ID=1$(date +%s | tail -c 4)
 TEST_URL="http://speedtest.tele2.net/10MB.zip"
 ROUNDS=1
-
 IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
-# ip route add default dev "$IFACE" table "$TABLE_ID"
-# ip rule add from "$IF_IP4"/32 table "$TABLE_ID"
-
-# for i in $(seq 1 "$ROUNDS"); do
-	# wget -O /dev/null \
-		# --bind-address="$IF_IP4" \
-		# --timeout=5 \
-		# --tries=1 \
-		# "$TEST_URL" >/dev/null 2>&1 || true
-	# sleep 1
-# done
-
 for i in $(seq 1 "$ROUNDS"); do
 	curl -4 -L -A 'Mozilla/5.0' -s --no-progress-meter --interface "$IFACE" --max-time 20 --connect-timeout 5 --retry 0 --insecure --tlsv1.2 "$TEST_URL" >/dev/null 2>&1 || true
 	sleep 1
 done
-
-# ip rule del from "$IF_IP4"/32 table "$TABLE_ID"
-# ip route flush table "$TABLE_ID"
-
 
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
 MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
@@ -144,7 +128,11 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
 # --- БЛОК 1: ПРОВЕРКА DNS ---
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
-DNS_REDIR=$(uci get dhcp.@dnsmasq[0].server)
+DNS_REDIR=$(uci get dhcp.@dnsmasq[0].server 2>/dev/null)
+if [ -z "$DNS_REDIR" ]; then 
+    DNS_REDIR="${RED_BRIGHT}!!!_ПЕРЕНАПРАВЛЕНИЯ ОТСУТСТВУЮТ${CLR_OFF}"
+fi
+
 printf "  DNS Server:   %s" "${DNS_SRV:-UNKNOWN} |"
 printf " DNS Redirect: $DNS_REDIR\n"
 FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
@@ -193,17 +181,23 @@ fi
 
 # --- ОПРЕДЕЛЯЕМ СОСТОЯНИЕ СЕРВИСОВ И ОСТАНАВЛИВАЕМ МЕШАЮЩИЕ ---
 active=""
+/etc/init.d/zeroblock stop 2>&1 >/dev/null
+/etc/init.d/podkop stop >/dev/null 2>&1
 
 # zeroblock - проверка автозапуска
 if [ -L "/etc/rc.d/S??zeroblock" ] || ls /etc/rc.d/S??zeroblock 2>/dev/null | grep -q .; then
     active="$active zeroblock"
-    /etc/init.d/zeroblock stop 2>&1 >/dev/null
+fi
+
+# podkop - проверка автозапуска
+if ls /etc/rc.d/S??podkop 1>/dev/null 2>&1; then
+    active="$active podkop"
 fi
 
 # zapret2
 if zapret2 status | grep -q "zapret2 is running"; then
     active="$active zapret2"
-    /etc/init.d/zapret2 stop 2>&1 >/dev/null
+
 fi
 
 # service zapret status
@@ -211,12 +205,6 @@ output=$(/etc/init.d/zapret status) 2>&1 >/dev/null
 if [ "$output" = "running" ]; then
     active="$active zapret"
     /etc/init.d/zapret stop 2>&1 >/dev/null
-fi
-
-# podkop - проверка автозапуска
-if ls /etc/rc.d/S??podkop 1>/dev/null 2>&1; then
-    active="$active podkop"
-    /etc/init.d/podkop stop >/dev/null 2>&1
 fi
 
 printf "  ${YELLOW}Программы для перезапуска: $active${CLR_OFF}\n"
