@@ -2,7 +2,7 @@
 # analyzer.sh
 ifdown awg10 && ifup awg10
 clear
-echo "0.0.22"
+echo "0.0.23"
 sleep 8
 
 # --- ЦВЕТА ---
@@ -315,7 +315,7 @@ for prog in $active; do
         /etc/init.d/podkop start 2>&1 >/dev/null
     fi
 done
-sleep 3
+sleep 5
 
 # ip rule del from "$IF_IP4"/32 table "$TABLE_ID"
 # ip route flush table "$TABLE_ID"
