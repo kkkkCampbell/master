@@ -2,7 +2,7 @@
 # analyzer.sh
 ifdown awg10 && ifup awg10
 clear
-echo "0.0.24"
+echo "0.0.25"
 echo "Перезапускаем интерфейсы"
 sleep 8
 
@@ -203,10 +203,12 @@ if [ -f /etc/init.d/zapret2 ]; then
 fi
 
 # service zapret status
-output=$(/etc/init.d/zapret status) 2>&1 >/dev/null
-if [ "$output" = "running" ]; then
-    active="$active zapret"
-    /etc/init.d/zapret stop 2>&1 >/dev/null
+if [ -f /etc/init.d/zapret ]; then
+	output=$(/etc/init.d/zapret status) 2>&1 >/dev/null
+	if [ "$output" = "running" ]; then
+		active="$active zapret"
+		/etc/init.d/zapret stop 2>&1 >/dev/null
+	fi
 fi
 
 printf "  ${YELLOW}Программы для перезапуска: $active${CLR_OFF}\n"
