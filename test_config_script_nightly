@@ -315,6 +315,8 @@ for prog in $active; do
         /etc/init.d/podkop start 2>&1 >/dev/null
     fi
 done
+sleep 3
+
 # ip rule del from "$IF_IP4"/32 table "$TABLE_ID"
 # ip route flush table "$TABLE_ID"
 
