@@ -231,7 +231,7 @@ if [ -n "$P_CODE" ]; then
     printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
 else
     printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
-    NEED_RESOLVE_TEST=1
+    # NEED_RESOLVE_TEST=1
 fi
 
 
@@ -286,7 +286,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
             echo "------------------------------------------------------"
             echo "$W_OUT" | sed 's/^/  / '
             echo "------------------------------------------------------"
-            NEED_RESOLVE_TEST=1
+            # NEED_RESOLVE_TEST=1
         fi
     fi
 
