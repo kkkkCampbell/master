@@ -1,6 +1,10 @@
 #!/bin/sh
 # analyzer.sh
 ifdown awg10 && ifup awg10
+mkdir -p /opt/zapret2/scriptarchive
+mv /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2&>1
+service opera-proxy restart
+
 clear
 echo "0.0.25"
 echo "Перезапускаем интерфейсы"
