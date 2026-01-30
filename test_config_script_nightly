@@ -2,11 +2,11 @@
 # analyzer.sh
 ifdown awg10 && ifup awg10
 mkdir -p /opt/zapret2/scriptarchive
-mv /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2&>1
+mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2&>1
 service opera-proxy restart
 
 clear
-echo "0.0.25"
+echo "0.0.26"
 echo "Перезапускаем интерфейсы"
 sleep 8
 
@@ -702,10 +702,11 @@ if [ -n "$ZB_DNS" ] || [ -n "$ZB_B_DNS" ]; then
 	[ -n "$ZB_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$ZB_B_DNS"
 fi
 # --- Статус пользовательских скриптов zapret2 (1 - включено, 0 - выключено). Могут ломать awg10.
-if opkg list-installed | grep -q "^zapret2"; then
-	printf "  $(uci show zapret2 | grep 'custom_scripts')\n"
+if [ -f "/opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh" ]; then
+	if opkg list-installed | grep -q "^zapret2"; then
+		printf "  $(uci show zapret2 | grep 'custom_scripts')\n"
+	fi
 fi
-
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
 
