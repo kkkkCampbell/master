@@ -6,7 +6,7 @@ mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarc
 service opera-proxy restart
 
 clear
-echo "0.0.28"
+echo "0.0.29"
 echo "Перезапускаем интерфейсы"
 sleep 8
 
@@ -688,16 +688,33 @@ if [ $PK_INST -eq 1 ]; then
 			YELLOW) PK_COLOR=$YELLOW ;;
 		esac
 	fi
-
+	PK_AUTOSTART=0
+	ZB_AUTOSTART=0
+	echo "$active" | grep -q "podkop" && PK_AUTOSTART=1
+	echo "$active" | grep -q "zeroblock" && ZB_AUTOSTART=1
+	if [ "$PK_AUTOSTART" -eq 1 ]; then
     # Выводим DNS, только если там не пусто
-    if [ -n "$PK_DNS" ] || [ -n "$PK_B_DNS" ]; then
-        [ -n "$PK_DNS" ] && printf "  podkop DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "$PK_DNS"
-        [ -n "$PK_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$PK_B_DNS"
-    fi
+		if [ -n "$PK_DNS" ] || [ -n "$PK_B_DNS" ]; then
+			[ -n "$PK_DNS" ] && printf "  podkop DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "$PK_DNS"
+			[ -n "$PK_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$PK_B_DNS"
+		fi
+	fi	
+fi
 
-    # Печатаем версию в конце вывода блока
+
+
+# Печатаем версию в конце вывода блока
+if [ "$PK_AUTOSTART" -eq 1 ]; then
     if [ -n "$PK_VER" ]; then
         printf "  Версия podkop: ${PK_COLOR}%s${CLR_OFF}\n" "$PK_VER"
+    fi
+fi
+
+if [ "$ZB_AUTOSTART" -eq 1 ]; then
+    ZB_VER=$(zeroblock --version 2>/dev/null)
+    if [ -n "$ZB_VER" ]; then
+		ZB_VER=$(echo "$ZB_VER" | sed 's/^ZeroBlock v//')
+        printf "  Версия zeroblock: ${PK_COLOR}%s${CLR_OFF}\n" "$ZB_VER"
     fi
 fi
 
