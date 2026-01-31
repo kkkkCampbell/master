@@ -215,7 +215,7 @@ if [ -f /etc/init.d/zapret ]; then
 	fi
 fi
 
-printf "  ${YELLOW}Программы для перезапуска: $active${CLR_OFF}\n"
+printf "  ${YELLOW}Программы в автозапуске: $active${CLR_OFF}\n"
 
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
 TEST_URL="https://youtube.com"
