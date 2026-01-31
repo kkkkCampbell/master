@@ -6,7 +6,7 @@ mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarc
 service opera-proxy restart
 
 clear
-echo "0.0.26"
+echo "0.0.27"
 echo "Перезапускаем интерфейсы"
 sleep 8
 
@@ -231,7 +231,7 @@ if [ -n "$P_CODE" ]; then
     printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
 else
     printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
-    # NEED_RESOLVE_TEST=1
+    NEED_RESOLVE_TEST=1
 fi
 
 
@@ -286,7 +286,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
             echo "------------------------------------------------------"
             echo "$W_OUT" | sed 's/^/  / '
             echo "------------------------------------------------------"
-            # NEED_RESOLVE_TEST=1
+            NEED_RESOLVE_TEST=1
         fi
     fi
 
@@ -341,7 +341,7 @@ done
 # # cat /etc/iproute2/rt_tables
 
 
-
+NEED_RESOLVE_TEST=0 # Отключаем тест, не нужен больше
 # 3. Скрытый тест на резолв
 if [ "$NEED_RESOLVE_TEST" -eq 1 ]; then
     echo "--------------------------------------------------------------"
@@ -566,8 +566,6 @@ rm -rf "$tmp_dir"
 
 # --- БЛОК 6: СПИСКИ (LDDPR 5 + "СКАЛЬПЕЛЬ") ---
 
-
-
 ALL_ITEMS=""; CONFLICT_LISTS=""
 
 # 1. СОБИРАЕМ КОНФЛИКТЫ (Живые сервисы из ACTIVE_PKGS)
@@ -581,7 +579,7 @@ for pkg in $ACTIVE_PKGS; do
             [ -z "$item" ] && continue
             
             IS_DUP=0
-            # ПРОВЕРКА А: Физический дубль имени (твой случай с block)
+            # ПРОВЕРКА А: Физический дубль имени
             if echo " $ALL_ITEMS " | grep -q " $item "; then
                 IS_DUP=1
             fi
@@ -607,15 +605,24 @@ for pkg in $ACTIVE_PKGS; do
 done
 
 # 2. ВЫВОДИМ СПИСКИ ТОЛЬКО ДЛЯ ТЕХ, КТО В ACTIVE_PKGS
+
 for pkg in $ACTIVE_PKGS; do
     [ "$pkg" != "zeroblock" ] && [ "$pkg" != "podkop" ] && continue
 
     SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
+	
     for sid in $SIDS; do
+
+		
         RAW=$(uci -q get "$pkg.$sid.community_lists" | tr -d "'\"" | tr ' ' ',' | sed 's/,,*/,/g' | tr ',' ' ')
         [ -z "$RAW" ] && continue
-        
-        printf "  %-4s списки %+11s " "$pkg" "${sid}:"
+		
+        # Получаем данные исходящего канала секции
+        _conn_type=$(uci get "$pkg"."$sid".connection_type)
+		if [ "$_conn_type" = "proxy" ]; then _conn_type="prx"; fi
+		
+		printf "  %-4s списки %+11s " "$pkg" "${sid}"
+		printf	"${_conn_type}"": "
         FIRST=1
         for item in $RAW; do
             [ $FIRST -eq 0 ] && printf "${CYAN},${CLR_OFF}"
