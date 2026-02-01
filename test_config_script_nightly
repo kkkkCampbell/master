@@ -3,18 +3,18 @@
 
 IFACE="awg10"
 
-ifdown "$IFACE"
+ifdown awg10
+mkdir -p /opt/zapret2/scriptarchive
 if [ -d "/sys/class/net/$IFACE" ]; then
-	mkdir -p /opt/zapret2/scriptarchive
 	mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2&>1
 fi
-ifup "$IFACE"
+ifup awg10
 service opera-proxy restart
 
 clear
-echo "0.0.30"
+echo "0.0.31"
 echo "Перезапускаем интерфейсы"
-sleep 10
+sleep 8
 
 # --- ЦВЕТА ---
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
@@ -214,10 +214,10 @@ fi
 
 # service zapret status
 if [ -f /etc/init.d/zapret ]; then
-	output=$(/etc/init.d/zapret status) 2>&1 >/dev/null
+	output=$(/etc/init.d/zapret status) >/dev/null 2>&1
 	if [ "$output" = "running" ]; then
 		active="$active zapret"
-		/etc/init.d/zapret stop 2>&1 >/dev/null
+		/etc/init.d/zapret stop >/dev/null 2>&1
 	fi
 fi
 
@@ -320,15 +320,16 @@ fi
 # --- ЗАПУСКАЕМ РАНЕЕ ОСТАНОВЛЕННЫЕ СЕРВИСЫ
 for prog in $active; do
     if [ "$prog" = "zeroblock" ]; then
-        /etc/init.d/zeroblock start 2>&1 >/dev/null
+        /etc/init.d/zeroblock start >/dev/null 2>&1
     elif [ "$prog" = "zapret2" ]; then
-        /etc/init.d/zapret2 start 2>&1 >/dev/null
+        /etc/init.d/zapret2 start >/dev/null 2>&1
     elif [ "$prog" = "zapret" ]; then
-        /etc/init.d/zapret start 2>&1 >/dev/null
+        /etc/init.d/zapret start >/dev/null 2>&1
     elif [ "$prog" = "podkop" ]; then
-        /etc/init.d/podkop start 2>&1 >/dev/null
+        /etc/init.d/podkop start >/dev/null 2>&1
     fi
 done
+
 for i in $(seq 1 10); do
     if /etc/init.d/sing-box status 2>/dev/null | grep -q "running"; then
         break
@@ -711,13 +712,15 @@ fi
 
 # Печатаем версию в конце вывода блока
 if [ "$PK_AUTOSTART" -eq 1 ]; then
+	uci show podkop | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}" 
     if [ -n "$PK_VER" ]; then
-        printf "  Версия podkop: ${PK_COLOR}%s${CLR_OFF}\n" "$PK_VER"
+        printf "  $Версия podkop: ${PK_COLOR}%s${CLR_OFF}\n" "$PK_VER"
     fi
 fi
 
 if [ "$ZB_AUTOSTART" -eq 1 ]; then
     ZB_VER=$(zeroblock --version 2>/dev/null)
+	uci show zeroblock | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}" 
     if [ -n "$ZB_VER" ]; then
 		ZB_VER=$(echo "$ZB_VER" | sed 's/^ZeroBlock v//')
         printf "  Версия zeroblock: ${PK_COLOR}%s${CLR_OFF}\n" "$ZB_VER"
