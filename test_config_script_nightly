@@ -3,18 +3,18 @@
 
 IFACE="awg10"
 
-ifdown awg10
+ifdown "$IFACE"
 mkdir -p /opt/zapret2/scriptarchive
 if [ -d "/sys/class/net/$IFACE" ]; then
 	mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2&>1
 fi
-ifup awg10
+ifup "$IFACE"
 service opera-proxy restart
 
 clear
 echo "0.0.30"
 echo "Перезапускаем интерфейсы"
-sleep 8
+sleep 10
 
 # --- ЦВЕТА ---
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
