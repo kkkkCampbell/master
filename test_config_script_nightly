@@ -4,8 +4,8 @@
 IFACE="awg10"
 
 ifdown "$IFACE"
-mkdir -p /opt/zapret2/scriptarchive
 if [ -d "/sys/class/net/$IFACE" ]; then
+	mkdir -p /opt/zapret2/scriptarchive
 	mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2&>1
 fi
 ifup "$IFACE"
