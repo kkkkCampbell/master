@@ -12,7 +12,7 @@ ifup awg10
 service opera-proxy restart
 
 clear
-echo "0.0.31"
+echo "0.0.32"
 echo "Перезапускаем интерфейсы"
 sleep 8
 
@@ -710,7 +710,7 @@ fi
 
 
 
-# Печатаем версию в конце вывода блока
+# Печатаем допданные в конце вывода блока (надо же как-то скрипт обновлять...)
 if [ "$PK_AUTOSTART" -eq 1 ]; then
 	uci show podkop | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}" 
     if [ -n "$PK_VER" ]; then
@@ -719,6 +719,9 @@ if [ "$PK_AUTOSTART" -eq 1 ]; then
 fi
 
 if [ "$ZB_AUTOSTART" -eq 1 ]; then
+	# Ищем catch-all секции
+    ZB_CATCH_ALL=$(grep -o '"\([^"]*\)":{"is_catch_all":true}' /tmp/zeroblock_status.json | cut -d'"' -f2)
+	if [ -n "$ZB_CATCH_ALL" ]; then printf "  ${YELLOW}Секция в режиме catch-all: $ZB_CATCH_ALL${CLR_OFF}\n"; fi
     ZB_VER=$(zeroblock --version 2>/dev/null)
 	uci show zeroblock | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}" 
     if [ -n "$ZB_VER" ]; then
