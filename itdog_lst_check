@@ -59,7 +59,7 @@ for url in $url_list; do
     # Получаем имя из списка names
     name=$(echo "$names" | cut -d' ' -f$i)
     
-    echo "  [$i] $name"
+    printf "[%2d] %-12s" "$i" "$name" | tr ' ' '.'
     
     # Пробуем wget (обычно есть в OpenWRT)
     if which wget >/dev/null 2>&1; then
@@ -73,14 +73,14 @@ for url in $url_list; do
         # Очищаем файл: удаляем комментарии, пустые строки, пробелы
         grep -v '^#' "$TMP/f$i" | grep -v '^$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > "$TMP/clean$i"
         domain_count=$(wc -l < "$TMP/clean$i")
-        echo "    ✓ Загружено: $domain_count доменов"
+        printf "доменов загружено: $domain_count\n"
         
         # Сохраняем имя файла
         echo "$name" > "$TMP/name$i"
         url_count=$((url_count + 1))
         i=$((i+1))
     else
-        echo "    ✗ Ошибка загрузки"
+        echo "ошибка загрузки"
         rm -f "$TMP/f$i"
     fi
 done
