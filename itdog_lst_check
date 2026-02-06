@@ -1,5 +1,6 @@
 #!/bin/ash
 clear
+echo "VERSION № никакая"
 echo; echo; echo; echo
 # Скрипт для загрузки файлов по URL и поиска перекрёстных совпадений
 # Работает в OpenWRT с ash shell
