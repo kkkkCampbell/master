@@ -1,0 +1,227 @@
+#!/bin/ash
+
+# Скрипт для загрузки файлов по URL и поиска перекрёстных совпадений
+# Работает в OpenWRT с ash shell
+
+echo "=== Сравнение доменов из URL (OpenWRT ASH) ==="
+
+# Временный каталог
+TMP="/tmp/domains_$$"
+mkdir -p "$TMP"
+
+# Жестко заданные URL
+urls="https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Categories/anime.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Categories/block.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Categories/geoblock.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Categories/news.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Categories/porn.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Categories/hodca.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Services/discord.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Services/hdrezka.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Services/meta.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Services/telegram.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Services/tiktok.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Services/tiktok.lst
+https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main/Services/youtube.lst"
+
+# Создаем понятные имена файлов
+names="ANIME BLOCK GEOBLOCK NEWS PORN HODCA DISCORD HDREZKA META TELEGRAM TIKTOK TWITTER YOUTUBE"
+
+echo "Будет загружено 13 файлов:"
+echo "--------------------------"
+
+# Показываем список
+count=1
+for name in $names; do
+    url=$(echo "$urls" | sed -n "${count}p")
+    echo "  [$count] $name <- $url"
+    count=$((count + 1))
+done
+
+# Скачиваем файлы
+echo ""
+echo "Загрузка файлов..."
+i=1
+url_count=0
+
+# Преобразуем строки с URL в список
+url_list=""
+while read -r line; do
+    [ -n "$line" ] && url_list="$url_list $line"
+done <<EOF
+$urls
+EOF
+
+# Скачиваем каждый URL
+for url in $url_list; do
+    # Получаем имя из списка names
+    name=$(echo "$names" | cut -d' ' -f$i)
+    
+    echo "  [$i] $name"
+    
+    # Пробуем wget (обычно есть в OpenWRT)
+    if which wget >/dev/null 2>&1; then
+        wget -q -O "$TMP/f$i" "$url" 2>/dev/null
+    else
+        # Пробуем curl (если есть)
+        curl -s -o "$TMP/f$i" "$url" 2>/dev/null
+    fi
+    
+    if [ -s "$TMP/f$i" ]; then
+        # Очищаем файл: удаляем комментарии, пустые строки, пробелы
+        grep -v '^#' "$TMP/f$i" | grep -v '^$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > "$TMP/clean$i"
+        domain_count=$(wc -l < "$TMP/clean$i")
+        echo "    ✓ Загружено: $domain_count доменов"
+        
+        # Сохраняем имя файла
+        echo "$name" > "$TMP/name$i"
+        url_count=$((url_count + 1))
+        i=$((i+1))
+    else
+        echo "    ✗ Ошибка загрузки"
+        rm -f "$TMP/f$i"
+    fi
+done
+
+total=$url_count
+echo "Успешно загружено: $total файлов"
+
+if [ $total -lt 2 ]; then
+    echo "Нужно минимум 2 файла для сравнения!"
+    rm -rf "$TMP"
+    exit 1
+fi
+
+# Собираем все домены в один файл с номерами файлов
+echo ""
+echo "Сбор данных для анализа..."
+
+# Создаем файл для частотного анализа
+> "$TMP/all_domains"
+for f in $(seq 1 $total); do
+    if [ -f "$TMP/clean$f" ]; then
+        name=$(cat "$TMP/name$f")
+        # Добавляем каждый домен с номером файла
+        while read -r domain; do
+            [ -n "$domain" ] && echo "$domain|$f|$name"
+        done < "$TMP/clean$f" >> "$TMP/all_domains"
+    fi
+done
+
+# Анализ 1: Домены, которые есть во ВСЕХ файлах
+echo ""
+echo "=== 1. Домены, которые есть ВО ВСЕХ файлах ==="
+
+# Создаем список всех доменов
+cut -d'|' -f1 "$TMP/all_domains" | sort -u > "$TMP/unique_domains"
+
+common_all_count=0
+while read -r domain; do
+    [ -z "$domain" ] && continue
+    
+    # Ищем в каких файлах есть этот домен
+    found_in=$(grep "^$domain|" "$TMP/all_domains" | cut -d'|' -f2 | sort -u | wc -l)
+    
+    if [ "$found_in" -eq "$total" ]; then
+        if [ "$common_all_count" -eq 0 ]; then
+            echo "Домены, найденные во всех $total файлах:"
+        fi
+        common_all_count=$((common_all_count + 1))
+        
+        # Получаем имена файлов для этого домена
+        filenames=$(grep "^$domain|" "$TMP/all_domains" | cut -d'|' -f3 | sort -u | tr '\n' ',' | sed 's/,$//')
+        echo "  $domain (все файлы: $filenames)"
+    fi
+done < "$TMP/unique_domains"
+
+if [ "$common_all_count" -eq 0 ]; then
+    echo "Нет доменов, которые есть во всех файлах"
+fi
+
+# Анализ 2: Полный отчет по пересечениям (ТОЛЬКО реальные пересечения)
+echo ""
+echo "=== 2. ДОМЕНЫ С ПЕРЕСЕЧЕНИЯМИ (2+ файла) ==="
+
+# Сортируем по количеству вхождений
+cut -d'|' -f1 "$TMP/all_domains" | sort | uniq -c | sort -rn > "$TMP/freq"
+
+found_intersections=0
+while read -r line; do
+    count=$(echo "$line" | awk '{print $1}')
+    domain=$(echo "$line" | awk '{print $2}')
+    
+    if [ "$count" -gt 1 ]; then  # Только домены в 2+ файлах
+        found_intersections=1
+        # Получаем имена файлов для этого домена
+        filenames=$(grep "^$domain|" "$TMP/all_domains" | cut -d'|' -f3 | sort -u | tr '\n' ' ' | sed 's/ $//')
+        echo "$domain встречается в $count файлах: $filenames"
+    fi
+done < "$TMP/freq"
+
+if [ "$found_intersections" -eq 0 ]; then
+    echo "Нет пересекающихся доменов между файлами"
+fi
+
+# Анализ 3: Попарные пересечения с именами (ТОЛЬКО если есть пересечения)
+echo ""
+echo "=== 3. ПОПАРНЫЕ ПЕРЕСЕЧЕНИЯ (где есть общие домены) ==="
+
+found_pairs=0
+for i in $(seq 1 $((total-1))); do
+    for j in $(seq $((i+1)) $total); do
+        name_i=$(cat "$TMP/name$i")
+        name_j=$(cat "$TMP/name$j")
+        
+        # Находим общие домены
+        common_count=$(grep -F -f "$TMP/clean$i" "$TMP/clean$j" 2>/dev/null | wc -l)
+        
+        if [ "$common_count" -gt 0 ]; then
+            found_pairs=1
+            echo ""
+            echo "$name_i ↔ $name_j: $common_count общих доменов"
+            
+            # Показываем первые 10 общих доменов
+            common_domains=$(grep -F -f "$TMP/clean$i" "$TMP/clean$j" 2>/dev/null | head -10)
+            cnt=0
+            for domain in $common_domains; do
+                cnt=$((cnt + 1))
+                echo "  $cnt. $domain"
+            done
+            
+            if [ "$common_count" -gt 10 ]; then
+                echo "  ... и еще $((common_count - 10)) доменов"
+            fi
+        fi
+    done
+done
+
+if [ "$found_pairs" -eq 0 ]; then
+    echo "Нет пар файлов с общими доменами"
+fi
+
+# Анализ 4: Статистика по файлам (ВСЕГДА показываем)
+echo ""
+echo "=== 4. СТАТИСТИКА ПО ФАЙЛАМ ==="
+for f in $(seq 1 $total); do
+    name=$(cat "$TMP/name$f")
+    total_domains=$(wc -l < "$TMP/clean$f")
+    
+    # Сколько уникальных доменов (не в других файлах)
+    unique_count=0
+    if [ -f "$TMP/clean$f" ]; then
+        # Создаем временный файл со всеми другими доменами
+        > "$TMP/other_domains"
+        for other in $(seq 1 $total); do
+            [ "$other" -eq "$f" ] && continue
+            cat "$TMP/clean$other" >> "$TMP/other_domains" 2>/dev/null
+        done
+        unique_count=$(grep -v -F -f "$TMP/other_domains" "$TMP/clean$f" | wc -l 2>/dev/null || echo 0)
+    fi
+    
+    echo "$name: $total_domains доменов (из них $unique_count уникальных)"
+done
+
+# Очистка
+rm -rf "$TMP"
+echo ""
+echo "Анализ завершен!"
