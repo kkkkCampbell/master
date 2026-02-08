@@ -2,6 +2,10 @@
 # analyzer.sh
 
 IFACE="awg10"
+. /etc/os-release
+FIRST_IN="0"
+
+
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -13,7 +17,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
 fi
 
 clear
-echo "0.0.35"
+echo "0.0.36"
 echo "Перезапускаем интерфейсы"
 sleep 8
 
@@ -26,25 +30,23 @@ cprint() {
     printf "${1}%s${CLR_OFF}" "$2"
 }
 
-. /etc/os-release
-
-
-FIRST_IN="0"
-
 # --- СПИСКИ ДЛЯ АЛЕРТОВ ---
 SAME_AS_LIST="youtube russia_inside"
 WARNING_LISTS="russia_inside russia_outside cloudflare"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
-RAW_SERVICES="zeroblock podkop sing-box zapret zapret2 youtubeUnblock ruantiblock"
+RAW_SERVICES="zeroblock podkop sing-box sing-box-tiny zapret zapret2 youtubeUnblock ruantiblock"
 
+# --- СПИСОК УСТАНОВЛЕННЫХ СЕРВИСОВ/ПРОГРАММ ---
 for pkg in $RAW_SERVICES; do
     if opkg list-installed | grep -q "^${pkg} - "; then
-        CHECKING_SERVICES="$CHECKING_SERVICES ${pkg}"
+        if [ "${pkg}" = "sing-box-tiny" ]; then
+            CHECKING_SERVICES="$CHECKING_SERVICES sing-box"
+            continue
+        fi
+		CHECKING_SERVICES="$CHECKING_SERVICES ${pkg}"
 	fi
 done
-
-echo $CHECKING_SERVICES
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 LOG_FILE="/root/analyzer.log"
@@ -313,6 +315,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
 fi
 
 # --- ЗАПУСКАЕМ РАНЕЕ ОСТАНОВЛЕННЫЕ СЕРВИСЫ
+printf "  ${YELLOW}Запускаем остановленные службы...${CLR_OFF}\n"
 for prog in $active; do
     if [ "$prog" = "zeroblock" ]; then
         /etc/init.d/zeroblock start >/dev/null 2>&1
@@ -435,12 +438,12 @@ for pkg in $CHECKING_SERVICES; do
 	if [ "$pkg" = "zeroblock" ] && [ $IS_RUNNING -eq 0 ]; then
 		logread | grep -n '\[zeroblock\] Starting ZeroBlock\.\.\.' | tail -1 | cut -d: -f1 | while read n; do logread | tail -n +$n | head -3 | sed -e 's/ daemon\.err zeroblock\[[0-9]*\]: / /' -e 's/\[config_builder\] //' -e 's/\[zeroblock\] //' -e 's/^/  /'; done
 	fi
-	
+
 	[ $IS_RUNNING -eq 0 ] && [ $IS_ENABLED -eq 0 ] && continue
-	
+# echo $pkg $IS_RUNNING $IS_ENABLED	
     ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
     tmp_p="$tmp_dir/$pkg.tmp"
-
+# echo $ACTIVE_PKGS
     # --- СЕКЦИЯ Б5.2: ПАРСИНГ ZAPRET (СПЕЦИФИЧНЫЙ) ---
     if [ "$pkg" = "zapret" ]; then
         Z_OPTS=$(uci -q get "zapret.config.NFQWS_OPT" | tr -d "'\"")
@@ -576,7 +579,7 @@ rm -rf "$tmp_dir"
 
 
 
-# --- БЛОК 6: СПИСКИ (LDDPR 5 + "СКАЛЬПЕЛЬ") ---
+# --- БЛОК 6: ГОТОВИМ СПИСКИ ОБХОДОВ/ПЕРЕСЕЧЕНИЙ ---
 
 ALL_ITEMS=""; CONFLICT_LISTS=""
 
@@ -586,9 +589,12 @@ for pkg in $ACTIVE_PKGS; do
     
     SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
     for sid in $SIDS; do
-		# Проверка активации/деактивации секции
-		s_en=$(uci get "$pkg.$sid.enabled")
-		[ $s_en -eq 0 ] && continue
+	
+		# Проверка активации/деактивации секций ZeroBlock!!!
+		s_en=$(uci -q get "$pkg.$sid.enabled")
+		if [ "${sid}" = "zeroblock" ]; then
+			[ -z "${s_en}" ] || [ $s_en -eq 0 ] && continue
+		fi
 		
         RAW=$(uci -q get "$pkg.$sid.community_lists" | tr -d "'\"" | tr ' ,' '  ')
         for item in $RAW; do
@@ -629,10 +635,14 @@ for pkg in $ACTIVE_PKGS; do
 	
 
 	for sid in $SIDS; do
-		# Проверка активации/деактивации секции
-		s_en=$(uci get "$pkg.$sid.enabled")
+	
+		# Проверка активации/деактивации секций ZeroBlock!!!
+		s_en=$(uci -q get "$pkg.$sid.enabled")
+		if [ "${sid}" = "zeroblock" ]; then
+			[ -z "${s_en}" ] || [ $s_en -eq 0 ] && continue
+		fi
 		
-		[ $s_en -eq 0 ] && continue
+		
 		RAW=$(uci -q get "$pkg.$sid.community_lists" | tr -d "'\"" | tr ' ' ',' | sed 's/,,*/,/g' | tr ',' ' ')
 		[ -z "$RAW" ] && continue
 		
@@ -728,7 +738,7 @@ fi
 if [ "$PK_AUTOSTART" -eq 1 ]; then
 	uci show podkop | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}" 
     if [ -n "$PK_VER" ]; then
-        printf "  $Версия podkop: ${PK_COLOR}%s${CLR_OFF}\n" "$PK_VER"
+        printf "  Версия podkop: ${PK_COLOR}%s${CLR_OFF}\n" "$PK_VER"
     fi
 fi
 
