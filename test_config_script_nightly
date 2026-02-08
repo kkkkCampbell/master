@@ -236,7 +236,7 @@ if [ -f /etc/init.d/zapret ]; then
 	fi
 fi
 
-printf "  ${YELLOW}Программы в автозапуске: $active${CLR_OFF}\n"
+printf "  ${YELLOW}Программы в автозапуске:$active${CLR_OFF}\n"
 
 
 
