@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.37"
+VER="0.0.38"
 
 
 ifdown "$IFACE"
@@ -336,7 +336,7 @@ for i in $(seq 1 10); do
 done
 
 # 3. Скрытый тест на резолв
-if [ "$NEED_RESOLVE_TEST" -eq 1 ]; then
+if [ $NEED_RESOLVE_TEST -eq 1 ]; then
     echo "--------------------------------------------------------------"
     printf "  ! Диагностика DNS (youtube.com):\n"
     nslookup youtube.com 2>&1 | \
@@ -375,7 +375,7 @@ for s in $CHECKING_SERVICES; do
         fi
 
         # Добавляем оркестратора в хвост
-        if [ "$CHAOS" -eq 1 ]; then 
+        if [ $CHAOS -eq 1 ]; then 
             ST_T="$ST_T (MANAGED BY CHAOS!)"; ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"
         elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then 
             ST_T="$ST_T (MANAGED BY PODKOP)"
@@ -423,6 +423,7 @@ echo "= ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ КОНФИГУРА
 tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
 ACTIVE_PKGS=""
 
+ZB_ERR=0
 
 for pkg in $CHECKING_SERVICES; do
     # # Проверка на существование
@@ -433,10 +434,11 @@ for pkg in $CHECKING_SERVICES; do
 	# исключение для ZB
     IS_RUNNING=0; /etc/init.d/$pkg status 2>/dev/null | grep -q "running" && IS_RUNNING=1
     IS_ENABLED=0; /etc/init.d/$pkg enabled 2>/dev/null && IS_ENABLED=1
-	
+
 	# выводим лог с возможной причиной незапуска ЗероБлок
 	if [ "$pkg" = "zeroblock" ] && [ $IS_RUNNING -eq 0 ]; then
 		logread | grep -n '\[zeroblock\] Starting ZeroBlock\.\.\.' | tail -1 | cut -d: -f1 | while read n; do logread | tail -n +$n | head -3 | sed -e 's/ daemon\.err zeroblock\[[0-9]*\]: / /' -e 's/\[config_builder\] //' -e 's/\[zeroblock\] //' -e 's/^/  /'; done
+		ZB_ERR=1
 	fi
 
 	[ $IS_RUNNING -eq 0 ] && [ $IS_ENABLED -eq 0 ] && continue
@@ -723,7 +725,7 @@ if [ $PK_INST -eq 1 ]; then
 	ZB_AUTOSTART=0
 	echo "$active" | grep -q "podkop" && PK_AUTOSTART=1
 	echo "$active" | grep -q "zeroblock" && ZB_AUTOSTART=1
-	if [ "$PK_AUTOSTART" -eq 1 ]; then
+	if [ $PK_AUTOSTART -eq 1 ]; then
     # Выводим DNS, только если там не пусто
 		if [ -n "$PK_DNS" ] || [ -n "$PK_B_DNS" ]; then
 			[ -n "$PK_DNS" ] && printf "  podkop DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "$PK_DNS"
@@ -735,14 +737,14 @@ fi
 
 
 # Печатаем допданные в конце вывода блока (надо же как-то скрипт обновлять...)
-if [ "$PK_AUTOSTART" -eq 1 ]; then
+if [ $PK_AUTOSTART -eq 1 ]; then
 	uci show podkop | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}" 
     if [ -n "$PK_VER" ]; then
         printf "  Версия podkop: ${PK_COLOR}%s${CLR_OFF}\n" "$PK_VER"
     fi
 fi
 
-if [ "$ZB_AUTOSTART" -eq 1 ]; then
+if [ $ZB_AUTOSTART -eq 1 ]; then
 	_ZB_json="/tmp/zeroblock_status.json"
 	# Ищем catch-all секции
 	if [ -f "$_ZB_json" ]; then
@@ -763,7 +765,8 @@ fi
 
 # --- БЛОК DNS ZEROBLOCK ---
 
-if [ "$pkg" = "zeroblock" ] && [ $IS_RUNNING -eq 1 ]; then
+#  && [ $IS_RUNNING -eq 1 ]
+if [ $ZB_AUTOSTART -eq 1 ] || [ $ZB_ERR -eq 1 ]; then
 	ZB_DNS=$(uci -q get "zeroblock.settings.dns_server")
 	ZB_B_DNS=$(uci -q get "zeroblock.settings.bootstrap_dns_server")
 	# Выводим DNS, только если там не пусто
