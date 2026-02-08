@@ -3,16 +3,17 @@
 
 IFACE="awg10"
 
-ifdown awg10
+ifdown "$IFACE"
+service opera-proxy restart
+ifup "$IFACE"
+
 mkdir -p /opt/zapret2/scriptarchive
 if [ -d "/sys/class/net/$IFACE" ]; then
 	mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2&>1
 fi
-ifup awg10
-service opera-proxy restart
 
 clear
-echo "0.0.34"
+echo "0.0.35"
 echo "Перезапускаем интерфейсы"
 sleep 8
 
@@ -35,7 +36,15 @@ SAME_AS_LIST="youtube russia_inside"
 WARNING_LISTS="russia_inside russia_outside cloudflare"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
-CHECKING_SERVICES="zeroblock podkop sing-box zapret zapret2 youtubeUnblock ruantiblock"
+RAW_SERVICES="zeroblock podkop sing-box zapret zapret2 youtubeUnblock ruantiblock"
+
+for pkg in $RAW_SERVICES; do
+    if opkg list-installed | grep -q "^${pkg} - "; then
+        CHECKING_SERVICES="$CHECKING_SERVICES ${pkg}"
+	fi
+done
+
+echo $CHECKING_SERVICES
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 LOG_FILE="/root/analyzer.log"
@@ -413,9 +422,9 @@ ACTIVE_PKGS=""
 
 
 for pkg in $CHECKING_SERVICES; do
-    # Проверка на существование
-    [ -f "/etc/init.d/$pkg" ] || continue
-    [ -f "/etc/config/$pkg" ] || continue
+    # # Проверка на существование
+	# [ -f "/etc/rc.d/S??$pkg" ] || continue
+	# [ -f "/etc/config/$pkg" ] || continue
 
     # Правило: Нет сервиса или он STOPPED + DISABLED — не тестируем
 	# исключение для ZB
