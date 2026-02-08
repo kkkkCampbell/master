@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.38"
+VER="0.0.39"
 
 
 ifdown "$IFACE"
@@ -594,7 +594,7 @@ for pkg in $ACTIVE_PKGS; do
 	
 		# Проверка активации/деактивации секций ZeroBlock!!!
 		s_en=$(uci -q get "$pkg.$sid.enabled")
-		if [ "${sid}" = "zeroblock" ]; then
+		if [ "${pkg}" = "zeroblock" ]; then
 			[ -z "${s_en}" ] || [ $s_en -eq 0 ] && continue
 		fi
 		
@@ -640,7 +640,7 @@ for pkg in $ACTIVE_PKGS; do
 	
 		# Проверка активации/деактивации секций ZeroBlock!!!
 		s_en=$(uci -q get "$pkg.$sid.enabled")
-		if [ "${sid}" = "zeroblock" ]; then
+		if [ "${pkg}" = "zeroblock" ]; then
 			[ -z "${s_en}" ] || [ $s_en -eq 0 ] && continue
 		fi
 		
@@ -765,7 +765,7 @@ fi
 
 # --- БЛОК DNS ZEROBLOCK ---
 
-#  && [ $IS_RUNNING -eq 1 ]
+# [ $IS_ENABLED -eq 1 ] && [ $IS_RUNNING -eq 1 ]
 if [ $ZB_AUTOSTART -eq 1 ] || [ $ZB_ERR -eq 1 ]; then
 	ZB_DNS=$(uci -q get "zeroblock.settings.dns_server")
 	ZB_B_DNS=$(uci -q get "zeroblock.settings.bootstrap_dns_server")
