@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-
+VER="0.0.37"
 
 
 ifdown "$IFACE"
@@ -17,7 +17,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
 fi
 
 clear
-echo "0.0.36"
+echo "${VER}"
 echo "Перезапускаем интерфейсы"
 sleep 8
 
@@ -763,7 +763,7 @@ fi
 
 # --- БЛОК DNS ZEROBLOCK ---
 
-if [ "$pkg" = "zeroblock" ] && [ $IS_RUNNING -eq 0 ]; then
+if [ "$pkg" = "zeroblock" ] && [ $IS_RUNNING -eq 1 ]; then
 	ZB_DNS=$(uci -q get "zeroblock.settings.dns_server")
 	ZB_B_DNS=$(uci -q get "zeroblock.settings.bootstrap_dns_server")
 	# Выводим DNS, только если там не пусто
