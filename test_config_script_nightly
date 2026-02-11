@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.40"
+VER="0.0.41"
 
 
 ifdown "$IFACE"
@@ -35,7 +35,7 @@ SAME_AS_LIST="youtube russia_inside googlevideo"
 WARNING_LISTS="russia_inside russia_outside cloudflare"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
-RAW_SERVICES="zeroblock podkop sing-box sing-box-tiny zapret zapret2 youtubeUnblock ruantiblock"
+RAW_SERVICES="zeroblock podkop sing-box sing-box-tiny zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
 
 # --- СПИСОК УСТАНОВЛЕННЫХ СЕРВИСОВ/ПРОГРАММ ---
 for pkg in $RAW_SERVICES; do
