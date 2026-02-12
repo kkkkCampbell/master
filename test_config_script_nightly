@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.41"
+VER="0.0.42"
 
 
 ifdown "$IFACE"
@@ -298,9 +298,9 @@ printf "  ${YELLOW}Программы в автозапуске:$active${CLR_OFF
 
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
 
-TEST_URL="https://youtube.com"
+TEST_URL="https://www.youtube.com"
 echo ""
-echo "= ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM):"
+echo "= ПРОВЕРКА ДОСТУПОВ (WWW.YOUTUBE.COM):"
 
 # Инициализируем флаг нулем в самом начале
 NEED_RESOLVE_TEST=0
