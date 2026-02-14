@@ -1,4 +1,5 @@
 #!/bin/sh
+clear
 
 INPUT_LOG="/tmp/url.log"
 OUTPUT_LOG="/tmp/blocked.log"
