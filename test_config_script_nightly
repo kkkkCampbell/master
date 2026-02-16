@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.45"
+VER="0.0.46"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -842,9 +842,10 @@ fi
 if [ $ZB_AUTOSTART -eq 1 ] || [ $ZB_ERR -eq 1 ]; then
     ZB_DNS=$(uci -q get "zeroblock.settings.dns_server")
     ZB_B_DNS=$(uci -q get "zeroblock.settings.bootstrap_dns_server")
+	ZB_TYPE_DNS=$(uci -q get "zeroblock.settings.dns_type")
     # Выводим DNS, только если там не пусто
     if [ -n "$ZB_DNS" ] || [ -n "$ZB_B_DNS" ]; then
-        [ -n "$ZB_DNS" ] && printf "  zeroblock DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "$ZB_DNS"
+        [ -n "$ZB_DNS" ] && printf "  zeroblock DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "(${ZB_TYPE_DNS}) $ZB_DNS"
         [ -n "$ZB_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$ZB_B_DNS"
     fi
     # --- Статус пользовательских скриптов zapret2 (1 - включено, 0 - выключено). Могут ломать awg10.
