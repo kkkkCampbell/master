@@ -719,10 +719,10 @@ for pkg in $ACTIVE_PKGS; do
         [ -z "$RAW" ] && continue
 
         # Получаем данные исходящего канала секции
-        _conn_type=$(uci get "$pkg.$sid.connection_type")
+        _conn_type=$(uci -q get "$pkg.$sid.connection_type")
         if [ "$_conn_type" = "proxy" ]; then
 			_conn_type=""
-			_conn_url=$(uci get "$pkg.$sid.proxy_config_type")
+			_conn_url=$(uci -q get "$pkg.$sid.proxy_config_type")
 			[ -z "${_conn_url}" ] && _conn_url="ND!"
 			_conn_type=$(echo "prx ${_conn_url}" | cut -c 1-7)
 
