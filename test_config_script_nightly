@@ -685,7 +685,7 @@ if [ -f "$CONF_Z" ]; then
         done
     done
 fi
-# rm -rf "$tmp_dir"
+rm -rf "$tmp_dir"
 
 
 
