@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.44"
+VER="0.0.45"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -354,7 +354,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
 fi
 
 # --- ЗАПУСКАЕМ РАНЕЕ ОСТАНОВЛЕННЫЕ СЕРВИСЫ
-printf "  ${YELLOW}Запускаем остановленные службы...${CLR_OFF}\n"
+printf "  ${YELLOW}Запускаем остановленные службы, ожидайте...${CLR_OFF}\n"
 for prog in $active; do
     if [ "$prog" = "zeroblock" ]; then
         /etc/init.d/zeroblock start >/dev/null 2>&1
@@ -719,11 +719,17 @@ for pkg in $ACTIVE_PKGS; do
         [ -z "$RAW" ] && continue
 
         # Получаем данные исходящего канала секции
-        _conn_type=$(uci get "$pkg"."$sid".connection_type)
-        if [ "$_conn_type" = "proxy" ]; then _conn_type="prx"; fi
+        _conn_type=$(uci get "$pkg.$sid.connection_type")
+        if [ "$_conn_type" = "proxy" ]; then
+			# Получаем url vless итп, только в информационных целях
+			_conn_type=""
+			_conn_url=$(uci get "$pkg.$sid.proxy_string")
+			_conn_type=$(echo "prx ${_conn_url}" | cut -c 1-7)
+		fi
 
-        printf "  %-4s списки %+11s " "$pkg" "${sid}"
-        printf  "${_conn_type}"": "
+		# Выводим на экран "программа имя_списка (тип_соединения)"
+		printf "  %-4s %25s " "$pkg" "${sid} (${_conn_type}):"
+        # printf  "(${_conn_type}): "
         FIRST=1
         for item in $RAW; do
             [ $FIRST -eq 0 ] && printf "${CYAN},${CLR_OFF}"
