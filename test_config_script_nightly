@@ -721,10 +721,16 @@ for pkg in $ACTIVE_PKGS; do
         # Получаем данные исходящего канала секции
         _conn_type=$(uci get "$pkg.$sid.connection_type")
         if [ "$_conn_type" = "proxy" ]; then
-			# Получаем url vless итп, только в информационных целях
 			_conn_type=""
-			_conn_url=$(uci get "$pkg.$sid.proxy_string")
+			_conn_url=$(uci get "$pkg.$sid.proxy_config_type")
+			[ -z "${_conn_url}" ] && _conn_url="ND!"
 			_conn_type=$(echo "prx ${_conn_url}" | cut -c 1-7)
+
+
+# # Получаем url vless итп, только в информационных целях
+# _conn_type=""
+# _conn_url=$(uci get "$pkg.$sid.proxy_string")
+# _conn_type=$(echo "prx ${_conn_url}" | cut -c 1-7)
 		fi
 
 		# Выводим на экран "программа имя_списка (тип_соединения)"
