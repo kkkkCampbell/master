@@ -4,16 +4,16 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.46"
+VER="0.0.47"
 
 ifdown "$IFACE"
 service opera-proxy restart
 ifup "$IFACE"
 
-mkdir -p /opt/zapret2/scriptarchive
-if [ -d "/sys/class/net/$IFACE" ]; then
-    mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2>&1
-fi
+# mkdir -p /opt/zapret2/scriptarchive
+# if [ -d "/sys/class/net/$IFACE" ]; then
+    # mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2>&1
+# fi
 
 clear
 echo "${VER}"
@@ -31,7 +31,7 @@ cprint() {
 
 # --- СПИСКИ ДЛЯ АЛЕРТОВ ---
 SAME_AS_LIST="youtube russia_inside googlevideo"
-WARNING_LISTS="russia_inside russia_outside cloudflare"
+WARNING_LISTS="russia_inside russia_outside cloudflare cdn_cloudflare"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
 RAW_SERVICES="zeroblock podkop sing-box sing-box-tiny zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
@@ -144,6 +144,9 @@ check_userlists() {
                 for param in user_domains user_domains_text; do
                     uci -q get "$pkg.$section.$param" 2>/dev/null | tr ',; \t' '\n' | grep -v '^$' | \
                     while read domain; do
+						# Проверка на комментарии
+						echo "$domain" | grep -q "#" && continue
+						echo "$domain" | grep -q "//" && continue
                         echo "$domain $section"
                     done
                 done
