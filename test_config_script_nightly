@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.47"
+VER="0.0.48"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -532,6 +532,9 @@ for pkg in $CHECKING_SERVICES; do
         opt_path="${line%%=*}" # получаем полное наименование uci.параметра
         s_name=$(echo "$line" | cut -d. -f2) # получаем имя секции в конфиге
 
+		# Проверка на server_community_lists
+		echo "$opt_path" | grep -q "server_community_lists" && continue
+
         # При проверке ютубанблока формат записи конфига в uci иной
         if [ "$pkg" = "youtubeUnblock" ]; then
             s_name=$(uci get "$pkg.$s_name.name")
@@ -838,7 +841,9 @@ if [ $ZB_AUTOSTART -eq 1 ]; then
     fi
 
     ZB_VER=$(zeroblock --version 2>/dev/null)
-    uci show zeroblock | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}"
+    uci show zeroblock | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}" && \
+	printf "  " && uci show zeroblock | grep "fully_routed_ips"
+
     if [ -n "$ZB_VER" ]; then
         ZB_VER=$(echo "$ZB_VER" | sed 's/^ZeroBlock v//')
         printf "  Версия zeroblock: ${PK_COLOR}%s${CLR_OFF}\n" "$ZB_VER"
