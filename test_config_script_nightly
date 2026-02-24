@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.48"
+VER="0.0.49"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -181,6 +181,11 @@ check_userlists() {
 
 echo ""
 
+
+
+
+
+
 # --- НАКРУЧИВАЕМ СЧЁТЧИКИ AWG10 ---
 
 TEST_URL="http://speedtest.tele2.net/10MB.zip"
@@ -198,6 +203,12 @@ LAN_IP=$(ip addr show br-lan 2>/dev/null | grep -w inet | awk '{print $2}' | cut
 [ -z "$LAN_IP" ] && LAN_IP=$(uci -q get "network.lan.ipaddr")
 NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
 
+
+
+
+
+
+
 # --- БЛОК 1: ПРОВЕРКА DNS ---
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
@@ -212,6 +223,11 @@ FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "
 YT_IP=$(nslookup youtube.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}" "${FB_IP:-UNKNOWN} | "
 printf "YouTube IP:  ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
+
+
+
+
+
 
 # --- БЛОК 2: ИНТЕРФЕЙС awg10 (ДЕТАЛИ) ---
 NEED_RESOLVE_TEST=0
@@ -251,6 +267,12 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     fi
 fi
 
+
+
+
+
+
+
 # --- ОПРЕДЕЛЯЕМ СОСТОЯНИЕ СЕРВИСОВ И ОСТАНАВЛИВАЕМ МЕШАЮЩИЕ ---
 active=""
 [ -f /etc/init.d/zeroblock ] && /etc/init.d/zeroblock stop >/dev/null 2>&1
@@ -284,8 +306,13 @@ fi
 
 printf "  ${YELLOW}Программы в автозапуске:$active${CLR_OFF}\n"
 
-# --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
 
+
+
+
+
+
+# --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
 TEST_URL="https://www.youtube.com"
 echo ""
 echo "= ПРОВЕРКА ДОСТУПОВ (WWW.YOUTUBE.COM):"
@@ -293,13 +320,20 @@ echo "= ПРОВЕРКА ДОСТУПОВ (WWW.YOUTUBE.COM):"
 # Инициализируем флаг нулем в самом начале
 NEED_RESOLVE_TEST=0
 
+
 # 1. Проверка OPERA
-P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 "$TEST_URL"| head -n 1 | tr -d '\r\n')
-if [ -n "$P_CODE" ]; then
-    printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
-else
-    printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
-    NEED_RESOLVE_TEST=1
+
+# Если опера-прокси установлена, проверям доступ через опера-прокси
+if opkg list-installed | grep -q "^opera-proxy"; then
+
+	P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 "$TEST_URL"| head -n 1 | tr -d '\r\n')
+	if [ -n "$P_CODE" ]; then
+		printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
+	else
+		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
+		NEED_RESOLVE_TEST=1
+	fi
+
 fi
 
 # 2. Проверка интерфейса awg10
