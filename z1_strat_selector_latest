@@ -1,0 +1,149 @@
+#!/bin/sh
+
+# Путь к файлу конфигурации
+CONFIG_FILE="/opt/strategy_selector/strategy"
+mkdir -p "/opt/strategy_selector/"
+
+[ ! -f "$CONFIG_FILE" ] && wget -O "$CONFIG_FILE" https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/z1_strat_selector/strategy_latest
+
+# Функция для получения списка секций из файла
+get_sections() {
+    grep -E '^\[.*\]$' "$CONFIG_FILE" | sed 's/\[\(.*\)\]/\1/'
+}
+
+# Функция для подсчета количества секций
+count_sections() {
+    get_sections | wc -l
+}
+
+# Функция для чтения конкретной секции
+read_section() {
+    local section="$1"
+    local in_section=0
+    
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Пропускаем пустые строки
+        # [ -z "$line" ] && continue
+        
+        # Проверяем начало нужной секции
+        if echo "$line" | grep -q "^\[$section\]"; then
+            in_section=1
+            continue
+        fi
+        
+        # Проверяем начало другой секции
+        if echo "$line" | grep -q "^\[.*\]"; then
+            if [ $in_section -eq 1 ]; then
+                break
+            fi
+            continue
+        fi
+        
+        # Выводим содержимое текущей секции
+        if [ $in_section -eq 1 ]; then
+            echo "$line"
+        fi
+    done < "$CONFIG_FILE"
+}
+
+# Проверяем существование файла
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Ошибка: Файл $CONFIG_FILE не найден!" >&2
+    exit 1
+fi
+
+# Проверяем, есть ли секции в файле
+SECTION_COUNT=$(count_sections)
+if [ $SECTION_COUNT -eq 0 ]; then
+    echo "Ошибка: В файле $CONFIG_FILE нет секций!" >&2
+    exit 1
+fi
+
+# Сохраняем секции в массив (для ASH используем временный файл)
+TEMP_SECTIONS="/tmp/sections.$$"
+get_sections > "$TEMP_SECTIONS"
+
+# Основной цикл программы
+while true; do
+    clear
+    echo "=== МЕНЮ ВЫБОРА СТРАТЕГИИ ==="
+    echo ""
+    
+    i=1  # Убрали local
+    while read section; do
+        echo "  $i. $section"
+        i=$((i + 1))
+    done < "$TEMP_SECTIONS"
+    
+    echo ""
+    echo "  999. Выход"
+    echo ""
+    
+    echo -n "Выберите стратегию (1-$SECTION_COUNT или 999 для выхода): "
+    read choice
+    
+    # Проверка на выход
+    if [ "$choice" = "999" ]; then
+        echo "Выход из программы."
+        rm -f "$TEMP_SECTIONS"
+        exit 0
+    fi
+    
+    # Проверка, что ввод - число
+    if ! echo "$choice" | grep -q '^[0-9]\+$'; then
+        echo "Ошибка: Введите число!"
+        echo "Нажмите Enter для продолжения..."
+        read dummy
+        continue
+    fi
+    
+    # Проверка диапазона
+    if [ "$choice" -lt 1 ] || [ "$choice" -gt "$SECTION_COUNT" ]; then
+        echo "Ошибка: Неверный номер стратегии! Введите число от 1 до $SECTION_COUNT"
+        echo "Нажмите Enter для продолжения..."
+        read dummy
+        continue
+    fi
+    
+    # Получаем название выбранной секции
+    selected_section=$(sed -n "${choice}p" "$TEMP_SECTIONS")
+    
+    clear
+    echo "=== СТРАТЕГИЯ: $selected_section ==="
+    echo ""
+    
+    # Читаем содержимое секции
+    section_content=$(read_section "$selected_section")
+	
+    # Выводим содержимое
+    echo "$section_content"
+    echo ""
+
+	service zapret stop
+	
+    # Импортируем в UCI
+    echo "Импорт в UCI..."
+    (echo "package zapret"; echo ""; echo "${section_content}") | uci import
+    uci commit zapret
+
+	# Экспортируем в файл
+	(echo ""; echo "${section_content}") >/etc/config/zapret
+cd /opt/zapret
+	sync_config.sh
+	#/opt/zapret/restore-def-cfg.sh
+	#/opt/zapret/renew-cfg.sh
+	sleep 3
+	service zapret start
+	
+    # # Показываем результат
+    # echo ""
+    # echo "Результат импорта:"
+    # uci show "$selected_section"
+    
+    echo ""
+    echo "Нажмите Enter для возврата в меню..."
+    read dummy
+done
+
+# Очистка временного файла при выходе
+rm -f "$TEMP_SECTIONS"
