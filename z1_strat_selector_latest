@@ -4,7 +4,7 @@
 CONFIG_FILE="/opt/strategy_selector/strategy"
 mkdir -p "/opt/strategy_selector/"
 
-[ ! -f "$CONFIG_FILE" ] && wget -O "$CONFIG_FILE" https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/z1_strat_selector/strategy_latest
+[ ! -f "$CONFIG_FILE" ] && wget -O "$CONFIG_FILE" https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/z1_strat_selector/strategy
 
 # Функция для получения списка секций из файла
 get_sections() {
