@@ -25,6 +25,8 @@ BMAGENTA='\033[95m'
 BCYAN='\033[96m'
 BWHITE='\033[97m'
 
+CURR_STRAT="???"
+
 # Путь к файлу конфигурации
 CONFIG_FILE="/opt/strategy_selector/strategy"
 mkdir -p "/opt/strategy_selector/"
@@ -116,10 +118,15 @@ filter_mark_correction
 # Основной цикл программы
 while true; do
     clear
-    echo "=== МЕНЮ ВЫБОРА СТРАТЕГИИ ==="
     echo ""
-    
-    i=1  # Убрали local
+    echo ""
+    echo "   === МЕНЮ ВЫБОРА СТРАТЕГИИ ==="
+    echo ""
+	printf "    Действующая стратегия: "
+	clrd_print warn "${CURR_STRAT}"
+    echo ""
+	
+    i=1
     while read section; do
         echo "  $i. $section"
         i=$((i + 1))
@@ -180,7 +187,7 @@ while true; do
     
     # Получаем название выбранной секции
     selected_section=$(sed -n "${choice}p" "$TEMP_SECTIONS")
-    
+    CURR_STRAT="${selected_section}"
     clear
     clrd_print info "=== СТРАТЕГИЯ: $selected_section ==="
     echo ""
@@ -243,7 +250,7 @@ fi
     
     echo ""
     echo "Нажмите Enter для возврата в меню..."
-    read dummy
+    read -t 5 dummy
 done
 
 # Очистка временного файла при выходе
