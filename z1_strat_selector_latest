@@ -224,7 +224,7 @@ while true; do
 clrd_print info  "Перезапускаем запрет."
 clrd_print info  "Лог запуска запрет:"
 echo ""
-restart_output=$(service zapret reload 2>&1)
+restart_output=$(service zapret restart 2>&1)
 
 echo "$restart_output"
 
