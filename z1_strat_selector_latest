@@ -1,10 +1,53 @@
 #!/bin/sh
 
+# Сброс цвета
+NC='\033[0m'
+
+# Цвета
+RED='\033[31m'
+GREEN='\033[32m'
+YELLOW='\033[33m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+CYAN='\033[36m'
+WHITE='\033[37m'
+
+# Яркие
+BRED='\033[91m'    # Светло-красный
+BGREEN='\033[92m'
+BYELLOW='\033[93m'
+BBLUE='\033[94m'
+BMAGENTA='\033[95m'
+BCYAN='\033[96m'
+BWHITE='\033[97m'
+
 # Путь к файлу конфигурации
 CONFIG_FILE="/opt/strategy_selector/strategy"
 mkdir -p "/opt/strategy_selector/"
 
-[ ! -f "$CONFIG_FILE" ] && wget -O "$CONFIG_FILE" https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/z1_strat_selector/strategy
+# Скачиваем стратегии, если их нет
+[ ! -f "$CONFIG_FILE" ] && wget -qO "$CONFIG_FILE" https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/z1_strat_selector/strategy
+
+filter_mark_correction() {
+	sed -i 's/^[[:space:]]*option FILTER_MARK .*/option FILTER_MARK '\''	'\''/' "${CONFIG_FILE}"
+}
+
+clrd_print() {
+    case "$1" in
+        info)
+            echo -e "${GREEN}$2${NC}"
+            ;;
+        err)
+            echo -e "${BRED}$2${NC}"
+            ;;
+        warn)
+            echo -e "${YELLOW}$2${NC}"
+            ;;
+        *)
+            echo "$2"
+            ;;
+    esac
+}
 
 # Функция для получения списка секций из файла
 get_sections() {
@@ -63,6 +106,9 @@ fi
 TEMP_SECTIONS="/tmp/sections.$$"
 get_sections > "$TEMP_SECTIONS"
 
+# Правим FILTER_MARK
+filter_mark_correction
+
 # Основной цикл программы
 while true; do
     clear
@@ -76,12 +122,35 @@ while true; do
     done < "$TEMP_SECTIONS"
     
     echo ""
+    echo "  888. Обновить стратегии"
     echo "  999. Выход"
     echo ""
     
     echo -n "Выберите стратегию (1-$SECTION_COUNT или 999 для выхода): "
     read choice
-    
+	
+	# Проверка на обновление стратегий
+	if [ "$choice" = "888" ]; then
+		clrd_print info "Обновляем стратегии..."
+		
+		# Качаем
+		if wget -qO "$CONFIG_FILE" https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/z1_strat_selector/strategy; then
+			# Правим FILTER_MARK
+			filter_mark_correction
+			clrd_print info "Стратегии обновлены."
+		else
+			clrd_print err "Ошибка загрузки стратегий!"
+		fi
+
+		if [ -z "$(cat $CONFIG_FILE)" ]; then
+			clrd_print warn "Файл стратегий ${CONFIG_FILE} пустой или содержит только пробельные символы!"
+		fi
+
+		echo ""; echo "Нажмите Enter для продолжения..."
+		read dummy
+		continue
+	fi
+	
     # Проверка на выход
     if [ "$choice" = "999" ]; then
         echo "Выход из программы."
@@ -109,31 +178,59 @@ while true; do
     selected_section=$(sed -n "${choice}p" "$TEMP_SECTIONS")
     
     clear
-    echo "=== СТРАТЕГИЯ: $selected_section ==="
+    clrd_print info "=== СТРАТЕГИЯ: $selected_section ==="
     echo ""
     
     # Читаем содержимое секции
     section_content=$(read_section "$selected_section")
-	
-    # Выводим содержимое
-    echo "$section_content"
-    echo ""
+	section_content=$(printf "%s" "$section_content" | tr -d '\r')
 
-	service zapret stop
-	
-    # Импортируем в UCI
-    echo "Импорт в UCI..."
-    (echo "package zapret"; echo ""; echo "${section_content}") | uci import
-    uci commit zapret
+    # Выводим содержимое
+    # echo "$section_content"
+    # echo ""
+
+	# Импортируем в UCI
+	clrd_print info "Импорт в UCI..."
+
+	# Сохраняем вывод и код возврата
+	import_output=$( (echo "package zapret"; echo ""; echo "${section_content}") | uci import 2>&1 )
+	import_status=$?
+
+	uci commit zapret 2>/dev/null
+
+	if [ $import_status -eq 0 ] && [ -z "$import_output" ]; then
+		clrd_print info "Импорт прошёл без ошибок."
+	else
+		clrd_print err "Ошибка импорта:"
+		echo "$import_output"
+	fi
 
 	# Экспортируем в файл
 	(echo ""; echo "${section_content}") >/etc/config/zapret
-cd /opt/zapret
-	sync_config.sh
+
+	cd /opt/zapret
+	# ls
+	
+	sh sync_config.sh
 	#/opt/zapret/restore-def-cfg.sh
 	#/opt/zapret/renew-cfg.sh
 	sleep 3
-	service zapret start
+
+# Запускаем рестарт и ловим вывод
+clrd_print info  "Перезапускаем запрет."
+clrd_print info  "Лог запуска запрет:"
+echo ""
+restart_output=$(service zapret reload 2>&1)
+
+echo "$restart_output"
+
+# Ищем признаки ошибки
+if echo "$restart_output" | grep -qi "unexpected !="; then
+    clrd_print info "Ошибка в стратегии, проверьте внимательно!"
+else
+	echo ""
+    clrd_print info "Стратегия изменена. Явные ошибки не обнаружены. Проверяйте доступ к ютуб."
+fi
 	
     # # Показываем результат
     # echo ""
