@@ -295,6 +295,13 @@ if [ -f /etc/init.d/zapret2 ]; then
     fi
 fi
 
+# youtubeUnblock
+if [ -f /etc/init.d/youtubeUnblock ]; then
+    if /etc/init.d/youtubeUnblock status | grep -q "running"; then
+        active="$active youtubeUnblock"
+    fi
+fi
+
 # service zapret status
 if [ -f /etc/init.d/zapret ]; then
     output=$(/etc/init.d/zapret status) >/dev/null 2>&1
