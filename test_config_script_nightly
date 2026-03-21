@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.51"
+VER="0.0.52"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -225,6 +225,34 @@ printf "YouTube IP:  ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
 
 
 
+# --- СОБИРАЕМ СПИСОК ЗАПУЩЕННЫХ СЕРВИСОВ ---
+runned=""
+for s in $RAW_SERVICES; do
+    # init.d status check
+    status=$(/etc/init.d/$s status 2>/dev/null | head -1)
+    case "$status" in
+        *running)
+            runned="$runned $s"
+            continue
+            ;;
+        *not\ running*)
+            runned="$runned $s"
+            continue
+            ;;
+        *inactive*)
+            continue
+            ;;
+    esac
+    
+    # fallback checks if init.d status gave no clear result
+    if pidof "$s" >/dev/null 2>&1 || \
+       pgrep -f "$s" >/dev/null 2>&1 || \
+       ubus call service list 2>/dev/null | grep -q "\"$s\""; then
+        runned="$runned $s"
+    fi
+done
+runned="${runned# }"
+# echo "$runned"
 
 
 
@@ -239,6 +267,11 @@ for pkg in $CHECKING_SERVICES; do
 done
 /etc/init.d/opera-proxy start # Запускаем opera-proxy (так проще :))
 sleep 1
+
+
+
+
+
 
 # Проверяем сервисы в автозапуске. Все с автозапуском вносим в $active
 # вне зависимости от их состояния. Необходимо получить информацию о том
@@ -384,7 +417,8 @@ fi
 # есть в переменной $active и тем самым
 # приводим роутер к состоянию 'после перезагрузки'
 printf "  ${YELLOW}Запускаем остановленные службы, ожидайте...${CLR_OFF}\n"
-for pkg in $active; do
+#for pkg in $active; do
+for pkg in $runned; do
   if [ "${pkg}" == "sing-box" ]; then continue; fi
   /etc/init.d/${pkg} start 1>/dev/null 2>&1
 done
@@ -395,6 +429,9 @@ for i in $(seq 1 10); do
     fi
     sleep 1
 done
+
+
+
 [ $NEED_RESOLVE_TEST -eq 1 ] && sleep 5
 
 # 3. Скрытый тест на резолв
