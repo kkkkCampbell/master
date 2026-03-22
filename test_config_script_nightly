@@ -225,10 +225,19 @@ printf "YouTube IP:  ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
 
 
 
+
+
+
+
+
+
+
+
 # --- СОБИРАЕМ СПИСОК ЗАПУЩЕННЫХ СЕРВИСОВ ---
 runned=""
-for s in $RAW_SERVICES; do
+for s in $CHECKING_SERVICES; do
     # init.d status check
+	[ ! -f /etc/init.d/${s} ] && continue
     status=$(/etc/init.d/$s status 2>/dev/null | head -1)
     case "$status" in
         *running)
@@ -253,6 +262,9 @@ for s in $RAW_SERVICES; do
 done
 runned="${runned# }"
 # echo "$runned"
+
+
+
 
 
 
