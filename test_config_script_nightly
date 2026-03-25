@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.52"
+VER="0.0.53"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -277,7 +277,7 @@ active=""
 for pkg in $CHECKING_SERVICES; do
 	[ -f /etc/init.d/${pkg} ] && /etc/init.d/${pkg} stop >/dev/null 2>&1
 done
-/etc/init.d/opera-proxy start # Запускаем opera-proxy (так проще :))
+[ -f /etc/init.d/opera-proxy ] && /etc/init.d/opera-proxy start # Запускаем opera-proxy (так проще :))
 sleep 1
 
 
@@ -457,11 +457,20 @@ if [ $NEED_RESOLVE_TEST -eq 1 ]; then
     echo "--------------------------------------------------------------"
 fi
 
+
+
+
+
+
+
 # --- БЛОК 4: СТАТУС СЛУЖБ ---
 echo ""
 echo "= СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБРАЖАЮТСЯ):"
 # echo "=============================================================="
 ZB_RUN=0; zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
+# Если есть таблица "PodkopTable", знаяит подкоп запущен
+PK_RUN=0; nft list tables 2>/dev/null | grep -q "PodkopTable" && PK_RUN=1
+
 PK_INST=0; [ -f "/etc/init.d/podkop" ] && PK_INST=1
 PK_AUTOSTART=0; echo $active | grep -q "podkop" && PK_AUTOSTART=1
 ZB_AUTOSTART=0; echo $active | grep -q "zeroblock" && ZB_AUTOSTART=1
@@ -490,9 +499,9 @@ for s in $CHECKING_SERVICES; do
             ST_T="$ST_T (MANAGED BY ZB)"
         fi
 
-        # Статус подкопа определяется по статусу sing-box
+        # Статус подкопа, запущен/нет
         if [ "$s" = "podkop" ]; then
-            if [ -n "$(pidof sing-box)" ]; then
+            if [ "$PK_RUN" == "1" ]; then
                 ST_T="RUNNING"; ST_C="${GREEN}"
             fi
         fi
@@ -830,7 +839,26 @@ for pkg in $ACTIVE_PKGS; do
     done
 done
 
+
+
+
+
+
+
+
+
 # --- БЛОК ДОПОЛНИТЕЛЬНОЙ ИНФОРМАЦИИ (ПЕРЕСЕЧЕНИЯ) ---
+
+PK_AUTOSTART=0
+ZB_AUTOSTART=0
+PK_RUNNED=0
+ZB_RUNNED=0
+
+echo "$active" | grep -q "podkop" && PK_AUTOSTART=1
+echo "$active" | grep -q "zeroblock" && ZB_AUTOSTART=1
+echo "$runned" | grep -q "podkop" && PK_RUNNED=1
+echo "$runned" | grep -q "zeroblock" && ZB_RUNNED=1
+
 
 if [ $PK_INST -eq 1 ]; then
     # 1. Получаем DNS настройки
@@ -874,10 +902,7 @@ if [ $PK_INST -eq 1 ]; then
             YELLOW) PK_COLOR=$YELLOW ;;
         esac
     fi
-    PK_AUTOSTART=0
-    ZB_AUTOSTART=0
-    echo "$active" | grep -q "podkop" && PK_AUTOSTART=1
-    echo "$active" | grep -q "zeroblock" && ZB_AUTOSTART=1
+
     if [ $PK_AUTOSTART -eq 1 ]; then
         # Выводим DNS, только если там не пусто
         if [ -n "$PK_DNS" ] || [ -n "$PK_B_DNS" ]; then
@@ -886,6 +911,44 @@ if [ $PK_INST -eq 1 ]; then
         fi
     fi
 fi
+
+
+
+
+
+
+
+
+
+
+# --- БЛОК DNS ZEROBLOCK ---
+
+# [ $IS_ENABLED -eq 1 ] && [ $IS_RUNNING -eq 1 ]
+if [ $ZB_AUTOSTART -eq 1 ] || [ $ZB_ERR -eq 1 ]; then
+    ZB_DNS=$(uci -q get "zeroblock.settings.dns_server")
+    ZB_B_DNS=$(uci -q get "zeroblock.settings.bootstrap_dns_server")
+	ZB_TYPE_DNS=$(uci -q get "zeroblock.settings.dns_type")
+    # Выводим DNS, только если там не пусто
+    if [ -n "$ZB_DNS" ] || [ -n "$ZB_B_DNS" ]; then
+        [ -n "$ZB_DNS" ] && printf "  zeroblock DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "(${ZB_TYPE_DNS}) $ZB_DNS"
+        [ -n "$ZB_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$ZB_B_DNS"
+    fi
+    # --- Статус пользовательских скриптов zapret2 (1 - включено, 0 - выключено). Могут ломать awg10.
+    if [ -f "/opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh" ]; then
+        if opkg list-installed | grep -q "^zapret2"; then
+            printf "  $(uci show zapret2 | grep 'custom_scripts')\n"
+        fi
+    fi
+fi
+
+
+
+
+
+
+
+
+
 
 # Ищем пересечения внутри одной программы в юзерсписках доменов (списки, созданные самостоятельно)
 # ZeroBlock - отключенные секции не анализируются.
@@ -918,25 +981,6 @@ if [ $ZB_AUTOSTART -eq 1 ]; then
     fi
 fi
 
-# --- БЛОК DNS ZEROBLOCK ---
-
-# [ $IS_ENABLED -eq 1 ] && [ $IS_RUNNING -eq 1 ]
-if [ $ZB_AUTOSTART -eq 1 ] || [ $ZB_ERR -eq 1 ]; then
-    ZB_DNS=$(uci -q get "zeroblock.settings.dns_server")
-    ZB_B_DNS=$(uci -q get "zeroblock.settings.bootstrap_dns_server")
-	ZB_TYPE_DNS=$(uci -q get "zeroblock.settings.dns_type")
-    # Выводим DNS, только если там не пусто
-    if [ -n "$ZB_DNS" ] || [ -n "$ZB_B_DNS" ]; then
-        [ -n "$ZB_DNS" ] && printf "  zeroblock DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "(${ZB_TYPE_DNS}) $ZB_DNS"
-        [ -n "$ZB_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$ZB_B_DNS"
-    fi
-    # --- Статус пользовательских скриптов zapret2 (1 - включено, 0 - выключено). Могут ломать awg10.
-    if [ -f "/opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh" ]; then
-        if opkg list-installed | grep -q "^zapret2"; then
-            printf "  $(uci show zapret2 | grep 'custom_scripts')\n"
-        fi
-    fi
-fi
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
 
