@@ -1,9 +1,24 @@
 #!/bin/sh
 # analyzer.sh
-ifdown awg10 && ifup awg10
+
+IFACE="awg10"
+. /etc/os-release
+FIRST_IN="0"
+VER="0.0.8"
+
+ifdown "$IFACE"
+service opera-proxy restart
+ifup "$IFACE"
+
+# mkdir -p /opt/zapret2/scriptarchive
+# if [ -d "/sys/class/net/$IFACE" ]; then
+    # mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2>&1
+# fi
+
 clear
-echo "0.0.7"
-sleep 3
+echo "${VER}"
+echo "Перезапускаем интерфейсы"
+sleep 8
 
 # --- ЦВЕТА ---
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
@@ -14,17 +29,23 @@ cprint() {
     printf "${1}%s${CLR_OFF}" "$2"
 }
 
-. /etc/os-release
-
-IFACE="awg10"
-FIRST_IN="0"
-
 # --- СПИСКИ ДЛЯ АЛЕРТОВ ---
-SAME_AS_LIST="youtube russia_inside"
-WARNING_LISTS="russia_inside russia_outside cloudflare"
+SAME_AS_LIST="youtube russia_inside googlevideo"
+WARNING_LISTS="russia_inside russia_outside cloudflare cdn_cloudflare"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
-CHECKING_SERVICES="zeroblock podkop sing-box zapret zapret2 youtubeUnblock ruantiblock"
+RAW_SERVICES="zeroblock podkop sing-box sing-box-tiny zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
+
+# --- СПИСОК УСТАНОВЛЕННЫХ СЕРВИСОВ/ПРОГРАММ ---
+for pkg in $RAW_SERVICES; do
+    if opkg list-installed | grep -q "^${pkg} - "; then
+        if [ "${pkg}" = "sing-box-tiny" ]; then
+            CHECKING_SERVICES="$CHECKING_SERVICES sing-box"
+            continue
+        fi
+        CHECKING_SERVICES="$CHECKING_SERVICES ${pkg}"
+    fi
+done
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 LOG_FILE="/root/analyzer.log"
@@ -43,7 +64,6 @@ echo "Анализ запущен: $(date '+%Y-%m-%d %H:%M:%S')"
 echo -e "Лог сохраняется в: ${YELLOW}$LOG_FILE${CLR_OFF}"
 echo "--------------------------------------------------------------"
 
-
 # --- УСТАНОВКА ЗАВИСИМОСТЕЙ ---
 
 _i=1
@@ -58,8 +78,13 @@ sed -i '/http_timeout/d' "$_tmp_conf"
 echo "option http_timeout $_opkg_timeout" >> "$_tmp_conf"
 
 # --- УСТАНОВКА ---
-if ! opkg list-installed | grep -q "wget-ssl"; then 
+WGET_INSTALLED=0
+CURL_INSTALLED=0
 
+opkg list-installed | grep -q '^wget-ssl' && WGET_INSTALLED=1
+opkg list-installed | grep -q '^curl' && CURL_INSTALLED=1
+
+if [ $WGET_INSTALLED -eq 0 ] || [ $CURL_INSTALLED -eq 0 ]; then
     while [ "$_i" -le "$_retries" ]; do
         echo -e "${YELLOW}Попытка обновления списка пакетов:${CLR_OFF} ($_i/$_retries)"
 
@@ -72,12 +97,12 @@ if ! opkg list-installed | grep -q "wget-ssl"; then
             else
                 echo -e "${GREEN}Списки обновлены успешно${CLR_OFF}"
                 # Устанавливаем через тот же конфиг с таймаутом
-                opkg -f "$_tmp_conf" install wget-ssl
+                opkg -f "$_tmp_conf" install wget-ssl curl
                 OPKG_UPDATED=1
                 break
             fi
         fi
-        
+
         if [ "$_i" -eq "$_retries" ]; then
             echo -e "${RED}Ошибка: не удалось обновить списки после $_retries попыток.${CLR_OFF}"
             echo "=== АНАЛИЗ ЛОГА (ошибки выделены) ==="
@@ -85,74 +110,206 @@ if ! opkg list-installed | grep -q "wget-ssl"; then
                 print "\033[38;5;208m" $0 "\033[0m"
                 next
             } {print}' "$_update_log"
-            
+
             rm -f "$_tmp_conf"
-			echo
+            echo
             echo -e "${RED_BRIGHT}!!!_некоторые проверки будут некорректными_!!!${CLR_OFF}"
-			sleep 3
+            sleep 3
         fi
-        
+
         sleep 2
         _i=$((_i + 1))
     done
 fi
+
+# =====================
+# ФУНКЦИИ
+# =====================
+
+# --- ФУНКЦИЯ ПОИСКА ПЕРЕСЕЧЕНИЙ ПО ДОМЕНАМ В ЮЗЕРСПИСКАХ ВНУТРИ ОДНОЙ ПРОГРАММЫ ---
+# $1 = имя программы. zeroblock, podkop etc.
+check_userlists() {
+    # Временный файл для всех доменов
+    tmpfile="/tmp/domains_$$.tmp"
+
+    # Список имён программ для проверки
+    pkg_names="${1}"
+
+    for pkg in "${pkg_names}"; do
+        # Собираем все домены пакета
+        {
+            uci -q show "$pkg" | awk -F'[.=]' '/=section$/ && $2!=""{print $2}' | \
+            while read section; do
+                [ "$pkg" = "zeroblock" ] && [ "$(uci -q get "$pkg.$section.enabled")" != "1" ] && continue
+                for param in user_domains user_domains_text; do
+                    uci -q get "$pkg.$section.$param" 2>/dev/null | tr ',; \t' '\n' | grep -v '^$' | \
+                    while read domain; do
+						# Проверка на комментарии
+						echo "$domain" | grep -q "#" && continue
+						echo "$domain" | grep -q "//" && continue
+                        echo "$domain $section"
+                    done
+                done
+            done
+        } | sort | awk -v pkg="$pkg" -v red="$RED_BRIGHT" -v clr="$CLR_OFF" '
+        {
+            # Собираем все секции для каждого домена
+            if (!($1 in sec)) {
+                sec[$1] = $2
+                count[$1] = 1
+            } else {
+                # Добавляем секцию если её ещё нет
+                if (index(" " sec[$1] " ", " " $2 " ") == 0) {
+                    sec[$1] = sec[$1] ", " $2
+                    count[$1]++
+                }
+            }
+        }
+        END {
+            for (domain in sec) {
+                # Выводим только если домен в 2+ секциях
+                if (count[domain] > 1) {
+                    printf "  %s: !!!_%s%s%s → %s\n", pkg " юзерсписки", red, domain, clr, sec[domain]
+                }
+            }
+        }'
+    done
+}
 
 # Чистим временный конфиг
 [ -f "$_tmp_conf" ] && rm "$_tmp_conf"
 
 echo ""
 
-# Накручиваем счётчики авг10
-TABLE_ID=1$(date +%s | tail -c 4)
+
+
+
+
+
+# --- НАКРУЧИВАЕМ СЧЁТЧИКИ AWG10 ---
+
 TEST_URL="http://speedtest.tele2.net/10MB.zip"
 ROUNDS=1
-
 IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
-ip route add default dev "$IFACE" table "$TABLE_ID"
-ip rule add from "$IF_IP4"/32 table "$TABLE_ID"
-
 for i in $(seq 1 "$ROUNDS"); do
-	wget -O /dev/null \
-		--bind-address="$IF_IP4" \
-		--timeout=5 \
-		--tries=1 \
-		"$TEST_URL" >/dev/null 2>&1 || true
-	sleep 1
+    curl -4 -L -A 'Mozilla/5.0' -s --no-progress-meter --interface "$IFACE" --max-time 20 --connect-timeout 10 --retry 0 --insecure --tlsv1.2 "$TEST_URL" >/dev/null 2>&1 || true
+    sleep 1
 done
-
-ip rule del from "$IF_IP4"/32 table "$TABLE_ID"
-ip route flush table "$TABLE_ID"
-
 
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
 MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
 MEM_P=$((MEM_U * 100 / MEM_T))
 LAN_IP=$(ip addr show br-lan 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
-[ -z "$LAN_IP" ] && LAN_IP=$(uci -q get network.lan.ipaddr)
+[ -z "$LAN_IP" ] && LAN_IP=$(uci -q get "network.lan.ipaddr")
 NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
+
+
+
+
+
 
 # --- БЛОК 1: ПРОВЕРКА DNS ---
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
+DNS_REDIR=$(uci -q get "dhcp.@dnsmasq[0].server" 2>/dev/null)
+if [ -z "$DNS_REDIR" ]; then
+    DNS_REDIR="${RED_BRIGHT}!!!_ПЕРЕНАПРАВЛЕНИЯ ОТСУТСТВУЮТ${CLR_OFF}"
+fi
+
 printf "  DNS Server:   %s" "${DNS_SRV:-UNKNOWN} |"
-printf " DNS Redirect: 127.0.0.42\n"
+printf " DNS Redirect: $DNS_REDIR\n"
 FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
-printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}\n" "${FB_IP:-UNKNOWN}"
+YT_IP=$(nslookup youtube.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
+printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}" "${FB_IP:-UNKNOWN} | "
+printf "YouTube IP:  ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
+
+
+
+
+
+
+
+
+
+
+
+# --- СОБИРАЕМ СПИСОК ЗАПУЩЕННЫХ СЕРВИСОВ ---
+runned=""
+for s in $CHECKING_SERVICES; do
+    # init.d status check
+	[ ! -f /etc/init.d/${s} ] && continue
+    status=$(/etc/init.d/$s status 2>/dev/null | head -1)
+    case "$status" in
+        *running)
+            runned="$runned $s"
+            continue
+            ;;
+        *not\ running*)
+            runned="$runned $s"
+            continue
+            ;;
+        *inactive*)
+            continue
+            ;;
+    esac
+    
+    # fallback checks if init.d status gave no clear result
+    if pidof "$s" >/dev/null 2>&1 || \
+       pgrep -f "$s" >/dev/null 2>&1 || \
+       ubus call service list 2>/dev/null | grep -q "\"$s\""; then
+        runned="$runned $s"
+    fi
+done
+runned="${runned# }"
+# echo "$runned"
+
+
+
+
+
+
+
+# --- ОПРЕДЕЛЯЕМ СОСТОЯНИЕ СЕРВИСОВ И ОСТАНАВЛИВАЕМ МЕШАЮЩИЕ ---
+# В $CHECKING_SERVICES содержатся имена установленных сервисов обхода
+active=""
+
+# Останавливаем сервисы (даже если они не запущены)
+for pkg in $CHECKING_SERVICES; do
+	[ -f /etc/init.d/${pkg} ] && /etc/init.d/${pkg} stop >/dev/null 2>&1
+done
+/etc/init.d/opera-proxy start # Запускаем opera-proxy (так проще :))
+sleep 1
+
+
+
+
+
+
+# Проверяем сервисы в автозапуске. Все с автозапуском вносим в $active
+# вне зависимости от их состояния. Необходимо получить информацию о том
+# что запущено на роутере после его перезагрузки
+for pkg in $CHECKING_SERVICES; do
+	if ls /etc/rc.d/S??${pkg} 1>/dev/null 2>&1; then
+		active="$active ${pkg}"
+	fi
+done
+
+
 
 
 
 # --- БЛОК 2: ИНТЕРФЕЙС awg10 (ДЕТАЛИ) ---
 NEED_RESOLVE_TEST=0
 if [ -d "/sys/class/net/$IFACE" ]; then
-	echo ""
+    echo ""
     echo "= ИНТЕРФЕЙС awg10 (ДЕТАЛИ):"
     PING_COUNT=10
     RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
-    
+
     printf "  Статус                : ${GREEN}UP (ON)${CLR_OFF}  ↓${RX} / ↑${TX}\n"
     # printf "  Получено/Отправлено   : ↓${RX} / ↑${TX}\n"
-    
+
     printf "  Пинг (ya.ru via %s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
     # Захватываем stderr для анализа причин падения
     PING_RAW=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>&1)
@@ -180,20 +337,37 @@ if [ -d "/sys/class/net/$IFACE" ]; then
 fi
 
 
+
+
+
+printf "  ${YELLOW}Программы в автозапуске:$active${CLR_OFF}\n"
+
+
+
+
+
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
+TEST_URL="https://www.youtube.com"
 echo ""
-echo "= ПРОВЕРКА ДОСТУПОВ (YOUTUBE.COM):"
+echo "= ПРОВЕРКА ДОСТУПОВ (WWW.YOUTUBE.COM):"
 
 # Инициализируем флаг нулем в самом начале
 NEED_RESOLVE_TEST=0
 
+
 # 1. Проверка OPERA
-P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 https://www.youtube.com | head -n 1 | tr -d '\r\n')
-if [ -n "$P_CODE" ]; then
-    printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
-else
-    printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
-    NEED_RESOLVE_TEST=1
+
+# Если опера-прокси установлена, проверям доступ через опера-прокси
+if opkg list-installed | grep -q "^opera-proxy"; then
+
+	P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 "$TEST_URL"| head -n 1 | tr -d '\r\n')
+	if [ -n "$P_CODE" ]; then
+		printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
+	else
+		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
+		NEED_RESOLVE_TEST=1
+	fi
+
 fi
 
 # 2. Проверка интерфейса awg10
@@ -203,17 +377,23 @@ if [ -d "/sys/class/net/$IFACE" ]; then
 
     # --- IPv4 ---
     if [ -n "$IF_IP4" ]; then
-        W_OUT=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -4 --timeout=4 --tries=1 --bind-address="$IF_IP4" https://www.youtube.com 2>&1)
+        # W_OUT=$(wget --bind-address="$IF_IP4" --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -4 --read-timeout=10 --timeout=10 --tries=1 "$TEST_URL" 2>&1)
+        W_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
+                --retry 3 --insecure --tlsv1.3 "$TEST_URL" 2>&1)
         W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
         TLS_VER="TLSv1.3"
 
         if [ -z "$W_CODE" ]; then
-            W_OUT=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -4 --timeout=4 --tries=1 --bind-address="$IF_IP4" https://www.youtube.com 2>&1)
+            # W_OUT=$(wget --bind-address="$IF_IP4" --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -4 --read-timeout=10 --timeout=10 --tries=1 "$TEST_URL" 2>&1)
+            W_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
+                    --retry 3 --insecure --tlsv1.2 "$TEST_URL" 2>&1)
             W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
             TLS_VER="TLSv1.2"
         fi
 
         if [ -n "$W_CODE" ]; then
+            W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | tr -d '\r')
+            W_CODE=$(echo "$W_CODE" | sed 's/[[:space:]]*$//')
             printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv4) :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" "$TLS_VER"
         else
             printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4) :"
@@ -226,12 +406,12 @@ if [ -d "/sys/class/net/$IFACE" ]; then
 
     # --- IPv6 ---
     if [ -n "$IF_IP6" ]; then
-        W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" https://www.youtube.com 2>&1)
+        W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL" 2>&1)
         W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
         TLS_VER6="TLSv1.3"
 
         if [ -z "$W_CODE6" ]; then
-            W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" https://www.youtube.com 2>&1)
+            W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL" 2>&1)
             W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
             TLS_VER6="TLSv1.2"
         fi
@@ -244,8 +424,30 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     fi
 fi
 
+# --- ЗАПУСКАЕМ РАНЕЕ ОСТАНОВЛЕННЫЕ СЕРВИСЫ
+# Запускаем все сервисы из автозапуска, имена которых 
+# есть в переменной $active и тем самым
+# приводим роутер к состоянию 'после перезагрузки'
+printf "  ${YELLOW}Запускаем остановленные службы, ожидайте...${CLR_OFF}\n"
+#for pkg in $active; do
+for pkg in $runned; do
+  if [ "${pkg}" == "sing-box" ]; then continue; fi
+  /etc/init.d/${pkg} start 1>/dev/null 2>&1
+done
+
+for i in $(seq 1 10); do
+    if /etc/init.d/sing-box status 2>/dev/null | grep -q "running"; then
+        break
+    fi
+    sleep 1
+done
+
+
+
+[ $NEED_RESOLVE_TEST -eq 1 ] && sleep 5
+
 # 3. Скрытый тест на резолв
-if [ "$NEED_RESOLVE_TEST" -eq 1 ]; then
+if [ $NEED_RESOLVE_TEST -eq 1 ]; then
     echo "--------------------------------------------------------------"
     printf "  ! Диагностика DNS (youtube.com):\n"
     nslookup youtube.com 2>&1 | \
@@ -261,9 +463,10 @@ echo "= СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБР
 # echo "=============================================================="
 ZB_RUN=0; zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
 PK_INST=0; [ -f "/etc/init.d/podkop" ] && PK_INST=1
-CHAOS=0; [ $ZB_RUN -eq 1 ] && [ $PK_INST -eq 1 ] && CHAOS=1
+PK_AUTOSTART=0; echo $active | grep -q "podkop" && PK_AUTOSTART=1
+ZB_AUTOSTART=0; echo $active | grep -q "zeroblock" && ZB_AUTOSTART=1
+CHAOS=0; [ $ZB_AUTOSTART -eq 1 ] && [ $PK_AUTOSTART -eq 1 ] && CHAOS=1
 
-  
 for s in $CHECKING_SERVICES; do
     [ -f "/etc/init.d/$s" ] || continue
 
@@ -279,30 +482,28 @@ for s in $CHECKING_SERVICES; do
         fi
 
         # Добавляем оркестратора в хвост
-        if [ "$CHAOS" -eq 1 ]; then 
+        if [ $CHAOS -eq 1 ]; then
             ST_T="$ST_T (MANAGED BY CHAOS!)"; ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"
-        elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then 
+        elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then
             ST_T="$ST_T (MANAGED BY PODKOP)"
         elif [ $ZB_RUN -eq 1 ]; then
             ST_T="$ST_T (MANAGED BY ZB)"
         fi
-		
-		# Статус подкопа определяется по статусу sing-box
-		if [ "$s" = "podkop" ]; then
-			if [ -n "$(pidof sing-box)" ]; then
-				ST_T="RUNNING"; ST_C="${GREEN}"
-			fi
-		fi
-		
+
+        # Статус подкопа определяется по статусу sing-box
+        if [ "$s" = "podkop" ]; then
+            if [ -n "$(pidof sing-box)" ]; then
+                ST_T="RUNNING"; ST_C="${GREEN}"
+            fi
+        fi
     else
         # Стандартные службы
         /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
-		
-		# Для запрет2 отдельная проверка
-		if [ "$s" = "zapret2" ]; then
-			/etc/init.d/zapret2 status 2>/dev/null | grep -q "not running" && { ST_T="STOPPED"; ST_C="${RED_BRIGHT}"; }
-		fi
 
+        # Для запрет2 отдельная проверка
+        if [ "$s" = "zapret2" ]; then
+            /etc/init.d/zapret2 status 2>/dev/null | grep -q "not running" && { ST_T="STOPPED"; ST_C="${RED_BRIGHT}"; }
+        fi
     fi
 
     # СТАТУС АВТОЗАПУСКА
@@ -324,15 +525,24 @@ echo "= ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ КОНФИГУРА
 tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
 ACTIVE_PKGS=""
 
+ZB_ERR=0
 
 for pkg in $CHECKING_SERVICES; do
-    # Проверка на существование
-    [ -f "/etc/init.d/$pkg" ] || continue
-    [ -f "/etc/config/$pkg" ] || continue
+    # # Проверка на существование
+    # [ -f "/etc/rc.d/S??$pkg" ] || continue
+    # [ -f "/etc/config/$pkg" ] || continue
 
-    # Правило: Нет сервиса или он STOPPED + DISABLED — вон из теста
+    # Нет сервиса или он STOPPED + DISABLED — не тестируем
+    # исключение для ZB
     IS_RUNNING=0; /etc/init.d/$pkg status 2>/dev/null | grep -q "running" && IS_RUNNING=1
     IS_ENABLED=0; /etc/init.d/$pkg enabled 2>/dev/null && IS_ENABLED=1
+
+    # выводим лог с возможной причиной незапуска ЗероБлок
+    if [ "$pkg" = "zeroblock" ] && [ $IS_RUNNING -eq 0 ]; then
+        logread | grep -n '\[zeroblock\] Starting ZeroBlock\.\.\.' | tail -1 | cut -d: -f1 | while read n; do logread | tail -n +$n | head -3 | sed -e 's/ daemon\.err zeroblock\[[0-9]*\]: / /' -e 's/\[config_builder\] //' -e 's/\[zeroblock\] //' -e 's/^/  /'; done
+        ZB_ERR=1
+    fi
+
     [ $IS_RUNNING -eq 0 ] && [ $IS_ENABLED -eq 0 ] && continue
 
     ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
@@ -340,24 +550,33 @@ for pkg in $CHECKING_SERVICES; do
 
     # --- СЕКЦИЯ Б5.2: ПАРСИНГ ZAPRET (СПЕЦИФИЧНЫЙ) ---
     if [ "$pkg" = "zapret" ]; then
-        Z_OPTS=$(uci -q get zapret.config.NFQWS_OPT | tr -d "'\"")
+        # Получаем стратегию
+        Z_OPTS=$(uci -q get "$pkg.config.NFQWS_OPT" | tr -d "'\"")
+
+        # Построчно читаем и обрабатываем стратегию
         echo "$Z_OPTS" | sed 's/--new/\n/g' | while read -r section; do
+            # Пропускаем пустые строки
             [ -z "$section" ] && continue
+            # Получаем протокол, используемый в секции
             F_KEY=$(echo "$section" | grep -oE "\-\-filter-(l3|tcp|udp|l7|ssid)=[^ ]+" | sort | tr '\n' ' ' | sed 's/ $//')
+            # Если протокол не определён, обрабатываем секции с протоколом "any" если такие есть
             [ -z "$F_KEY" ] && F_KEY="any"
+
+            # Ищем в строке конфига "--hostlist=" и в $fr вносим имя файла со списком доменов
             echo "$section" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2 | while read -r fp; do
+                # Если файл со списком доменов пуст, выводим предупреждение
+                if ! grep -q '[[:alnum:][:punct:]]' "$fp"; then
+                    printf "  ${RED_BRIGHT}Файл $(basename "$fp") пустой! ${CLR_OFF}\n"
+                    # Автофикс...
+                    # echo "example.com" >"$fp"; /etc/init.d/zapret restart >/dev/null 2>&1
+                    # echo -e "${GREEN}Выполнено! ${CLR_OFF}"
+                fi
 
-			if ! grep -q '[[:alnum:][:punct:]]' "$fp"; then
-				printf "  ${RED_BRIGHT}Файл $(basename "$fp") пустой! ${CLR_OFF}\n"
-				# Автофикс... 
-				# echo "example.com" >"$fp"; /etc/init.d/zapret restart >/dev/null 2>&1
-				# echo -e "${GREEN}Выполнено! ${CLR_OFF}"
-			fi
-
-				[ -z "$fp" ] && continue
+                [ -z "$fp" ] && continue
                 RP=""; [ -f "$fp" ] && RP="$fp"
                 [ -z "$RP" ] && [ -f "/etc/zapret/$fp" ] && RP="/etc/zapret/$fp"
                 [ -z "$RP" ] && [ -f "/opt/zapret/ipset/$fp" ] && RP="/opt/zapret/ipset/$fp"
+
                 if [ -n "$RP" ]; then
                     fname=$(basename "$RP")
                     while read -r d; do
@@ -375,25 +594,60 @@ for pkg in $CHECKING_SERVICES; do
     fi
 
     # --- СЕКЦИЯ Б5.3: ОБЩИЙ ПАРСИНГ (ZEROBLOCK, PODKOP И ДР.) ---
-    uci -q show "$pkg" | grep -Ei "community_lists|domain|sni_domains" | while read -r line; do
-        s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
-        val_str=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for v in $val_str; do
+
+    SEARCH_STR="community_lists|sni_domains|user_domains_text|user_subnets_text|user_domain_lists"
+    uci -q show "$pkg" | grep -Ei "${SEARCH_STR}" | while read -r line; do
+        opt_path="${line%%=*}" # получаем полное наименование uci.параметра
+        s_name=$(echo "$line" | cut -d. -f2) # получаем имя секции в конфиге
+
+		# Проверка на server_community_lists
+		echo "$opt_path" | grep -q "server_community_lists" && continue
+
+        # При проверке ютубанблока формат записи конфига в uci иной
+        if [ "$pkg" = "youtubeUnblock" ]; then
+            s_name=$(uci get "$pkg.$s_name.name")
+        fi
+
+        # echo "$s_name $pkg"
+
+        # s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
+        # s_content=$(uci -q show "$pkg" | grep -Ei "$pkg.s_name.$line")
+
+        # проверяем активность секции зероблок
+        if [ "${pkg}" = "zeroblock" ]; then
+            s_en=$(uci -q get "$pkg.$s_name.enabled")
+            [ "$s_en" != "1" ] && continue
+        fi
+
+        msg="default"
+
+        val_str=$(uci -q get "$opt_path"); for v in $val_str; do
             dom=$(echo "$v" | awk '{print $1}')
             [ -z "$dom" ] && continue
-            IS_M=0; case "$dom" in youtube|russia_inside|googlevideo) IS_M=1 ;; esac
+
+            IS_M=0
+            # for pattern in $SAME_AS_LIST; do
+            # [ "$dom" = "$pattern" ] && { IS_M=1; break; }
+            # done
+
+            pattern="${SAME_AS_LIST// /|}"
+            if echo "$dom" | grep -qE "^($pattern)$"; then IS_M=1; fi
             if [ $IS_M -eq 1 ] || echo "$dom" | grep -qE "^[^[:space:]]+\.[^[:space:]]+$"; then
                 echo "$dom|$s_name|default" >> "$tmp_p"
+
                 # Резолвим виртуальные группы в реальные домены для поиска пересечений
-                case "$dom" in russia_inside|youtube) 
-                    echo "youtube.com|$s_name|default" >> "$tmp_p"
-                    echo "googlevideo.com|$s_name|default" >> "$tmp_p" 
-                ;; esac
+                if echo "$dom" | grep -qE "^($pattern)$"; then
+                    echo "youtube.com|$s_name|${msg}" >> "$tmp_p"
+                    echo "googlevideo.com|$s_name|${msg}" >> "$tmp_p"
+                fi
             fi
         done
     done
 
     # Парсинг внешних файлов хостлистов (если есть)
-    uci -q show "$pkg" | grep -Ei "hostlist" | while read -r line; do
+    # echo "Парсинг внешних файлов хостлистов $pkg"
+    uci -q show "$pkg" | grep -Ei "\-\-hostlist=" | while read -r line; do
+        # echo "$pkg $line"
         s_id=$(echo "$line" | cut -d. -f2); s_name=$(uci -q get "$pkg.$s_id.name" 2>/dev/null || echo "$s_id")
         paths=$(echo "$line" | cut -d'=' -f2 | tr -d "'\""); for fp in $paths; do
             [ -f "$fp" ] && while read -r d; do
@@ -409,14 +663,16 @@ for pkg in $CHECKING_SERVICES; do
 done
 
 # --- СЕКЦИЯ Б5.5: ВНУТРЕННИЕ ПЕРЕСЕЧЕНИЯ ---
+
 for pkg in $ACTIVE_PKGS; do
     # Zapret пропускаем (его проверяет Б5.7 "Колымага")
     [ "$pkg" = "zapret" ] && continue
 
     tmp_p="$tmp_dir/$pkg.tmp"; [ -s "$tmp_p" ] || continue
     bad_list=$(sort "$tmp_p" | uniq -d | cut -d'|' -f1 | sort -u)
+
     if [ -n "$bad_list" ]; then
-        printf "  ${RED_BRIGHT}КРИТ:${CLR_OFF} Внутреннее пересечение в ${YELLOW}%s${CLR_OFF}:\n" "$pkg"
+        printf "  !!!_${RED_BRIGHT}КРИТ:${CLR_OFF} Внутреннее пересечение в ${YELLOW}%s${CLR_OFF}:\n" "$pkg"
         echo "$bad_list" | while read -r d; do
             grep "^$d|" "$tmp_p" | cut -d'|' -f2,3 | sort -u | while read -r line; do
                 loc=$(echo "$line" | cut -d'|' -f1); cond=$(echo "$line" | cut -d'|' -f2)
@@ -428,6 +684,7 @@ for pkg in $ACTIVE_PKGS; do
 done
 
 # --- СЕКЦИЯ Б5.6: ВНЕШНИЕ ПЕРЕСЕЧЕНИЯ (МЕЖДУ СЕРВИСАМИ) ---
+
 set -- $ACTIVE_PKGS
 while [ $# -gt 1 ]; do
     P1=$1; shift; tmp1_doms="$tmp_dir/$P1.doms"; [ -f "$tmp1_doms" ] || continue
@@ -435,7 +692,7 @@ while [ $# -gt 1 ]; do
         tmp2_doms="$tmp_dir/$P2.doms"; [ -f "$tmp2_doms" ] || continue
         all_matches=$(grep -Fxf "$tmp1_doms" "$tmp2_doms")
         if [ -n "$all_matches" ]; then
-            printf "  !!! ${RED_BRIGHT}КРИТ:${CLR_OFF} Пересечение между ${YELLOW}%s${CLR_OFF} и ${YELLOW}%s${CLR_OFF}:\n" "$P1" "$P2"
+            printf "  !!!_${RED_BRIGHT}КРИТ:${CLR_OFF} Пересечение между ${YELLOW}%s${CLR_OFF} и ${YELLOW}%s${CLR_OFF}:\n" "$P1" "$P2"
             # Показываем, откуда ноги растут (первый попавшийся дубль для примера)
             echo "$all_matches" | head -n 1 | while read -r m; do
                 grep "^$m|" "$tmp_dir/$P1.tmp" | cut -d'|' -f2 | sort -u | while read -r s; do printf "    %-25s : %s\n" "$P1" "$s"; done
@@ -446,7 +703,8 @@ while [ $# -gt 1 ]; do
     done
 done
 
-# --- СЕКЦИЯ Б5.7: КОЛЫМАГА (АНАЛИЗ ZAPRET И ЧИСТКА) ---
+# --- СЕКЦИЯ Б5.7: КОЛЫМАГА (ОТДЕЛЬНЫЙ АНАЛИЗ ПЕРЕСЕЧЕНИЙ В КОНФИГЕ ZAPRET) ---
+
 CONF_Z="/etc/config/zapret"
 if [ -f "$CONF_Z" ]; then
     F_TYPES="l3 tcp udp l7 ssid"
@@ -464,26 +722,35 @@ if [ -f "$CONF_Z" ]; then
 fi
 rm -rf "$tmp_dir"
 
-
-
-# --- БЛОК 6: СПИСКИ (LDDPR 5 + "СКАЛЬПЕЛЬ") ---
-
-
+# --- БЛОК 6: ГОТОВИМ СПИСКИ ОБХОДОВ/ПЕРЕСЕЧЕНИЙ ---
 
 ALL_ITEMS=""; CONFLICT_LISTS=""
 
 # 1. СОБИРАЕМ КОНФЛИКТЫ (Живые сервисы из ACTIVE_PKGS)
+
+# Проверяем только zeroblock и podkop
 for pkg in $ACTIVE_PKGS; do
     [ "$pkg" != "zeroblock" ] && [ "$pkg" != "podkop" ] && continue
-    
+
+    # Получаем список имён секций в анализируемой программе
     SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
+
     for sid in $SIDS; do
+        # Проверка активации/деактивации секций ZeroBlock!!!
+        s_en=$(uci -q get "$pkg.$sid.enabled")
+        if [ "${pkg}" = "zeroblock" ]; then
+            [ -z "${s_en}" ] || [ $s_en -eq 0 ] && continue
+        fi
+
+        # Получаем названия списков сообщества
         RAW=$(uci -q get "$pkg.$sid.community_lists" | tr -d "'\"" | tr ' ,' '  ')
+
+        # Проверка совпадения списков сообщества в несольких секциях
         for item in $RAW; do
             [ -z "$item" ] && continue
-            
+
             IS_DUP=0
-            # ПРОВЕРКА А: Физический дубль имени (твой случай с block)
+            # ПРОВЕРКА А: Физический дубль имени
             if echo " $ALL_ITEMS " | grep -q " $item "; then
                 IS_DUP=1
             fi
@@ -498,7 +765,7 @@ for pkg in $ACTIVE_PKGS; do
                     fi
                 done
             ;; esac
-            
+
             if [ $IS_DUP -eq 1 ]; then
                 case " $CONFLICT_LISTS " in *" $item "*) ;; *) CONFLICT_LISTS="$CONFLICT_LISTS $item" ;; esac
             fi
@@ -509,28 +776,53 @@ for pkg in $ACTIVE_PKGS; do
 done
 
 # 2. ВЫВОДИМ СПИСКИ ТОЛЬКО ДЛЯ ТЕХ, КТО В ACTIVE_PKGS
+
 for pkg in $ACTIVE_PKGS; do
     [ "$pkg" != "zeroblock" ] && [ "$pkg" != "podkop" ] && continue
 
     SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
+
     for sid in $SIDS; do
+        # Проверка активации/деактивации секций ZeroBlock!!!
+        s_en=$(uci -q get "$pkg.$sid.enabled")
+        if [ "${pkg}" = "zeroblock" ]; then
+            [ -z "${s_en}" ] || [ $s_en -eq 0 ] && continue
+        fi
+
         RAW=$(uci -q get "$pkg.$sid.community_lists" | tr -d "'\"" | tr ' ' ',' | sed 's/,,*/,/g' | tr ',' ' ')
         [ -z "$RAW" ] && continue
-        
-        printf "  %-4s списки %+11s " "$pkg" "${sid}:"
+
+        # Получаем данные исходящего канала секции
+        _conn_type=$(uci -q get "$pkg.$sid.connection_type")
+        if [ "$_conn_type" = "proxy" ]; then
+			_conn_type=""
+			_conn_url=$(uci -q get "$pkg.$sid.proxy_config_type")
+			[ -z "${_conn_url}" ] && _conn_url="ND!"
+			_conn_type=$(echo "prx ${_conn_url}" | cut -c 1-7)
+
+
+# # Получаем url vless итп, только в информационных целях
+# _conn_type=""
+# _conn_url=$(uci get "$pkg.$sid.proxy_string")
+# _conn_type=$(echo "prx ${_conn_url}" | cut -c 1-7)
+		fi
+
+		# Выводим на экран "программа имя_списка (тип_соединения)"
+		printf "  %-4s %25s " "$pkg" "${sid} (${_conn_type}):"
+        # printf  "(${_conn_type}): "
         FIRST=1
         for item in $RAW; do
             [ $FIRST -eq 0 ] && printf "${CYAN},${CLR_OFF}"
             FIRST=0
-            
+
             IS_CONFLICT=0; case " $CONFLICT_LISTS " in *" $item "*) IS_CONFLICT=1 ;; esac
             IS_WARN=0; for wl in $WARNING_LISTS; do [ "$item" = "$wl" ] && IS_WARN=1 && break; done
 
-            if [ $IS_CONFLICT -eq 1 ]; then 
+            if [ $IS_CONFLICT -eq 1 ]; then
                 printf "!!!_${RED_BRIGHT}%s${CLR_OFF}" "$item"
-            elif [ $IS_WARN -eq 1 ]; then 
+            elif [ $IS_WARN -eq 1 ]; then
                 printf "!_${YELLOW}%s${CLR_OFF}" "$item"
-            else 
+            else
                 printf "${CYAN}%s${CLR_OFF}" "$item"
             fi
         done
@@ -539,61 +831,112 @@ for pkg in $ACTIVE_PKGS; do
 done
 
 # --- БЛОК ДОПОЛНИТЕЛЬНОЙ ИНФОРМАЦИИ (ПЕРЕСЕЧЕНИЯ) ---
+
 if [ $PK_INST -eq 1 ]; then
     # 1. Получаем DNS настройки
-    PK_DNS=$(uci -q get podkop.settings.dns_server)
-    PK_B_DNS=$(uci -q get podkop.settings.bootstrap_dns_server)
+    PK_DNS=$(uci -q get "podkop.settings.dns_server")
+    PK_B_DNS=$(uci -q get "podkop.settings.bootstrap_dns_server")
 
     # # 2. Получаем версию (вызываем напрямую)
     # PK_VER=$(podkop show_version 2>&1 /dev/null)
-	
-	# 2. Получаем версию подкопа
-	PK_VER_RAW=$(podkop show_version 2>&1)
-	PK_VER=""
-	PK_OLD_FLAG=0
 
-	# Проверка на "древность" по наличию start/stop в выводе
-	if echo "$PK_VER_RAW" | grep -qE "start|stop"; then
-		PK_OLD_FLAG=1
-		# Попытка достать версию через opkg
-		PK_VER=$(opkg list-installed podkop | awk '{print $3}')
-	else
-		PK_VER=$PK_VER_RAW
-	fi
-	
-	# --- ПРОВЕРКА ВЕРСИЙ ПОДКОП ---
+    # 2. Получаем версию подкопа
+    PK_VER_RAW=$(podkop show_version 2>&1)
+    PK_VER=""
+    PK_OLD_FLAG=0
 
-	# Очищаем версию: убираем 'v', отсекаем всё после дефиса, оставляем X.Y
-	CLEAN_VER=$(echo "$PK_VER" | sed 's/^v//' | cut -d'-' -f1 | cut -d'.' -f1,2)
-
-	# Логика определения цвета
-	PK_COLOR=$GREEN  # По умолчанию зеленый
-	if [ -n "$CLEAN_VER" ]; then
-		# Передаем переменные внутрь awk через -v
-		PK_STATUS=$(awk -v ver="$CLEAN_VER" -v obs="$PK_VER_OBSOLETE" -v min="$PK_VER_MIN" 'BEGIN {
-			if (ver < obs) print "RED";
-			else if (ver < min) print "YELLOW";
-			else print "NORMAL";
-		}')
-
-		case "$PK_STATUS" in
-			RED)    PK_COLOR=$RED_BRIGHT ;;
-			YELLOW) PK_COLOR=$YELLOW ;;
-		esac
-	fi
-
-    # Выводим DNS, только если там не пусто
-    if [ -n "$PK_DNS" ] || [ -n "$PK_B_DNS" ]; then
-        [ -n "$PK_DNS" ] && printf "  podkop DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "$PK_DNS"
-        [ -n "$PK_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$PK_B_DNS"
+    # Проверка на "древность" по наличию start/stop в выводе
+    if echo "$PK_VER_RAW" | grep -qE "start|stop"; then
+        PK_OLD_FLAG=1
+        # Попытка достать версию через opkg
+        PK_VER=$(opkg list-installed podkop | awk '{print $3}')
+    else
+        PK_VER=$PK_VER_RAW
     fi
 
-    # Печатаем версию в конце вывода блока
+    # --- ПРОВЕРКА ВЕРСИЙ ПОДКОП ---
+
+    # Очищаем версию: убираем 'v', отсекаем всё после дефиса, оставляем X.Y
+    CLEAN_VER=$(echo "$PK_VER" | sed 's/^v//' | cut -d'-' -f1 | cut -d'.' -f1,2)
+
+    # Логика определения цвета
+    PK_COLOR=$GREEN  # По умолчанию зеленый
+    if [ -n "$CLEAN_VER" ]; then
+        # Передаем переменные внутрь awk через -v
+        PK_STATUS=$(awk -v ver="$CLEAN_VER" -v obs="$PK_VER_OBSOLETE" -v min="$PK_VER_MIN" 'BEGIN {
+            if (ver < obs) print "RED";
+            else if (ver < min) print "YELLOW";
+            else print "NORMAL";
+        }')
+
+        case "$PK_STATUS" in
+            RED)    PK_COLOR=$RED_BRIGHT ;;
+            YELLOW) PK_COLOR=$YELLOW ;;
+        esac
+    fi
+    PK_AUTOSTART=0
+    ZB_AUTOSTART=0
+    echo "$active" | grep -q "podkop" && PK_AUTOSTART=1
+    echo "$active" | grep -q "zeroblock" && ZB_AUTOSTART=1
+    if [ $PK_AUTOSTART -eq 1 ]; then
+        # Выводим DNS, только если там не пусто
+        if [ -n "$PK_DNS" ] || [ -n "$PK_B_DNS" ]; then
+            [ -n "$PK_DNS" ] && printf "  podkop DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "$PK_DNS"
+            [ -n "$PK_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$PK_B_DNS"
+        fi
+    fi
+fi
+
+# Ищем пересечения внутри одной программы в юзерсписках доменов (списки, созданные самостоятельно)
+# ZeroBlock - отключенные секции не анализируются.
+[ $PK_AUTOSTART -eq 1 ] && check_userlists "podkop"
+[ $ZB_AUTOSTART -eq 1 ] && check_userlists "zeroblock"
+
+# Печатаем допданные в конце вывода блока (надо же как-то скрипт обновлять...)
+if [ $PK_AUTOSTART -eq 1 ]; then
+    uci show podkop | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}"
     if [ -n "$PK_VER" ]; then
         printf "  Версия podkop: ${PK_COLOR}%s${CLR_OFF}\n" "$PK_VER"
     fi
 fi
 
+if [ $ZB_AUTOSTART -eq 1 ]; then
+    _ZB_json="/tmp/zeroblock_status.json"
+    # Ищем catch-all секции
+    if [ -f "$_ZB_json" ]; then
+        ZB_CATCH_ALL=$(grep -o '"\([^"]*\)":{"is_catch_all":true}' /tmp/zeroblock_status.json | cut -d'"' -f2)
+        if [ -n "$ZB_CATCH_ALL" ]; then printf "  ${YELLOW}Секция в режиме catch-all: $ZB_CATCH_ALL${CLR_OFF}\n"; fi
+    fi
+
+    ZB_VER=$(zeroblock --version 2>/dev/null)
+    uci show zeroblock | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}" && \
+	printf "  " && uci show zeroblock | grep "fully_routed_ips"
+
+    if [ -n "$ZB_VER" ]; then
+        ZB_VER=$(echo "$ZB_VER" | sed 's/^ZeroBlock v//')
+        printf "  Версия zeroblock: ${PK_COLOR}%s${CLR_OFF}\n" "$ZB_VER"
+    fi
+fi
+
+# --- БЛОК DNS ZEROBLOCK ---
+
+# [ $IS_ENABLED -eq 1 ] && [ $IS_RUNNING -eq 1 ]
+if [ $ZB_AUTOSTART -eq 1 ] || [ $ZB_ERR -eq 1 ]; then
+    ZB_DNS=$(uci -q get "zeroblock.settings.dns_server")
+    ZB_B_DNS=$(uci -q get "zeroblock.settings.bootstrap_dns_server")
+	ZB_TYPE_DNS=$(uci -q get "zeroblock.settings.dns_type")
+    # Выводим DNS, только если там не пусто
+    if [ -n "$ZB_DNS" ] || [ -n "$ZB_B_DNS" ]; then
+        [ -n "$ZB_DNS" ] && printf "  zeroblock DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "(${ZB_TYPE_DNS}) $ZB_DNS"
+        [ -n "$ZB_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$ZB_B_DNS"
+    fi
+    # --- Статус пользовательских скриптов zapret2 (1 - включено, 0 - выключено). Могут ломать awg10.
+    if [ -f "/opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh" ]; then
+        if opkg list-installed | grep -q "^zapret2"; then
+            printf "  $(uci show zapret2 | grep 'custom_scripts')\n"
+        fi
+    fi
+fi
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
 
@@ -602,7 +945,9 @@ echo "= СИСТЕМНЫЕ РЕСУРСЫ:"
 printf "  LAN IP: %s\n" "$LAN_IP (Прошивка: ${VERSION})"
 printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE"
 crontab -l | sed 's/^/  /'
-
+if opkg list-installed | grep -q "wdoc"; then
+    printf "  ${RED_BRIGHT}!!!_WatchDoc установлен${CLR_OFF}\n"
+fi
 
 # Блок 8: Очистка лога
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
