@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.55"
+VER="0.0.56"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -540,6 +540,7 @@ ACTIVE_PKGS=""
 ZB_ERR=0
 
 for pkg in $CHECKING_SERVICES; do
+
     # # Проверка на существование
     # [ -f "/etc/rc.d/S??$pkg" ] || continue
     # [ -f "/etc/config/$pkg" ] || continue
@@ -550,8 +551,8 @@ for pkg in $CHECKING_SERVICES; do
     IS_ENABLED=0; /etc/init.d/$pkg enabled 2>/dev/null && IS_ENABLED=1
 
     # выводим лог с возможной причиной незапуска ЗероБлок
-    if [ "$pkg" = "zeroblock" ] && [ $IS_RUNNING -eq 0 ]; then
-        logread | grep -n '\[zeroblock\] Starting ZeroBlock\.\.\.' | tail -1 | cut -d: -f1 | while read n; do logread | tail -n +$n | head -3 | sed -e 's/ daemon\.err zeroblock\[[0-9]*\]: / /' -e 's/\[config_builder\] //' -e 's/\[zeroblock\] //' -e 's/^/  /'; done
+    if [ "$pkg" = "zeroblock" ] && [ "$IS_RUNNING" = "0" ]; then
+	logread | grep -n 'Starting ZeroBlock' | tail -1 | cut -d: -f1 | while read n; do logread | tail -n +$n | head -5 | sed -e 's/ daemon\.err zeroblock\[[0-9]*\]: / /' -e 's/\[config_builder\] //' -e 's/\[zeroblock\] //' -e 's/^/  /'; done
         ZB_ERR=1
     fi
 
