@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.57"
+VER="0.0.58"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -954,16 +954,53 @@ fi
 
 # --- БЛОК DNS ZEROBLOCK ---
 
+# zeroblock.settings.dns_main_via_outbound='1'
+# zeroblock.settings.dns_main_outbound='awg10'
+# zeroblock.settings.dns_bootstrap_via_outbound='1'
+# zeroblock.settings.dns_bootstrap_outbound='opera'
+
+dns_main_outbound=""
+dns_bootstrap_outbound=""
 # [ $IS_ENABLED -eq 1 ] && [ $IS_RUNNING -eq 1 ]
 if [ $ZB_AUTOSTART -eq 1 ] || [ $ZB_ERR -eq 1 ]; then
     ZB_DNS=$(uci -q get "zeroblock.settings.dns_server")
     ZB_B_DNS=$(uci -q get "zeroblock.settings.bootstrap_dns_server")
 	ZB_TYPE_DNS=$(uci -q get "zeroblock.settings.dns_type")
+	
+	sid=""; conn_type=""
+	
+	# Проверяем и собираем outbounds для DNS и Bootstrap DNS
+	# MAIN DNS
+	if [ "$(uci -q get zeroblock.settings.dns_main_via_outbound)" = "1" ]; then
+		sid="$(uci -q get zeroblock.settings.dns_main_outbound)" # секция main аутбаунд
+		conn_type="$(uci -q get zeroblock.$sid.connection_type)" # тип соединения main аутбаунд
+		if [ "${conn_type}" = "proxy" ]; then 
+			conn_type="${conn_type} $(uci -q get zeroblock.$sid.proxy_config_type | cut -c1-4)"
+			dns_main_outbound="(${conn_type} ${sid})" # тип соединения аутбаунд+имя интерфейса аутбаунд
+		else
+			dns_main_outbound="(${conn_type} $(uci -q get zeroblock.$sid.interface))" # тип соединения аутбаунд+имя интерфейса аутбаунд		
+		fi
+	fi
+	
+	sid=""; conn_type=""
+	
+	# Bootstrap DNS
+	if [ "$(uci -q get zeroblock.settings.dns_bootstrap_via_outbound)" = "1" ]; then
+		sid="$(uci -q get zeroblock.settings.dns_bootstrap_outbound)" # секция bootstrap аутбаунд
+		conn_type="$(uci -q get zeroblock.$sid.connection_type)" # тип соединения bootstrap аутбаунд
+		if [ "${conn_type}" = "proxy" ]; then 
+			conn_type="${conn_type} $(uci -q get zeroblock.$sid.proxy_config_type | cut -c1-4)"
+			dns_bootstrap_outbound="(${conn_type} ${sid})" # тип соединения bootstrap аутбаунд+имя интерфейса аутбаунд
+		else
+			dns_bootstrap_outbound="(${conn_type} $(uci -q get zeroblock.$sid.interface))" # тип соединения bootstrap аутбаунд+имя интерфейса аутбаунд		
+		fi
+	fi
+	
     # Выводим DNS, только если там не пусто
-    if [ -n "$ZB_DNS" ] || [ -n "$ZB_B_DNS" ]; then
-        [ -n "$ZB_DNS" ] && printf "  zeroblock DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "(${ZB_TYPE_DNS}) $ZB_DNS"
-        [ -n "$ZB_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$ZB_B_DNS"
-    fi
+    [ -n "$ZB_DNS" ] && printf "  %-4s%27s" "zeroblock" "DNS/Bootstrap DNS: " && \
+	printf "%b%s${CLR_OFF}${CYAN}(${ZB_TYPE_DNS}) $ZB_DNS${dns_main_outbound}"
+	[ -n "$ZB_B_DNS" ] && printf " / %b%s${CLR_OFF}\n" "${CYAN}" "$ZB_B_DNS${dns_bootstrap_outbound}"
+
     # --- Статус пользовательских скриптов zapret2 (1 - включено, 0 - выключено). Могут ломать awg10.
     if [ -f "/opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh" ]; then
         if opkg list-installed | grep -q "^zapret2"; then
