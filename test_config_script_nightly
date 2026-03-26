@@ -792,10 +792,12 @@ for pkg in $ACTIVE_PKGS; do
     SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
 
     for sid in $SIDS; do
-        # Проверка активации/деактивации секций ZeroBlock!!!
+        # Проверка активации/деактивации/родительского контроля секций ZeroBlock!!!
         s_en=$(uci -q get "$pkg.$sid.enabled")
+		p_cont=$(uci -q get "$pkg.$sid.connection_type")
         if [ "${pkg}" = "zeroblock" ]; then
             [ -z "${s_en}" ] || [ $s_en -eq 0 ] && continue
+			[ "$p_cont" = "block" ] && continue
         fi
 
         RAW=$(uci -q get "$pkg.$sid.community_lists" | tr -d "'\"" | tr ' ' ',' | sed 's/,,*/,/g' | tr ',' ' ')
@@ -856,8 +858,8 @@ ZB_RUNNED=0
 
 echo "$active" | grep -q "podkop" && PK_AUTOSTART=1
 echo "$active" | grep -q "zeroblock" && ZB_AUTOSTART=1
-echo "$runned" | grep -q "podkop" && PK_RUNNED=1
-echo "$runned" | grep -q "zeroblock" && ZB_RUNNED=1
+# echo "$runned" | grep -q "podkop" && PK_RUNNED=1
+# echo "$runned" | grep -q "zeroblock" && ZB_RUNNED=1
 
 
 if [ $PK_INST -eq 1 ]; then
