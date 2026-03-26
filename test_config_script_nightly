@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.54"
+VER="0.0.55"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -141,7 +141,7 @@ check_userlists() {
             uci -q show "$pkg" | awk -F'[.=]' '/=section$/ && $2!=""{print $2}' | \
             while read section; do
                 [ "$pkg" = "zeroblock" ] && [ "$(uci -q get "$pkg.$section.enabled")" != "1" ]|| \
-				[ "$(uci -q get "$pkg.$sid.connection_type")" = "block" ] \
+				[ "$(uci -q get "$pkg.$section.connection_type")" = "block" ] \
 				&& continue
 				
                 for param in user_domains user_domains_text; do
