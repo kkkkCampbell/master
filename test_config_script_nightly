@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.56"
+VER="0.0.57"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -851,9 +851,7 @@ done
 
 
 
-
-
-# --- БЛОК ДОПОЛНИТЕЛЬНОЙ ИНФОРМАЦИИ (ПЕРЕСЕЧЕНИЯ) ---
+# --- БЛОК ПОИСКА СЕКЦИЙ РОДИТЕЛЬСКОГО КОНТРОЛЯ И СЕКЦИЙ БЛОКИРОВКИ ДОСТУПА В ZEROBLOCK---
 
 PK_AUTOSTART=0
 ZB_AUTOSTART=0
@@ -864,6 +862,33 @@ echo "$active" | grep -q "podkop" && PK_AUTOSTART=1
 echo "$active" | grep -q "zeroblock" && ZB_AUTOSTART=1
 # echo "$runned" | grep -q "podkop" && PK_RUNNED=1
 # echo "$runned" | grep -q "zeroblock" && ZB_RUNNED=1
+
+if [ "${ZB_AUTOSTART}" = "1" ]; then
+	pkg="zeroblock"
+	_block_sections=""
+	_p_cont_sections=""
+	SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
+	for sid in $SIDS; do
+		s_en=$(uci -q get "$pkg.$sid.enabled")
+			if [ "$s_en" = "1" ]; then
+				conn_type=$(uci -q get "$pkg.$sid.connection_type")
+				p_cont=$(uci -q get "$pkg.$sid.parental_control")
+				if [ "$conn_type" = "block" ] && [ "$p_cont" != "1" ]; then _block_sections="${_block_sections} $sid"; fi
+				if [ "$p_cont" = "1" ]; then _p_cont_sections="${_p_cont_sections} $sid"; fi
+			fi
+	done
+	
+	[ -n "${_block_sections}" ] && \
+	printf "  %-4s %30s" "${pkg}" "режим BLOCK:" && echo -e "${RED_BRIGHT}${_block_sections}${CLR_OFF}"
+	[ -n "${_p_cont_sections}" ] && \
+	printf "  %-4s %30s" "${pkg}" "режим Parental_control:" && echo -e "${YELLOW}${_p_cont_sections}${CLR_OFF}"
+fi
+
+
+
+
+
+# --- БЛОК ДОПОЛНИТЕЛЬНОЙ ИНФОРМАЦИИ (ПЕРЕСЕЧЕНИЯ) ---
 
 
 if [ $PK_INST -eq 1 ]; then
