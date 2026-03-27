@@ -1,7 +1,8 @@
 #!/bin/sh
+#z1_strat_selector
 
 clear
-echo "ver 0.0.1"
+echo "ver 0.0.2"
 sleep 3
 
 # Сброс цвета
@@ -169,6 +170,20 @@ while true; do
         exit 0
     fi
     
+	# Останавливаем анблок
+	if [ -f "/etc/init.d/youtubeUnblock" ]; then
+		/etc/init.d/youtubeUnblock stop
+		/etc/init.d/youtubeUnblock disable
+	fi
+	
+	# и запрет2
+	if [ -f "/etc/init.d/zapret2" ]; then
+		/etc/init.d/zapret2 stop
+		/etc/init.d/zapret2 disable
+	fi
+	
+	
+	
     # Проверка, что ввод - число
     if ! echo "$choice" | grep -q '^[0-9]\+$'; then
         echo "Ошибка: Введите число!"
