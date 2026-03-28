@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.58"
+VER="0.0.59"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -126,59 +126,93 @@ fi
 # ФУНКЦИИ
 # =====================
 
+# --- ФУНКЦИЯ ОЧИСТКИ СТРОКИ ОТ ЛИШНИХ ПРОБЕЛОВ, КАВЫЧЕК, НЕПЕЧАТАЕМЫХ СИМВОЛОВ И КОММЕНТАРИЕВ ---
+clean_uci_str() {
+    printf '%s' "$1" | tr -d '\r' | tr '\n\t' ' ' | sed \
+        -e 's/[[:space:]]*[#\/].*$//' \
+        -e "s/['\"]//g" \
+        -e 's/[^[:print:][:space:]]//g' \
+        -e 's/[[:space:]]\+/ /g' \
+        -e 's/^[[:space:]]*//' \
+        -e 's/[[:space:]]*$//'
+}
+
+
 # --- ФУНКЦИЯ ПОИСКА ПЕРЕСЕЧЕНИЙ ПО ДОМЕНАМ В ЮЗЕРСПИСКАХ ВНУТРИ ОДНОЙ ПРОГРАММЫ ---
 # $1 = имя программы. zeroblock, podkop etc.
 check_userlists() {
-    # Временный файл для всех доменов
-    tmpfile="/tmp/domains_$$.tmp"
-
-    # Список имён программ для проверки
-    pkg_names="${1}"
-
-    for pkg in "${pkg_names}"; do
-        # Собираем все домены пакета
-        {
-            uci -q show "$pkg" | awk -F'[.=]' '/=section$/ && $2!=""{print $2}' | \
-            while read section; do
-                [ "$pkg" = "zeroblock" ] && [ "$(uci -q get "$pkg.$section.enabled")" != "1" ]|| \
-				[ "$(uci -q get "$pkg.$section.connection_type")" = "block" ] \
-				&& continue
-				
-                for param in user_domains user_domains_text; do
-                    uci -q get "$pkg.$section.$param" 2>/dev/null | tr ',; \t' '\n' | grep -v '^$' | \
-                    while read domain; do
-						# Проверка на комментарии
-						echo "$domain" | grep -q "#" && continue
-						echo "$domain" | grep -q "//" && continue
-                        echo "$domain $section"
-                    done
-                done
+    local pkg="${1}"
+    local tmp_domains="/tmp/domains_$$.tmp"
+    
+    # Очищаем временный файл
+    > "$tmp_domains"
+    
+    # Получаем список секций
+    sections=$(uci -q show "$pkg" | awk -F'[.=]' '/=section$/ && $2!=""{print $2}')
+    
+    for section in $sections; do
+        # Проверка условий
+        if [ "$pkg" = "zeroblock" ]; then
+            [ "$(uci -q get "$pkg.$section.enabled")" != "1" ] && continue
+        fi
+        [ "$(uci -q get "$pkg.$section.connection_type")" = "block" ] && continue
+        
+        for param in user_domains user_domains_text; do
+            # Получаем значение параметра
+            value=$(uci -q get "$pkg.$section.$param" 2>/dev/null)
+            [ -z "$value" ] && continue
+            
+            # Очищаем строку через функцию clean_uci_str
+            cleaned=$(clean_uci_str "$value")
+            [ -z "$cleaned" ] && continue
+            
+            # Разбиваем по разделителям: запятая, точка с запятой, пробел, таб
+            echo "$cleaned" | sed 's/[,; \t]\+/\n/g' | while IFS= read -r domain; do
+                # Удаляем пробелы в начале и конце
+                domain=$(echo "$domain" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+                
+                # Пропускаем пустые строки
+                [ -z "$domain" ] && continue
+                
+                # Выводим домен и секцию
+                echo "$domain $section hui"
             done
-        } | sort | awk -v pkg="$pkg" -v red="$RED_BRIGHT" -v clr="$CLR_OFF" '
-        {
-            # Собираем все секции для каждого домена
-            if (!($1 in sec)) {
-                sec[$1] = $2
-                count[$1] = 1
-            } else {
-                # Добавляем секцию если её ещё нет
-                if (index(" " sec[$1] " ", " " $2 " ") == 0) {
-                    sec[$1] = sec[$1] ", " $2
-                    count[$1]++
-                }
+        done
+    done > "$tmp_domains"
+    
+    # Проверяем, есть ли данные
+    [ ! -s "$tmp_domains" ] && {
+        rm -f "$tmp_domains"
+        return
+    }
+    
+    # Сортируем и обрабатываем
+    sort "$tmp_domains" | awk -v pkg="$pkg" -v red="$RED_BRIGHT" -v clr="$CLR_OFF" '
+    {
+        # Собираем все секции для каждого домена
+        if (!($1 in sec)) {
+            sec[$1] = $2
+            count[$1] = 1
+        } else {
+            # Добавляем секцию если её ещё нет
+            if (index(" " sec[$1] " ", " " $2 " ") == 0) {
+                sec[$1] = sec[$1] ", " $2
+                count[$1]++
             }
         }
-        END {
-            for (domain in sec) {
-                # Выводим только если домен в 2+ секциях
-                if (count[domain] > 1) {
-                    printf "  %s: !!!_%s%s%s → %s\n", pkg " юзерсписки", red, domain, clr, sec[domain]
-                }
+    }
+    END {
+        for (domain in sec) {
+            # Выводим только если домен в 2+ секциях
+            if (count[domain] > 1) {
+                printf "  %s: !!!_%s%s%s → %s\n", pkg " юзерсписки", red, domain, clr, sec[domain]
             }
-        }'
-    done
+        }
+    }'
+    
+    # Очистка
+    rm -f "$tmp_domains"
 }
-
 # Чистим временный конфиг
 [ -f "$_tmp_conf" ] && rm "$_tmp_conf"
 
@@ -527,6 +561,15 @@ for s in $CHECKING_SERVICES; do
     printf "${au_c}%s${CLR_OFF}\n" "$au_t"
 done
 
+
+
+
+
+
+
+
+
+
 # ==============================================================
 # БЛОК 5: ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ КОНФИГУРАЦИИ
 # ==============================================================
@@ -628,13 +671,20 @@ for pkg in $CHECKING_SERVICES; do
 
         # проверяем активность секции зероблок
         if [ "${pkg}" = "zeroblock" ]; then
-            s_en=$(uci -q get "$pkg.$s_name.enabled")
-            [ "$s_en" != "1" ] && continue
+			s_en=$(uci -q get "$pkg.$s_name.enabled")
+			[ "$s_en" != "1" ] && continue
         fi
 
         msg="default"
-
-        val_str=$(uci -q get "$opt_path"); for v in $val_str; do
+		
+		# Собираем и обрабатываем домены
+        val_str=$(uci -q get "$opt_path")
+		
+		# Удаляем комментарии, кавычки, непечатаемые символы и лишние пробелы
+		result=$(clean_uci_str "$val_str")
+		val_str="$result"
+		
+		for v in $val_str; do
             dom=$(echo "$v" | awk '{print $1}')
             [ -z "$dom" ] && continue
 
@@ -787,6 +837,15 @@ for pkg in $ACTIVE_PKGS; do
         done
     done
 done
+
+
+
+
+
+
+
+
+
 
 # 2. ВЫВОДИМ СПИСКИ ТОЛЬКО ДЛЯ ТЕХ, КТО В ACTIVE_PKGS
 
