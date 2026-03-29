@@ -996,7 +996,9 @@ if [ $PK_INST -eq 1 ]; then
     if [ $PK_AUTOSTART -eq 1 ]; then
         # Выводим DNS, только если там не пусто
         if [ -n "$PK_DNS" ] || [ -n "$PK_B_DNS" ]; then
-            [ -n "$PK_DNS" ] && printf "  podkop DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "$PK_DNS"
+			dns_type=""
+			dns_type=$(uci get -q podkop.settings.dns_type)
+            [ -n "$PK_DNS" ] && printf "  podkop DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "(${dns_type}) ${PK_DNS}"
             [ -n "$PK_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$PK_B_DNS"
         fi
     fi
