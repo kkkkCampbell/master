@@ -4,7 +4,7 @@
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.59"
+VER="0.0.60"
 
 ifdown "$IFACE"
 service opera-proxy restart
