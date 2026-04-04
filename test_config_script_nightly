@@ -5,7 +5,7 @@ export TERM=xterm-256color
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.61"
+VER="0.0.62"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -1130,7 +1130,8 @@ echo ""
 echo "= СИСТЕМНЫЕ РЕСУРСЫ:"
 printf "  LAN IP: %s\n" "$LAN_IP (Прошивка: ${VERSION})"
 printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE"
-crontab -l | sed 's/^/  /'
+# crontab -l | sed 's/^/  /'
+crontab -l | sed -e '/^[[:space:]]*#/d' -e 's/^/  /'
 if opkg list-installed | grep -q "wdoc"; then
     printf "  ${RED_BRIGHT}!!!_WatchDoc установлен${CLR_OFF}\n"
 fi
