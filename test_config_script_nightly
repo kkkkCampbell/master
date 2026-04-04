@@ -31,7 +31,7 @@ cprint() {
 }
 
 # --- PODKOP GLOBAL CHECK STRINGS ---
-p_check_include='Router DNS is NOT routed through sing-box|Sing-box does NOT work with FakeIP'
+p_check_include='Router DNS is NOT routed through sing-box|Sing-box does NOT work with FakeIP|❌ Bootstrap DNS:|❌ Main DNS:|❌ DNS on router'
 
 # --- СПИСКИ ДЛЯ АЛЕРТОВ ---
 SAME_AS_LIST="youtube russia_inside googlevideo"
