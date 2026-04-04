@@ -1,10 +1,11 @@
 #!/bin/sh
 # analyzer.sh
 
+export TERM=xterm-256color
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.60"
+VER="0.0.61"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -28,6 +29,9 @@ CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;3
 cprint() {
     printf "${1}%s${CLR_OFF}" "$2"
 }
+
+# --- PODKOP GLOBAL CHECK STRINGS ---
+p_check_include='Router DNS is NOT routed through sing-box|Sing-box does NOT work with FakeIP'
 
 # --- СПИСКИ ДЛЯ АЛЕРТОВ ---
 SAME_AS_LIST="youtube russia_inside googlevideo"
@@ -1001,8 +1005,17 @@ if [ $PK_INST -eq 1 ]; then
             [ -n "$PK_DNS" ] && printf "  podkop DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "(${dns_type}) ${PK_DNS}"
             [ -n "$PK_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$PK_B_DNS"
         fi
+		podkop global_check | grep -E '^❌|^⚠️' | grep -E "$p_check_include" | while IFS= read -r line; do
+			case $line in
+				"❌"*) printf "  podkop "; printf '\033[1;31m%s\033[0m\n' "$line" ;;
+				"⚠️"*) printf "  podkop "; printf '\033[0;33m%s\033[0m\n' "$line" ;;
+				*) printf '%s\n' "$line" ;;
+			esac
+		done
     fi
 fi
+
+
 
 
 
