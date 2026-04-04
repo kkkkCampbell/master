@@ -5,7 +5,7 @@ export TERM=xterm-256color
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.62"
+VER="0.0.63"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -1122,6 +1122,36 @@ if [ $ZB_AUTOSTART -eq 1 ]; then
         printf "  Версия zeroblock: ${PK_COLOR}%s${CLR_OFF}\n" "$ZB_VER"
     fi
 fi
+
+
+
+
+# --- DNSMASQ SETTINGS CHECK ---
+
+
+indices=$(uci show dhcp 2>/dev/null | grep -o 'dhcp\.@dnsmasq\[[0-9]*\]' | sed 's/.*\[\([0-9]*\)\]/\1/' | sort -nu)
+count=$(echo "$indices" | wc -l)
+
+if [ -z "$indices" ] || [ "$count" -eq 0 ]; then
+    printf "\033[1;31m  Секции dnsmasq не найдены\033[0m\n"
+fi
+
+if [ "$count" -gt 1 ]; then
+    printf "\033[1;31m  Обнаружено несколько секций dnsmasq (%d). Невозможно определить используемую.\033[0m\n" "$count"
+else
+	idx="$indices"
+	strict=$(uci -q get "dhcp.@dnsmasq[$idx].strictorder")
+	noresolv=$(uci -q get "dhcp.@dnsmasq[$idx].noresolv")
+
+	if [ "$strict" = "1" ]; then
+		printf "\033[1;31m  Ошибка: DNS и DHCP, Строгий порядок активен!\033[0m\n"
+	fi
+
+	if [ "$noresolv" != "1" ]; then
+		printf "\033[1;31m  Ошибка: DNS и DHCP, Игнорировать файл resolv отключено! \033[0m\n" "${noresolv:-0}"
+	fi
+fi
+
 
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
