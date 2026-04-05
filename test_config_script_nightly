@@ -5,7 +5,7 @@ export TERM=xterm-256color
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.63"
+VER="0.0.64"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -390,69 +390,85 @@ printf "  ${YELLOW}Программы в автозапуске:$active${CLR_OFF
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
 TEST_URL="https://www.youtube.com"
 echo ""
-echo "= ПРОВЕРКА ДОСТУПОВ (WWW.YOUTUBE.COM):"
+# 1. Удаляем протокол средствами Shell (Parameter Expansion)
+CLEAN_URL="${TEST_URL#*://}"
 
-# Инициализируем флаг нулем в самом начале
+# 2. Приводим к верхнему регистру через tr (используя явные диапазоны)
+CLEAN_URL=$(echo "$CLEAN_URL" | tr 'a-z' 'A-Z')
+
+echo "= ПРОВЕРКА ДОСТУПОВ (${CLEAN_URL}):"
 NEED_RESOLVE_TEST=0
+
+
+
 
 
 # 1. Проверка OPERA
 
 # Если опера-прокси установлена, проверям доступ через опера-прокси
 if opkg list-installed | grep -q "^opera-proxy"; then
+P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 "$TEST_URL" | head -n 1 | tr -d '\r\n')
 
-	P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 "$TEST_URL"| head -n 1 | tr -d '\r\n')
-	if [ -n "$P_CODE" ]; then
-		printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
+if [[ "$P_CODE" == *"200 OK"* ]]; then
+    printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
+	elif [[ -n "$P_CODE" ]]; then
+		# Получен статус, но не 200 OK
+		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН  [%s]${CLR_OFF}\n" "$P_CODE"
+		NEED_RESOLVE_TEST=1
 	else
+		# P_CODE пуст — ошибка соединения/таймаут
 		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
 		NEED_RESOLVE_TEST=1
 	fi
 
 fi
 
+
+
+
+
 # 2. Проверка интерфейса awg10
+
 if [ -d "/sys/class/net/$IFACE" ]; then
     IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
     IF_IP6=$(ip -6 addr show "$IFACE" 2>/dev/null | grep -w inet6 | grep -v "fe80" | awk '{print $2}' | cut -d/ -f1 | head -n 1 | tr -d '\r\n')
 
-    # --- IPv4 ---
-    if [ -n "$IF_IP4" ]; then
-        # W_OUT=$(wget --bind-address="$IF_IP4" --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -4 --read-timeout=10 --timeout=10 --tries=1 "$TEST_URL" 2>&1)
-        W_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
-                --retry 3 --insecure --tlsv1.3 "$TEST_URL" 2>&1)
-        W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
-        TLS_VER="TLSv1.3"
+	# --- IPv4 ---
+	if [ -n "$IF_IP4" ]; then
+		FULL_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
+					--retry 3 --insecure --tlsv1.3 "$TEST_URL" 2>&1)
+		W_CODE=$(echo "$FULL_OUT" | grep -m1 "HTTP/" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+		TLS_VER="TLSv1.3"
 
-        if [ -z "$W_CODE" ]; then
-            # W_OUT=$(wget --bind-address="$IF_IP4" --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -4 --read-timeout=10 --timeout=10 --tries=1 "$TEST_URL" 2>&1)
-            W_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
-                    --retry 3 --insecure --tlsv1.2 "$TEST_URL" 2>&1)
-            W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
-            TLS_VER="TLSv1.2"
-        fi
+		if [ -z "$W_CODE" ]; then
+			# Повтор с TLSv1.2
+			FULL_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
+						--retry 3 --insecure --tlsv1.2 "$TEST_URL" 2>&1)
+			W_CODE=$(echo "$FULL_OUT" | grep -m1 "HTTP/" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+			TLS_VER="TLSv1.2"
+		fi
 
-        if [ -n "$W_CODE" ]; then
-            W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | tr -d '\r')
-            W_CODE=$(echo "$W_CODE" | sed 's/[[:space:]]*$//')
-            printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv4) :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" "$TLS_VER"
-        else
-            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4) :"
-            echo "------------------------------------------------------"
-            echo "$W_OUT" | sed 's/^/  / '
-            echo "------------------------------------------------------"
-            NEED_RESOLVE_TEST=1
-        fi
-    fi
+		if [ -n "$W_CODE" ]; then
+			printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv4) :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE OK" "$TLS_VER"
+		else
+			# Ошибка: последняя непустая строка (сообщение curl или предупреждение)
+			LAST_ERR=$(echo "$FULL_OUT" | grep -v '^[[:space:]]*$' | tail -n1)
+			printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4) :"
+			echo "------------------------------------------------------"
+			echo "$LAST_ERR" | sed 's/^/  / '
+			echo "------------------------------------------------------"
+			NEED_RESOLVE_TEST=1
+		fi
+	fi
 
     # --- IPv6 ---
     if [ -n "$IF_IP6" ]; then
-        W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL" 2>&1)
+        W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL"  2>&1)
         W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
         TLS_VER6="TLSv1.3"
 
         if [ -z "$W_CODE6" ]; then
-            W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL" 2>&1)
+            W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL"  2>&1)
             W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
             TLS_VER6="TLSv1.2"
         fi
@@ -494,9 +510,26 @@ if [ $NEED_RESOLVE_TEST -eq 1 ]; then
     nslookup youtube.com 2>&1 | \
         grep -v "Non-authoritative answer" | \
         grep -vE "^[[:space:]]*$" | \
-        sed 's/^/    /'
+        sed 's/^/    /' | \
+        awk '
+            /    Server:/ { next }
+            /    Address:.*:[0-9]+$/ { sub(/Address/, "Server"); print; next }
+            /    Name:/ { name = $0; next }
+            /    Address:/ && name != "" { print name "    " $0; name = ""; next }
+            { print }
+        '
     echo "--------------------------------------------------------------"
 fi
+
+# if [ $NEED_RESOLVE_TEST -eq 1 ]; then
+    # echo "--------------------------------------------------------------"
+    # printf "  ! Диагностика DNS (youtube.com):\n"
+    # nslookup youtube.com 2>&1 | \
+        # grep -v "Non-authoritative answer" | \
+        # grep -vE "^[[:space:]]*$" | \
+        # sed 's/^/    /'
+    # echo "--------------------------------------------------------------"
+# fi
 
 
 
