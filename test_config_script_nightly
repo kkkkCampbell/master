@@ -5,7 +5,7 @@ export TERM=xterm-256color
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.64"
+VER="0.0.65"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -432,34 +432,51 @@ fi
 if [ -d "/sys/class/net/$IFACE" ]; then
     IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
     IF_IP6=$(ip -6 addr show "$IFACE" 2>/dev/null | grep -w inet6 | grep -v "fe80" | awk '{print $2}' | cut -d/ -f1 | head -n 1 | tr -d '\r\n')
-
-	# --- IPv4 ---
+	
+# --- IPv4 с подсчётом попыток ---
 	if [ -n "$IF_IP4" ]; then
-		FULL_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
-					--retry 3 --insecure --tlsv1.3 "$TEST_URL" 2>&1)
-		W_CODE=$(echo "$FULL_OUT" | grep -m1 "HTTP/" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-		TLS_VER="TLSv1.3"
+    MAX_RETRIES=2
+    TRY=0
+    SUCCESS=0
+    FINAL_W_CODE=""
+    FINAL_TLS=""
+    FINAL_FULL_OUT=""
 
-		if [ -z "$W_CODE" ]; then
-			# Повтор с TLSv1.2
-			FULL_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
-						--retry 3 --insecure --tlsv1.2 "$TEST_URL" 2>&1)
-			W_CODE=$(echo "$FULL_OUT" | grep -m1 "HTTP/" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-			TLS_VER="TLSv1.2"
-		fi
+    # Сначала пробуем TLSv1.3
+    for tls_ver in tlsv1.3 tlsv1.2; do
+        for attempt in $(seq 1 $MAX_RETRIES); do
+            TRY=$((TRY + 1))
+            FULL_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' \
+                --interface "$IFACE" --max-time 20 --connect-timeout 9 \
+                --insecure --$tls_ver "$TEST_URL" 2>&1)
+            W_CODE=$(echo "$FULL_OUT" | awk '/HTTP\// {print; exit}')
+            if [ -n "$W_CODE" ]; then
+                SUCCESS=1
+                FINAL_W_CODE="$W_CODE"
+                FINAL_TLS="$tls_ver"
+                FINAL_FULL_OUT="$FULL_OUT"
+                break 2   # выходим из двух циклов
+            fi
+            # если не успех, продолжаем
+        done
+    done
 
-		if [ -n "$W_CODE" ]; then
-			printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv4) :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE OK" "$TLS_VER"
-		else
-			# Ошибка: последняя непустая строка (сообщение curl или предупреждение)
-			LAST_ERR=$(echo "$FULL_OUT" | grep -v '^[[:space:]]*$' | tail -n1)
-			printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4) :"
-			echo "------------------------------------------------------"
-			echo "$LAST_ERR" | sed 's/^/  / '
-			echo "------------------------------------------------------"
-			NEED_RESOLVE_TEST=1
-		fi
-	fi
+    if [ $SUCCESS -eq 1 ]; then
+        # Убираем лишние пробелы и перевод строк
+        W_CODE_CLEAN=$(echo "$FINAL_W_CODE" | tr -d '\r' | sed 's/[[:space:]]*$//')
+        printf "  %-14s %b (%s) [%s] [try: %d]\n" \
+            "$IFACE (IPv4) :" "${GREEN}ОНЛАЙН${CLR_OFF}" \
+            "$W_CODE_CLEAN OK" "$FINAL_TLS" "$TRY"
+    else
+        # Ошибка: последняя непустая строка из последнего FULL_OUT
+        LAST_ERR=$(echo "$FULL_OUT" | grep -v '^[[:space:]]*$' | tail -n 1)
+        printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4) :"
+        echo "------------------------------------------------------"
+        echo "$LAST_ERR" | sed 's/^/  / '
+        echo "------------------------------------------------------"
+        NEED_RESOLVE_TEST=1
+    fi
+fi
 
     # --- IPv6 ---
     if [ -n "$IF_IP6" ]; then
