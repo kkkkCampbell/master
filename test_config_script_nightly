@@ -179,7 +179,7 @@ check_userlists() {
                 [ -z "$domain" ] && continue
                 
                 # Выводим домен и секцию
-                echo "$domain $section hui"
+                echo "$domain $section"
             done
         done
     done > "$tmp_domains"
