@@ -35,6 +35,103 @@ mkdir -p "/opt/strategy_selector/"
 # Скачиваем стратегии, если их нет
 [ ! -f "$CONFIG_FILE" ] && wget -qO "$CONFIG_FILE" https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/z1_strat_selector/strategy
 
+
+#--- СКАЧИВАЕМ И УСТАНАВЛИВАЕМ ЗАПРЕТ ОТ РЕМИТТОР
+
+
+
+zapret_installer() {
+
+	# Скрипт автоматической установки zapret на OpenWrt
+	# Источник: https://github.com/kkkkCampbell/trash/raw/refs/heads/zapret_autoconfig/zapret.zip
+
+	# set -e  # остановка при любой ошибке
+
+	URL="https://github.com/kkkkCampbell/trash/raw/refs/heads/zapret_autoconfig/zapret.zip"
+	ZIP_FILE="/tmp/zapret.zip"
+	TMP_DIR="/tmp"
+
+	# Функция для вывода сообщений
+	log() {
+		echo "[zapret-installer] $1"
+	}
+
+	# 1. Скачивание архива
+	log "Скачивание $URL в $ZIP_FILE"
+	if command -v wget >/dev/null 2>&1; then
+		wget -O "$ZIP_FILE" "$URL"
+	elif command -v curl >/dev/null 2>&1; then
+		curl -L -o "$ZIP_FILE" "$URL"
+	else
+		log "ОШИБКА: ни wget, ни curl не установлены."
+		exit 1
+	fi
+
+	if [ ! -f "$ZIP_FILE" ]; then
+		log "ОШИБКА: файл не был скачан."
+		exit 1
+	fi
+	
+	# Проверка, установлен ли пакет unzip
+	if ! opkg list-installed | grep -q "^unzip -"; then
+		echo "Пакет unzip не установлен. Устанавливаю..."
+		opkg update
+		opkg install unzip
+		opkg_updated=1
+	fi
+
+	# 2. Распаковка архива в /tmp
+	log "Распаковка $ZIP_FILE в $TMP_DIR"
+	if command -v unzip >/dev/null 2>&1; then
+		unzip -o "$ZIP_FILE" -d "$TMP_DIR"
+	elif command -v busybox >/dev/null 2>&1 && busybox --list 2>/dev/null | grep -q unzip; then
+		busybox unzip -o "$ZIP_FILE" -d "$TMP_DIR"
+	fi
+	
+	
+	# 3. Проверка наличия .ipk файлов
+	ZAPRET_IPK="/tmp/zapret.ipk"
+	LUCI_IPK="/tmp/luci-app-zapret.ipk"
+
+	if [ ! -f "$ZAPRET_IPK" ]; then
+		log "ОШИБКА: $ZAPRET_IPK не найден после распаковки."
+		exit 1
+	fi
+
+	if [ ! -f "$LUCI_IPK" ]; then
+		log "ОШИБКА: $LUCI_IPK не найден после распаковки."
+		exit 1
+	fi
+
+
+	 if [ "$opkg_updated" !=1  ]; then 
+		opkg update
+	fi
+	
+	# 4. Установка пакетов
+	clear
+	echo ""
+	echo ""
+	log "Установка zapret.ipk ..."
+	opkg install "$ZAPRET_IPK"
+
+	log "Установка luci-app-zapret.ipk ..."
+	opkg install "$LUCI_IPK"
+
+	# 5. Очистка (удаление архива, .ipk-файлы можно оставить или удалить)
+	log "Очистка временных файлов..."
+	rm -f "$ZIP_FILE"
+	# Раскомментируйте следующую строку, если хотите удалить и .ipk после установки
+	rm -f "$ZAPRET_IPK" "$LUCI_IPK"
+
+	log "Установка успешно завершена."
+	service youtubeUnblock stop
+	service youtubeUnblock disable
+	service zapret restart
+
+}
+
+
 filter_mark_correction() {
 	sed -i 's/^[[:space:]]*option FILTER_MARK .*/option FILTER_MARK '\''	'\''/' "${CONFIG_FILE}"
 }
@@ -134,12 +231,19 @@ while true; do
     done < "$TEMP_SECTIONS"
     
     echo ""
+	echo "  777. Установить zapret от Remittor"
     echo "  888. Обновить стратегии"
     echo "  999. Выход"
     echo ""
     
     echo -n "Выберите стратегию (1-$SECTION_COUNT или 999 для выхода): "
     read choice
+	
+	
+	# Устанавливаем запрет от ремиттор, отключаем ютубанблок
+	if [ "$choice" = "777" ]; then
+		zapret_installer
+	fi
 	
 	# Проверка на обновление стратегий
 	if [ "$choice" = "888" ]; then
@@ -170,6 +274,15 @@ while true; do
         exit 0
     fi
     
+	# Проверка, что ввод - число
+    if ! echo "$choice" | grep -q '^[0-9]\+$'; then
+        echo "Ошибка: Введите число!"
+        echo "Нажмите Enter для продолжения..."
+        read dummy
+        continue
+    fi
+
+	
 	# Останавливаем анблок
 	if [ -f "/etc/init.d/youtubeUnblock" ]; then
 		/etc/init.d/youtubeUnblock stop
@@ -182,16 +295,6 @@ while true; do
 		/etc/init.d/zapret2 disable
 	fi
 	
-	
-	
-    # Проверка, что ввод - число
-    if ! echo "$choice" | grep -q '^[0-9]\+$'; then
-        echo "Ошибка: Введите число!"
-        echo "Нажмите Enter для продолжения..."
-        read dummy
-        continue
-    fi
-    
     # Проверка диапазона
     if [ "$choice" -lt 1 ] || [ "$choice" -gt "$SECTION_COUNT" ]; then
         echo "Ошибка: Неверный номер стратегии! Введите число от 1 до $SECTION_COUNT"
