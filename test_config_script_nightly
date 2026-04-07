@@ -5,7 +5,7 @@ export TERM=xterm-256color
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.65"
+VER="0.0.66"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -1174,6 +1174,28 @@ if [ $ZB_AUTOSTART -eq 1 ]; then
 fi
 
 
+# --- ИЩЕМ ROUTE_ALLOWED_IPS И NOHOSTROUTE ---
+
+# Поиск всех секций network с proto='amneziawg'
+uci show network | grep "\.proto='amneziawg'$" | while IFS= read -r line; do
+    rai_raw=""
+    # Извлечение полного идентификатора конфигурации (например, network.@interface[0])
+    config_id="${line%%.proto=*}"
+    # Удаление префикса "network." для получения имени/индекса интерфейса
+    interface_id="${config_id#network.}"
+    rai_raw=$(uci show | grep "amneziawg_${interface_id}" | grep route_allowed_ips)
+    nohostroute=$(uci get "${config_id}.nohostroute" 2>/dev/null)
+    # Проверка nohostroute: ошибка, если значение не равно "1"
+    if [ -z "$nohostroute" ] || [ "$nohostroute" = "0" ]; then
+        printf "  !!!_${RED_BRIGHT}Интерфейс %s: nohostroute не установлен в 1 (создание маршрутов включено!)${CLR_OFF}\n" \
+            "$interface_id"
+    fi
+    # Проверка route_allowed_ips: ошибка, если значение равно "1"
+    if [ ! -z "${rai_raw}" ]; then
+        printf "  !!!_${RED_BRIGHT}Интерфейс %s: route_allowed_ips включен. Catch-all интерфейс!${CLR_OFF}\n" \
+            "$interface_id"
+    fi
+done
 
 
 # --- DNSMASQ SETTINGS CHECK ---
