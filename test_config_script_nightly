@@ -1191,7 +1191,7 @@ uci show network | grep "\.proto='amneziawg'$" | while IFS= read -r line; do
             "$interface_id"
     fi
     # Проверка route_allowed_ips: ошибка, если значение равно "1"
-    if [ ! -z "${rai_raw}" ]; then
+    if [ ! -z "${rai_raw}" ] && echo ${rai_raw} | grep -q "_ips='1'"; then
         printf "  !!!_${RED_BRIGHT}Интерфейс %s: route_allowed_ips включен. Catch-all интерфейс!${CLR_OFF}\n" \
             "$interface_id"
     fi
