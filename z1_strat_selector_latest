@@ -2,7 +2,7 @@
 #z1_strat_selector
 
 clear
-echo "ver 0.0.3"
+echo "ver 0.0.4"
 sleep 3
 
 # Сброс цвета
@@ -121,13 +121,22 @@ zapret_installer() {
 	# 5. Очистка (удаление архива, .ipk-файлы можно оставить или удалить)
 	log "Очистка временных файлов..."
 	rm -f "$ZIP_FILE"
-	# Раскомментируйте следующую строку, если хотите удалить и .ipk после установки
 	rm -f "$ZAPRET_IPK" "$LUCI_IPK"
-
+	echo ""
+	
 	log "Установка успешно завершена."
-	service youtubeUnblock stop
-	service youtubeUnblock disable
+	if [ -f "/etc/init.d/youtubeUnblock" ]; then 
+		/etc/init.d/youtubeUnblock stop
+		/etc/init.d/youtubeUnblock disable
+	fi
+	
+	if [ -f "/etc/init.d/zapret2" ]; then 
+		/etc/init.d/zapret2 stop
+		/etc/init.d/zapret2 disable
+	fi
+	
 	service zapret restart
+	echo ""
 
 }
 
@@ -243,6 +252,9 @@ while true; do
 	# Устанавливаем запрет от ремиттор, отключаем ютубанблок
 	if [ "$choice" = "777" ]; then
 		zapret_installer
+		echo ""; echo "Нажмите Enter для продолжения..."
+		read dummy
+		continue
 	fi
 	
 	# Проверка на обновление стратегий
