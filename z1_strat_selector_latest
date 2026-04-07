@@ -2,7 +2,7 @@
 #z1_strat_selector
 
 clear
-echo "ver 0.0.2"
+echo "ver 0.0.3"
 sleep 3
 
 # Сброс цвета
