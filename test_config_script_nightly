@@ -1167,8 +1167,31 @@ if [ $ZB_AUTOSTART -eq 1 ]; then
     fi
 
     ZB_VER=$(zeroblock --version 2>/dev/null)
-    uci show zeroblock | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}" && \
-	printf "  " && uci show zeroblock | grep "fully_routed_ips"
+	
+	# получаем zeroblock.cacholl.fully_routed_ips
+	# выделяем .cacholl., то есть имя секции
+	# запрашиваем uci -q get "zeroblock.cacholl.enabled" если ноль (секция неактивна), пропускаем, если не ноль, то выводим
+	itog=""
+	RAW=$(uci show zeroblock | grep "fully_routed_ips")
+	# ищем ВКЛЮЧЕННЫЕ секции с полной маршрутизацией
+	if [ -n "$RAW" ]; then
+		for section in $RAW; do
+			# Проверка условий
+			fad=$(echo "$section" | cut -d'.' -f1,2)
+			[ "$(uci -q get "$fad.enabled")" != "1" ] && continue
+			addr=$(uci get "${fad}.fully_routed_ips")
+			# Добавляем перевод строки между секциями, если itog не пуст
+			if [ -n "$itog" ]; then
+				itog="${itog}\n"
+			fi
+			itog="${itog}    Секция: $(echo "$section" | cut -d'.' -f2) = ${addr}"
+		done
+		if [ -n "$itog" ]; then
+			printf "%b\n" "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!"
+			printf "%b" "${itog}${CLR_OFF}"
+			echo ""
+		fi
+	fi
 
     if [ -n "$ZB_VER" ]; then
         ZB_VER=$(echo "$ZB_VER" | sed 's/^ZeroBlock v//')
