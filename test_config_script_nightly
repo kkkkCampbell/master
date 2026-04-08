@@ -5,7 +5,7 @@ export TERM=xterm-256color
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.66"
+VER="0.0.67"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -234,7 +234,6 @@ ROUNDS=1
 IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
 for i in $(seq 1 "$ROUNDS"); do
     curl -4 -L -A 'Mozilla/5.0' -s --no-progress-meter --interface "$IFACE" --max-time 20 --connect-timeout 10 --retry 0 --insecure --tlsv1.2 "$TEST_URL" >/dev/null 2>&1 || true
-    sleep 1
 done
 
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
@@ -253,12 +252,16 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
 DNS_REDIR=$(uci -q get "dhcp.@dnsmasq[0].server" 2>/dev/null)
+
 if [ -z "$DNS_REDIR" ]; then
     DNS_REDIR="${RED_BRIGHT}!!!_ПЕРЕНАПРАВЛЕНИЯ ОТСУТСТВУЮТ${CLR_OFF}"
 fi
+# проверяем на ДНС от тейлскейл
+echo ${DNS_SRV}   | grep -q "100.100.100.100" && DNS_SRV="${RED_BRIGHT}${DNS_SRV}${CLR_OFF}"
+echo ${DNS_REDIR} | grep -q "100.100.100.100" && DNS_REDIR="${RED_BRIGHT}${DNS_REDIR}${CLR_OFF}"
 
-printf "  DNS Server:   %s" "${DNS_SRV:-UNKNOWN} |"
-printf " DNS Redirect: $DNS_REDIR\n"
+printf "  DNS Server:   %b%s" "${DNS_SRV:-UNKNOWN} |"
+printf " DNS Redirect: %b" "$DNS_REDIR\n"
 FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 YT_IP=$(nslookup youtube.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}" "${FB_IP:-UNKNOWN} | "
@@ -1227,7 +1230,7 @@ fi
 
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
-
+sleep 2 # "успокоение" процессора
 echo ""
 echo "= СИСТЕМНЫЕ РЕСУРСЫ:"
 printf "  LAN IP: %s\n" "$LAN_IP (Прошивка: ${VERSION})"
