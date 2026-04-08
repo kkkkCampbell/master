@@ -16,6 +16,7 @@ REM ----- PART 1: Network config + nslookup (with empty line after DNSServer) --
 
 echo.
 echo --- PING RESULTS ---
+echo.
 
 setlocal enabledelayedexpansion
 
