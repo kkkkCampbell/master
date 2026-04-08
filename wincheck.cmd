@@ -1,27 +1,21 @@
 @echo off
+::chcp 1251 > nul
 cls
 echo.
-
 echo --- COLLECTING DATA ---
 echo.
 
-REM Сохраняем текущее приглашение во временный файл
-PROMPT > %TEMP%\prompt.tmp
+REM ====== Џ…ђ…Њ…ЌЌ›… „‹џ •Ћ‘’Ћ‚ ======
+set NS_HOST=facebook.com
+set PING_HOST=ya.ru
+REM ===================================
 
-REM Делаем приглашение пустым
+PROMPT > %TEMP%\prompt.tmp
 PROMPT $
 
-REM Ваши основные команды
-powershell.exe -Command "Get-NetIPConfiguration | Where-Object {$_.NetAdapter.Status -eq 'Up'}" | findstr /v "^$"
-echo.
-nslookup facebook.com
-ping ya.ru -n 1
+powershell -Command "$net=((Get-NetIPConfiguration|Where-Object{$_.NetAdapter.Status -eq 'Up'}|Out-String).Trim() -split '\r\n')|Where-Object{$_ -ne ''}; $nsl=((nslookup $env:NS_HOST 2>&1|Out-String).Trim() -split '\r\n')|Where-Object{$_ -ne ''}; $ping=((ping $env:PING_HOST -n 1 2>&1|Out-String).Trim() -split '\r\n')|Where-Object{$_ -ne ''}; $out=$net+''+$nsl+''+$ping; $res=@(); foreach($line in $out){$res+=$line; if($line -match 'DNSServer'){$res+=''}}; $res -join \"`r`n\""
 
-REM Возвращаем исходное приглашение обратно
 PROMPT < %TEMP%\prompt.tmp
-
-REM Удаляем временный файл
 del %TEMP%\prompt.tmp
-echo.
 
 pause
