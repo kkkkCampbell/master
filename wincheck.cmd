@@ -1,5 +1,5 @@
 @echo off
-::chcp 1251 > nul
+chcp 1251 > nul
 cls
 echo.
 echo --- COLLECTING DATA ---
@@ -17,7 +17,7 @@ REM ----- PART 1: Network config + nslookup (with empty line after DNSServer) --
 echo.
 ::echo --- PING RESULTS ---
 ::echo.
-
+chcp 866 > nul
 setlocal enabledelayedexpansion
 
 :: Используем [ ] как якорь для первой строки и = для статистики
