@@ -1,4 +1,5 @@
 @echo off
+cls
 echo.
 
 echo --- COLLECTING DATA ---
