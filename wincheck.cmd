@@ -5,17 +5,24 @@ echo.
 echo --- COLLECTING DATA ---
 echo.
 
-REM ====== Џ…ђ…Њ…ЌЌ›… „‹џ •Ћ‘’Ћ‚ ======
+REM ====== Parameters ======
 set NS_HOST=facebook.com
 set PING_HOST=ya.ru
-REM ===================================
+set PING_COUNT=10
+REM =========================
 
-PROMPT > %TEMP%\prompt.tmp
-PROMPT $
+REM ----- PART 1: Network config + nslookup (with empty line after DNSServer) -----
+( powershell -Command "Get-NetIPConfiguration | Where-Object {$_.NetAdapter.Status -eq 'Up'}; nslookup %NS_HOST% 2>&1" | findstr /v "^$" ) | powershell -Command "$input | ForEach-Object { $_; if ($_ -match 'DNSServer') { '' } }"
 
-powershell -Command "$net=((Get-NetIPConfiguration|Where-Object{$_.NetAdapter.Status -eq 'Up'}|Out-String).Trim() -split '\r\n')|Where-Object{$_ -ne ''}; $nsl=((nslookup $env:NS_HOST 2>&1|Out-String).Trim() -split '\r\n')|Where-Object{$_ -ne ''}; $ping=((ping $env:PING_HOST -n 1 2>&1|Out-String).Trim() -split '\r\n')|Where-Object{$_ -ne ''}; $out=$net+''+$nsl+''+$ping; $res=@(); foreach($line in $out){$res+=$line; if($line -match 'DNSServer'){$res+=''}}; $res -join \"`r`n\""
+echo.
+echo --- PING RESULTS ---
 
-PROMPT < %TEMP%\prompt.tmp
-del %TEMP%\prompt.tmp
+setlocal enabledelayedexpansion
+
+:: Используем [ ] как якорь для первой строки и = для статистики
+:: Исключаем TTL, чтобы убрать строки ответов
+ping ya.ru -n 10 | findstr /r /c:"\[" /c:"=" /c:"%%" | findstr /v /i "TTL"
+
+echo.
 
 pause
