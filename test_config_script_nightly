@@ -1230,7 +1230,7 @@ else
 	fi
 
 	if [ "$noresolv" != "1" ]; then
-		printf "%b\n" "${RED_BRIGHT}  Ошибка: DNS и DHCP, Игнорировать файл resolv отключено! ${CLR_OFF}" "${noresolv:-0}"
+		printf "%b\n" "${RED_BRIGHT}  Ошибка: DNS и DHCP, Игнорировать файл resolv отключено! ${CLR_OFF}"
 	fi
 fi
 
