@@ -2,19 +2,14 @@
 # analyzer.sh
 
 export TERM=xterm-256color
-IFACE="awg10"
 . /etc/os-release
+IFACE="awg10"
 FIRST_IN="0"
-VER="0.0.67"
+VER="0.0.68"
 
 ifdown "$IFACE"
 service opera-proxy restart
 ifup "$IFACE"
-
-# mkdir -p /opt/zapret2/scriptarchive
-# if [ -d "/sys/class/net/$IFACE" ]; then
-    # mv -f /opt/zapret2/init.d/openwrt/custom.d/50-quic4all.sh /opt/zapret2/scriptarchive/50-quic4all.sh >/dev/null 2>&1
-# fi
 
 clear
 echo "${VER}"
@@ -24,30 +19,24 @@ sleep 8
 # --- ЦВЕТА ---
 CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
 
-# Функция для печати цветного текста без переноса строки
-# cprint "ЦВЕТ" "ТЕКСТ"
-cprint() {
-    printf "${1}%s${CLR_OFF}" "$2"
-}
-
-# --- PODKOP GLOBAL CHECK STRINGS ---
+# --- PODKOP GLOBAL_CHECK ERROR STRINGS ---
 p_check_include='Router DNS is NOT routed through sing-box|Sing-box does NOT work with FakeIP|❌ Bootstrap DNS:|❌ Main DNS:|❌ DNS on router'
 
 # --- СПИСКИ ДЛЯ АЛЕРТОВ ---
-SAME_AS_LIST="youtube russia_inside googlevideo"
+SAME_AS_LIST="youtube youtube.com russia_inside googlevideo"
 WARNING_LISTS="russia_inside russia_outside cloudflare cdn_cloudflare"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
-RAW_SERVICES="zeroblock podkop sing-box sing-box-tiny zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
+RAW_SERVICES="zeroblock podkop luci-app-podkop-plus sing-box sing-box-tiny zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
 
 # --- СПИСОК УСТАНОВЛЕННЫХ СЕРВИСОВ/ПРОГРАММ ---
 for pkg in $RAW_SERVICES; do
-    if opkg list-installed | grep -q "^${pkg} - "; then
+    if opkg list-installed | grep -q "^${pkg} - "; then 
         if [ "${pkg}" = "sing-box-tiny" ]; then
-            CHECKING_SERVICES="$CHECKING_SERVICES sing-box"
+            INSTALLED_SERVICES="$INSTALLED_SERVICES sing-box"
             continue
         fi
-        CHECKING_SERVICES="$CHECKING_SERVICES ${pkg}"
+        INSTALLED_SERVICES="$INSTALLED_SERVICES ${pkg}"
     fi
 done
 
@@ -85,6 +74,7 @@ echo "option http_timeout $_opkg_timeout" >> "$_tmp_conf"
 WGET_INSTALLED=0
 CURL_INSTALLED=0
 
+# проверяем наличие wget и curl в системе
 opkg list-installed | grep -q '^wget-ssl' && WGET_INSTALLED=1
 opkg list-installed | grep -q '^curl' && CURL_INSTALLED=1
 
@@ -279,7 +269,7 @@ printf "YouTube IP:  ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
 
 # --- СОБИРАЕМ СПИСОК ЗАПУЩЕННЫХ СЕРВИСОВ ---
 runned=""
-for s in $CHECKING_SERVICES; do
+for s in $INSTALLED_SERVICES; do
     # init.d status check
 	[ ! -f /etc/init.d/${s} ] && continue
     status=$(/etc/init.d/$s status 2>/dev/null | head -1)
@@ -314,11 +304,12 @@ runned="${runned# }"
 
 
 # --- ОПРЕДЕЛЯЕМ СОСТОЯНИЕ СЕРВИСОВ И ОСТАНАВЛИВАЕМ МЕШАЮЩИЕ ---
-# В $CHECKING_SERVICES содержатся имена установленных сервисов обхода
+# В $INSTALLED_SERVICES содержатся имена установленных сервисов обхода
+
 active=""
 
 # Останавливаем сервисы (даже если они не запущены)
-for pkg in $CHECKING_SERVICES; do
+for pkg in $INSTALLED_SERVICES; do
 	[ -f /etc/init.d/${pkg} ] && /etc/init.d/${pkg} stop >/dev/null 2>&1
 done
 [ -f /etc/init.d/opera-proxy ] && /etc/init.d/opera-proxy start # Запускаем opera-proxy (так проще :))
@@ -332,7 +323,8 @@ sleep 1
 # Проверяем сервисы в автозапуске. Все с автозапуском вносим в $active
 # вне зависимости от их состояния. Необходимо получить информацию о том
 # что запущено на роутере после его перезагрузки
-for pkg in $CHECKING_SERVICES; do
+for pkg in $INSTALLED_SERVICES; do
+	[ ${pkg} = "luci-app-podkop-plus" ] && pkg="podkop-plus"
 	if ls /etc/rc.d/S??${pkg} 1>/dev/null 2>&1; then
 		active="$active ${pkg}"
 	fi
@@ -355,6 +347,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     # printf "  Получено/Отправлено   : ↓${RX} / ↑${TX}\n"
 
     printf "  Пинг (ya.ru via %s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
+	
     # Захватываем stderr для анализа причин падения
     PING_RAW=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>&1)
     EXIT_CODE=$?
@@ -387,20 +380,23 @@ fi
 printf "  ${YELLOW}Программы в автозапуске:$active${CLR_OFF}\n"
 
 
+echo ""
+
 
 
 
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
+
 TEST_URL="https://www.youtube.com"
-echo ""
+
 # 1. Удаляем протокол средствами Shell (Parameter Expansion)
 CLEAN_URL="${TEST_URL#*://}"
 
 # 2. Приводим к верхнему регистру через tr (используя явные диапазоны)
 CLEAN_URL=$(echo "$CLEAN_URL" | tr 'a-z' 'A-Z')
 
-echo "= ПРОВЕРКА ДОСТУПОВ (${CLEAN_URL}):"
 NEED_RESOLVE_TEST=0
+echo "= ПРОВЕРКА ДОСТУПОВ (${CLEAN_URL}):"
 
 
 
@@ -471,40 +467,38 @@ if [ -d "/sys/class/net/$IFACE" ]; then
             "$IFACE (IPv4) :" "${GREEN}ОНЛАЙН${CLR_OFF}" \
             "$W_CODE_CLEAN OK" "$FINAL_TLS" "$TRY"
     else
-        # Ошибка: последняя непустая строка из последнего FULL_OUT
-        LAST_ERR=$(echo "$FULL_OUT" | grep -v '^[[:space:]]*$' | tail -n 1)
-        printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4) :"
-        echo "------------------------------------------------------"
-        echo "$LAST_ERR" | sed 's/^/  / '
-        echo "------------------------------------------------------"
-        NEED_RESOLVE_TEST=1
-    fi
+			# Ошибка: последняя непустая строка из последнего FULL_OUT
+			LAST_ERR=$(echo "$FULL_OUT" | grep -v '^[[:space:]]*$' | tail -n 1)
+			printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4) :"
+			echo "------------------------------------------------------"
+			echo "$LAST_ERR" | sed 's/^/  / '
+			echo "------------------------------------------------------"
+			NEED_RESOLVE_TEST=1
+	fi
 fi
 
     # --- IPv6 ---
-    if [ -n "$IF_IP6" ]; then
-        W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL"  2>&1)
-        W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
-        TLS_VER6="TLSv1.3"
+	# if [ -n "$IF_IP6" ]; then
+		# W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL"  2>&1)
+		# W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
+		# TLS_VER6="TLSv1.3"
 
-        if [ -z "$W_CODE6" ]; then
-            W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL"  2>&1)
-            W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
-            TLS_VER6="TLSv1.2"
-        fi
+		# if [ -z "$W_CODE6" ]; then
+			# W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL"  2>&1)
+			# W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
+			# TLS_VER6="TLSv1.2"
+		# fi
 
-        if [ -n "$W_CODE6" ]; then
-            printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv6) :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE6" "$TLS_VER6"
-        else
-            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv6) :"
-        fi
-    fi
+		# if [ -n "$W_CODE6" ]; then
+			# printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv6) :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE6" "$TLS_VER6"
+		# else
+			# printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv6) :"
+		# fi
+	# fi
 fi
 
 # --- ЗАПУСКАЕМ РАНЕЕ ОСТАНОВЛЕННЫЕ СЕРВИСЫ
-# Запускаем все сервисы из автозапуска, имена которых 
-# есть в переменной $active и тем самым
-# приводим роутер к состоянию 'после перезагрузки'
+
 printf "  ${YELLOW}Запускаем остановленные службы, ожидайте...${CLR_OFF}\n"
 #for pkg in $active; do
 for pkg in $runned; do
@@ -521,7 +515,9 @@ done
 
 
 
-[ $NEED_RESOLVE_TEST -eq 1 ] && sleep 5
+[ $NEED_RESOLVE_TEST -eq 1 ] && sleep 3
+
+
 
 # 3. Скрытый тест на резолв
 if [ $NEED_RESOLVE_TEST -eq 1 ]; then
@@ -541,71 +537,59 @@ if [ $NEED_RESOLVE_TEST -eq 1 ]; then
     echo "--------------------------------------------------------------"
 fi
 
-# if [ $NEED_RESOLVE_TEST -eq 1 ]; then
-    # echo "--------------------------------------------------------------"
-    # printf "  ! Диагностика DNS (youtube.com):\n"
-    # nslookup youtube.com 2>&1 | \
-        # grep -v "Non-authoritative answer" | \
-        # grep -vE "^[[:space:]]*$" | \
-        # sed 's/^/    /'
-    # echo "--------------------------------------------------------------"
-# fi
-
-
-
-
 
 
 
 # --- БЛОК 4: СТАТУС СЛУЖБ ---
 echo ""
 echo "= СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБРАЖАЮТСЯ):"
-# echo "=============================================================="
-ZB_RUN=0; zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
-# Если есть таблица "PodkopTable", знаяит подкоп запущен
-PK_RUN=0; nft list tables 2>/dev/null | grep -q "PodkopTable" && PK_RUN=1
 
-PK_INST=0; [ -f "/etc/init.d/podkop" ] && PK_INST=1
+PK_INST=0; echo $INSTALLED_SERVICES | grep -qw "podkop" && PK_INST=1
 PK_AUTOSTART=0; echo $active | grep -q "podkop" && PK_AUTOSTART=1
 ZB_AUTOSTART=0; echo $active | grep -q "zeroblock" && ZB_AUTOSTART=1
-CHAOS=0; [ $ZB_AUTOSTART -eq 1 ] && [ $PK_AUTOSTART -eq 1 ] && CHAOS=1
 
-for s in $CHECKING_SERVICES; do
+CHAOS=0; [ $ZB_AUTOSTART -eq 1 ] && [ $PK_AUTOSTART -eq 1 ] && CHAOS=1
+ZB_RUN=0; zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
+# Если есть таблица "PodkopTable", значит подкоп запущен
+PK_RUN=0; nft list tables 2>/dev/null | grep -q "PodkopTable" && PK_RUN=1 
+
+
+
+for s in $INSTALLED_SERVICES; do
     [ -f "/etc/init.d/$s" ] || continue
 
     # Сброс переменных для каждой итерации
-    ST_T=""; ST_C="${RED_BRIGHT}"; S_C=""; M_T=""; M_C=""
+    SERV_STATE=""; ST_C="${RED_BRIGHT}"; S_C=""; M_T=""; M_C=""
 
     if [ "$s" = "sing-box" ]; then
-        # Честная проверка процесса без порта-насруллы
         if [ -n "$(pidof sing-box)" ]; then
-            SB_ALIVE=1; ST_T="RUNNING"; ST_C="${GREEN}"
+            SERV_STATE="RUNNING"; ST_C="${GREEN}"
         else
-            SB_ALIVE=0; ST_T="STOPPED"; ST_C="${RED_BRIGHT}"
+            SERV_STATE="STOPPED"; ST_C="${RED_BRIGHT}"
         fi
 
         # Добавляем оркестратора в хвост
-        if [ $CHAOS -eq 1 ]; then
-            ST_T="$ST_T (MANAGED BY CHAOS!)"; ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"
-        elif [ $ZB_RUN -eq 0 ] && [ $PK_INST -eq 1 ]; then
-            ST_T="$ST_T (MANAGED BY PODKOP)"
+        if   [ $CHAOS -eq 1 ]; then
+             SERV_STATE="$SERV_STATE (MANAGED BY CHAOS!)"; ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"
+        elif [ $PK_RUN -eq 1 ]; then
+            SERV_STATE="$SERV_STATE (MANAGED BY PODKOP)"
         elif [ $ZB_RUN -eq 1 ]; then
-            ST_T="$ST_T (MANAGED BY ZB)"
+            SERV_STATE="$SERV_STATE (MANAGED BY ZB)"
         fi
 
         # Статус подкопа, запущен/нет
         if [ "$s" = "podkop" ]; then
             if [ "$PK_RUN" == "1" ]; then
-                ST_T="RUNNING"; ST_C="${GREEN}"
+                SERV_STATE="RUNNING"; ST_C="${GREEN}"
             fi
         fi
     else
         # Стандартные службы
-        /etc/init.d/$s status 2>/dev/null | grep -q "running" && { ST_T="RUNNING"; ST_C="${GREEN}"; } || ST_T="STOPPED"
+        /etc/init.d/$s status 2>/dev/null | grep -q "running" && { SERV_STATE="RUNNING"; ST_C="${GREEN}"; } || SERV_STATE="STOPPED"
 
         # Для запрет2 отдельная проверка
         if [ "$s" = "zapret2" ]; then
-            /etc/init.d/zapret2 status 2>/dev/null | grep -q "not running" && { ST_T="STOPPED"; ST_C="${RED_BRIGHT}"; }
+            /etc/init.d/zapret2 status 2>/dev/null | grep -q "not running" && { SERV_STATE="STOPPED"; ST_C="${RED_BRIGHT}"; }
         fi
     fi
 
@@ -614,7 +598,7 @@ for s in $CHECKING_SERVICES; do
 
     # ВЫВОД СТРОКИ (Жесткое выравнивание 30 символов)
     printf "  %b%-15s${CLR_OFF} | " "$S_C" "$s"
-    printf "${ST_C}%-30s${CLR_OFF} | " "$(echo "$ST_T" | tr 'a-z' 'A-Z')"
+    printf "${ST_C}%-30s${CLR_OFF} | " "$(echo "$SERV_STATE" | tr 'a-z' 'A-Z')"
     printf "${au_c}%s${CLR_OFF}\n" "$au_t"
 done
 
@@ -639,7 +623,7 @@ ACTIVE_PKGS=""
 
 ZB_ERR=0
 
-for pkg in $CHECKING_SERVICES; do
+for pkg in $INSTALLED_SERVICES; do
 
     # # Проверка на существование
     # [ -f "/etc/rc.d/S??$pkg" ] || continue
@@ -1242,11 +1226,11 @@ else
 	noresolv=$(uci -q get "dhcp.@dnsmasq[$idx].noresolv")
 
 	if [ "$strict" = "1" ]; then
-		printf "\033[1;31m  Ошибка: DNS и DHCP, Строгий порядок активен!\033[0m\n"
+		printf "%b\n" "${YELLOW}  Предупреждение: DNS и DHCP, Строгий порядок активен!${CLR_OFF}"
 	fi
 
 	if [ "$noresolv" != "1" ]; then
-		printf "\033[1;31m  Ошибка: DNS и DHCP, Игнорировать файл resolv отключено! \033[0m\n" "${noresolv:-0}"
+		printf "%b\n" "${RED_BRIGHT}  Ошибка: DNS и DHCP, Игнорировать файл resolv отключено! ${CLR_OFF}" "${noresolv:-0}"
 	fi
 fi
 
