@@ -2,8 +2,10 @@
 #z1_strat_selector
 
 clear
-echo "ver 0.0.4"
+echo "ver 0.0.5"
 sleep 3
+
+dd count=1 bs=1024 2>/dev/null
 
 # Сброс цвета
 NC='\033[0m'
