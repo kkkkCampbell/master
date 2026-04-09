@@ -1,10 +1,11 @@
 #!/bin/sh
 # analyzer.sh
 
+export TERM=xterm-256color
 IFACE="awg10"
 . /etc/os-release
 FIRST_IN="0"
-VER="0.0.10"
+VER="0.0.11"
 
 ifdown "$IFACE"
 service opera-proxy restart
@@ -28,6 +29,9 @@ CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;3
 cprint() {
     printf "${1}%s${CLR_OFF}" "$2"
 }
+
+# --- PODKOP GLOBAL CHECK STRINGS ---
+p_check_include='Router DNS is NOT routed through sing-box|Sing-box does NOT work with FakeIP|❌ Bootstrap DNS:|❌ Main DNS:|❌ DNS on router'
 
 # --- СПИСКИ ДЛЯ АЛЕРТОВ ---
 SAME_AS_LIST="youtube russia_inside googlevideo"
@@ -175,7 +179,7 @@ check_userlists() {
                 [ -z "$domain" ] && continue
                 
                 # Выводим домен и секцию
-                echo "$domain $section hui"
+                echo "$domain $section"
             done
         done
     done > "$tmp_domains"
@@ -230,7 +234,6 @@ ROUNDS=1
 IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
 for i in $(seq 1 "$ROUNDS"); do
     curl -4 -L -A 'Mozilla/5.0' -s --no-progress-meter --interface "$IFACE" --max-time 20 --connect-timeout 10 --retry 0 --insecure --tlsv1.2 "$TEST_URL" >/dev/null 2>&1 || true
-    sleep 1
 done
 
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
@@ -249,12 +252,16 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
 DNS_REDIR=$(uci -q get "dhcp.@dnsmasq[0].server" 2>/dev/null)
+
 if [ -z "$DNS_REDIR" ]; then
     DNS_REDIR="${RED_BRIGHT}!!!_ПЕРЕНАПРАВЛЕНИЯ ОТСУТСТВУЮТ${CLR_OFF}"
 fi
+# проверяем на ДНС от тейлскейл
+echo ${DNS_SRV}   | grep -q "100.100.100.100" && DNS_SRV="${RED_BRIGHT}${DNS_SRV}${CLR_OFF}"
+echo ${DNS_REDIR} | grep -q "100.100.100.100" && DNS_REDIR="${RED_BRIGHT}${DNS_REDIR}${CLR_OFF}"
 
-printf "  DNS Server:   %s" "${DNS_SRV:-UNKNOWN} |"
-printf " DNS Redirect: $DNS_REDIR\n"
+printf "  DNS Server:   %b%s" "${DNS_SRV:-UNKNOWN} |"
+printf " DNS Redirect: %b" "$DNS_REDIR\n"
 FB_IP=$(nslookup facebook.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 YT_IP=$(nslookup youtube.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 printf "  Facebook IP:  ${YELLOW}%s${CLR_OFF}" "${FB_IP:-UNKNOWN} | "
@@ -386,69 +393,102 @@ printf "  ${YELLOW}Программы в автозапуске:$active${CLR_OFF
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
 TEST_URL="https://www.youtube.com"
 echo ""
-echo "= ПРОВЕРКА ДОСТУПОВ (WWW.YOUTUBE.COM):"
+# 1. Удаляем протокол средствами Shell (Parameter Expansion)
+CLEAN_URL="${TEST_URL#*://}"
 
-# Инициализируем флаг нулем в самом начале
+# 2. Приводим к верхнему регистру через tr (используя явные диапазоны)
+CLEAN_URL=$(echo "$CLEAN_URL" | tr 'a-z' 'A-Z')
+
+echo "= ПРОВЕРКА ДОСТУПОВ (${CLEAN_URL}):"
 NEED_RESOLVE_TEST=0
+
+
+
 
 
 # 1. Проверка OPERA
 
 # Если опера-прокси установлена, проверям доступ через опера-прокси
 if opkg list-installed | grep -q "^opera-proxy"; then
+P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 "$TEST_URL" | head -n 1 | tr -d '\r\n')
 
-	P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 "$TEST_URL"| head -n 1 | tr -d '\r\n')
-	if [ -n "$P_CODE" ]; then
-		printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
+if [[ "$P_CODE" == *"200 OK"* ]]; then
+    printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
+	elif [[ -n "$P_CODE" ]]; then
+		# Получен статус, но не 200 OK
+		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН  [%s]${CLR_OFF}\n" "$P_CODE"
+		NEED_RESOLVE_TEST=1
 	else
+		# P_CODE пуст — ошибка соединения/таймаут
 		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
 		NEED_RESOLVE_TEST=1
 	fi
 
 fi
 
+
+
+
+
 # 2. Проверка интерфейса awg10
+
 if [ -d "/sys/class/net/$IFACE" ]; then
     IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
     IF_IP6=$(ip -6 addr show "$IFACE" 2>/dev/null | grep -w inet6 | grep -v "fe80" | awk '{print $2}' | cut -d/ -f1 | head -n 1 | tr -d '\r\n')
+	
+# --- IPv4 с подсчётом попыток ---
+	if [ -n "$IF_IP4" ]; then
+    MAX_RETRIES=2
+    TRY=0
+    SUCCESS=0
+    FINAL_W_CODE=""
+    FINAL_TLS=""
+    FINAL_FULL_OUT=""
 
-    # --- IPv4 ---
-    if [ -n "$IF_IP4" ]; then
-        # W_OUT=$(wget --bind-address="$IF_IP4" --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -4 --read-timeout=10 --timeout=10 --tries=1 "$TEST_URL" 2>&1)
-        W_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
-                --retry 3 --insecure --tlsv1.3 "$TEST_URL" 2>&1)
-        W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
-        TLS_VER="TLSv1.3"
+    # Сначала пробуем TLSv1.3
+    for tls_ver in tlsv1.3 tlsv1.2; do
+        for attempt in $(seq 1 $MAX_RETRIES); do
+            TRY=$((TRY + 1))
+            FULL_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' \
+                --interface "$IFACE" --max-time 20 --connect-timeout 9 \
+                --insecure --$tls_ver "$TEST_URL" 2>&1)
+            W_CODE=$(echo "$FULL_OUT" | awk '/HTTP\// {print; exit}')
+            if [ -n "$W_CODE" ]; then
+                SUCCESS=1
+                FINAL_W_CODE="$W_CODE"
+                FINAL_TLS="$tls_ver"
+                FINAL_FULL_OUT="$FULL_OUT"
+                break 2   # выходим из двух циклов
+            fi
+            # если не успех, продолжаем
+        done
+    done
 
-        if [ -z "$W_CODE" ]; then
-            # W_OUT=$(wget --bind-address="$IF_IP4" --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -4 --read-timeout=10 --timeout=10 --tries=1 "$TEST_URL" 2>&1)
-            W_OUT=$(curl -4 -I -A -s --no-progress-meter --user-agent 'Mozilla/5.0' --interface "$IFACE" --max-time 20 --connect-timeout 5 \
-                    --retry 3 --insecure --tlsv1.2 "$TEST_URL" 2>&1)
-            W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
-            TLS_VER="TLSv1.2"
-        fi
-
-        if [ -n "$W_CODE" ]; then
-            W_CODE=$(echo "$W_OUT" | grep "HTTP/" | head -n 1 | tr -d '\r')
-            W_CODE=$(echo "$W_CODE" | sed 's/[[:space:]]*$//')
-            printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv4) :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE" "$TLS_VER"
-        else
-            printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4) :"
-            echo "------------------------------------------------------"
-            echo "$W_OUT" | sed 's/^/  / '
-            echo "------------------------------------------------------"
-            NEED_RESOLVE_TEST=1
-        fi
+    if [ $SUCCESS -eq 1 ]; then
+        # Убираем лишние пробелы и перевод строк
+        W_CODE_CLEAN=$(echo "$FINAL_W_CODE" | tr -d '\r' | sed 's/[[:space:]]*$//')
+        printf "  %-14s %b (%s) [%s] [try: %d]\n" \
+            "$IFACE (IPv4) :" "${GREEN}ОНЛАЙН${CLR_OFF}" \
+            "$W_CODE_CLEAN OK" "$FINAL_TLS" "$TRY"
+    else
+        # Ошибка: последняя непустая строка из последнего FULL_OUT
+        LAST_ERR=$(echo "$FULL_OUT" | grep -v '^[[:space:]]*$' | tail -n 1)
+        printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv4) :"
+        echo "------------------------------------------------------"
+        echo "$LAST_ERR" | sed 's/^/  / '
+        echo "------------------------------------------------------"
+        NEED_RESOLVE_TEST=1
     fi
+fi
 
     # --- IPv6 ---
     if [ -n "$IF_IP6" ]; then
-        W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL" 2>&1)
+        W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL"  2>&1)
         W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
         TLS_VER6="TLSv1.3"
 
         if [ -z "$W_CODE6" ]; then
-            W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL" 2>&1)
+            W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL"  2>&1)
             W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
             TLS_VER6="TLSv1.2"
         fi
@@ -490,9 +530,26 @@ if [ $NEED_RESOLVE_TEST -eq 1 ]; then
     nslookup youtube.com 2>&1 | \
         grep -v "Non-authoritative answer" | \
         grep -vE "^[[:space:]]*$" | \
-        sed 's/^/    /'
+        sed 's/^/    /' | \
+        awk '
+            /    Server:/ { next }
+            /    Address:.*:[0-9]+$/ { sub(/Address/, "Server"); print; next }
+            /    Name:/ { name = $0; next }
+            /    Address:/ && name != "" { print name "    " $0; name = ""; next }
+            { print }
+        '
     echo "--------------------------------------------------------------"
 fi
+
+# if [ $NEED_RESOLVE_TEST -eq 1 ]; then
+    # echo "--------------------------------------------------------------"
+    # printf "  ! Диагностика DNS (youtube.com):\n"
+    # nslookup youtube.com 2>&1 | \
+        # grep -v "Non-authoritative answer" | \
+        # grep -vE "^[[:space:]]*$" | \
+        # sed 's/^/    /'
+    # echo "--------------------------------------------------------------"
+# fi
 
 
 
@@ -1001,8 +1058,17 @@ if [ $PK_INST -eq 1 ]; then
             [ -n "$PK_DNS" ] && printf "  podkop DNS/Bootstrap DNS: %b%s${CLR_OFF} " "${CYAN}" "(${dns_type}) ${PK_DNS}"
             [ -n "$PK_B_DNS" ] && printf "/ %b%s${CLR_OFF}\n" "${CYAN}" "$PK_B_DNS"
         fi
+		podkop global_check | grep -E '^❌|^⚠️' | grep -E "$p_check_include" | while IFS= read -r line; do
+			case $line in
+				"❌"*) printf "  podkop "; printf '\033[1;31m%s\033[0m\n' "$line" ;;
+				"⚠️"*) printf "  podkop "; printf '\033[0;33m%s\033[0m\n' "$line" ;;
+				*) printf '%s\n' "$line" ;;
+			esac
+		done
     fi
 fi
+
+
 
 
 
@@ -1101,8 +1167,31 @@ if [ $ZB_AUTOSTART -eq 1 ]; then
     fi
 
     ZB_VER=$(zeroblock --version 2>/dev/null)
-    uci show zeroblock | grep -q "fully_routed_ips" && echo -e "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!${CLR_OFF}" && \
-	printf "  " && uci show zeroblock | grep "fully_routed_ips"
+	
+	# получаем zeroblock.cacholl.fully_routed_ips
+	# выделяем .cacholl., то есть имя секции
+	# запрашиваем uci -q get "zeroblock.cacholl.enabled" если ноль (секция неактивна), пропускаем, если не ноль, то выводим
+	itog=""
+	RAW=$(uci show zeroblock | grep "fully_routed_ips")
+	# ищем ВКЛЮЧЕННЫЕ секции с полной маршрутизацией
+	if [ -n "$RAW" ]; then
+		for section in $RAW; do
+			# Проверка условий
+			fad=$(echo "$section" | cut -d'.' -f1,2)
+			[ "$(uci -q get "$fad.enabled")" != "1" ] && continue
+			addr=$(uci get "${fad}.fully_routed_ips")
+			# Добавляем перевод строки между секциями, если itog не пуст
+			if [ -n "$itog" ]; then
+				itog="${itog}\n"
+			fi
+			itog="${itog}    Секция: $(echo "$section" | cut -d'.' -f2) = ${addr}"
+		done
+		if [ -n "$itog" ]; then
+			printf "%b\n" "  ${YELLOW}Полностью маршрутизированные IP-адреса включены!"
+			printf "%b" "${itog}${CLR_OFF}"
+			echo ""
+		fi
+	fi
 
     if [ -n "$ZB_VER" ]; then
         ZB_VER=$(echo "$ZB_VER" | sed 's/^ZeroBlock v//')
@@ -1111,13 +1200,66 @@ if [ $ZB_AUTOSTART -eq 1 ]; then
 fi
 
 
-# --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
+# --- ИЩЕМ ROUTE_ALLOWED_IPS И NOHOSTROUTE ---
 
+# Поиск всех секций network с proto='amneziawg'
+uci show network | grep "\.proto='amneziawg'$" | while IFS= read -r line; do
+    rai_raw=""
+    # Извлечение полного идентификатора конфигурации (например, network.@interface[0])
+    config_id="${line%%.proto=*}"
+    # Удаление префикса "network." для получения имени/индекса интерфейса
+    interface_id="${config_id#network.}"
+    rai_raw=$(uci show | grep "amneziawg_${interface_id}" | grep route_allowed_ips)
+    nohostroute=$(uci get "${config_id}.nohostroute" 2>/dev/null)
+    # Проверка nohostroute: ошибка, если значение не равно "1"
+    if [ -z "$nohostroute" ] || [ "$nohostroute" = "0" ]; then
+        printf "  !!!_${RED_BRIGHT}Интерфейс %s: nohostroute не установлен в 1 (создание маршрутов включено!)${CLR_OFF}\n" \
+            "$interface_id"
+    fi
+    # Проверка route_allowed_ips: ошибка, если значение равно "1"
+    if [ ! -z "${rai_raw}" ] && echo ${rai_raw} | grep -q "_ips='1'"; then
+        printf "  !!!_${RED_BRIGHT}Интерфейс %s: route_allowed_ips включен. Catch-all интерфейс!${CLR_OFF}\n" \
+            "$interface_id"
+    fi
+done
+
+
+# --- DNSMASQ SETTINGS CHECK ---
+
+
+indices=$(uci show dhcp 2>/dev/null | grep -o 'dhcp\.@dnsmasq\[[0-9]*\]' | sed 's/.*\[\([0-9]*\)\]/\1/' | sort -nu)
+count=$(echo "$indices" | wc -l)
+
+if [ -z "$indices" ] || [ "$count" -eq 0 ]; then
+    printf "\033[1;31m  Секции dnsmasq не найдены\033[0m\n"
+fi
+
+if [ "$count" -gt 1 ]; then
+    printf "\033[1;31m  Обнаружено несколько секций dnsmasq (%d). Невозможно определить используемую.\033[0m\n" "$count"
+else
+	idx="$indices"
+	strict=$(uci -q get "dhcp.@dnsmasq[$idx].strictorder")
+	noresolv=$(uci -q get "dhcp.@dnsmasq[$idx].noresolv")
+
+	if [ "$strict" = "1" ]; then
+		printf "\033[1;31m  Ошибка: DNS и DHCP, Строгий порядок активен!\033[0m\n"
+	fi
+
+	if [ "$noresolv" != "1" ]; then
+		printf "\033[1;31m  Ошибка: DNS и DHCP, Игнорировать файл resolv отключено! \033[0m\n" "${noresolv:-0}"
+	fi
+fi
+
+
+
+# --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
+sleep 2 # "успокоение" процессора
 echo ""
 echo "= СИСТЕМНЫЕ РЕСУРСЫ:"
 printf "  LAN IP: %s\n" "$LAN_IP (Прошивка: ${VERSION})"
 printf "  CPU: %s | RAM: %s%% | NAND: %s занято / %s доступно\n" "$LOAD" "$MEM_P" "$NAND_PCT" "$NAND_FREE"
-crontab -l | sed 's/^/  /'
+# crontab -l | sed 's/^/  /'
+crontab -l | sed -e '/^[[:space:]]*#/d' -e 's/^/  /'
 if opkg list-installed | grep -q "wdoc"; then
     printf "  ${RED_BRIGHT}!!!_WatchDoc установлен${CLR_OFF}\n"
 fi
