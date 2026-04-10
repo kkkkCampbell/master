@@ -416,7 +416,7 @@ if [[ "$P_CODE" == *"200 OK"* ]]; then
 		NEED_RESOLVE_TEST=1
 	else
 		# P_CODE пуст — ошибка соединения/таймаут
-		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
+		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН  !!!_ОПЕРА ЗАБЛОКИРОВАЛА РОССИЮ_!!! ${CLR_OFF}\n"
 		NEED_RESOLVE_TEST=1
 	fi
 
