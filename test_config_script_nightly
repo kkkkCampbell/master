@@ -412,7 +412,7 @@ if [[ "$P_CODE" == *"200 OK"* ]]; then
     printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
 	elif [[ -n "$P_CODE" ]]; then
 		# Получен статус, но не 200 OK
-		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН  [%s]${CLR_OFF}\n" "$P_CODE"
+		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН !!!_ОПЕРА ЗАБЛОКИРОВАЛА РОССИЮ_!!! [%s]${CLR_OFF}\n" "$P_CODE"
 		NEED_RESOLVE_TEST=1
 	else
 		# P_CODE пуст — ошибка соединения/таймаут
