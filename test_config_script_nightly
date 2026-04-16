@@ -5,7 +5,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.0.76"
+VER="0.0.77"
 
 ifdown "$IFACE"
 # /etc/init.d/opera-proxy restart >/dev/null 2>&1
@@ -611,6 +611,31 @@ fi
 	# fi
 fi
 
+echo "  Проверка остальных ВПН-интерфейсов (временное решение)"
+uci show zeroblock | grep "connection_type='vpn'" | cut -d. -f2 | while read -r section; do
+    uci -q get zeroblock."$section".interface
+done | sort -u | while read -r iface; do
+    [ -z "$iface" ] && continue
+    
+    # 1. Проверка Ping
+    loss=$(ping -I "$iface" -c 4 www.youtube.com 2>/dev/null | grep -oE '[0-9]+% packet loss' | cut -d% -f1)
+    [ -z "$loss" ] && loss=100
+
+    # 2. Проверка Curl (таймаут 5 сек, только код ответа)
+    # --interface привязывает curl к конкретному устройству
+    http_code=$(curl -I -s --interface "$iface" --connect-timeout 5 https://www.youtube.com -o /dev/null -w "%{http_code}")
+
+    # Логика цвета
+    if [ "$loss" -eq 0 ] && [ "$http_code" -eq 200 ]; then
+        color="\e[32m" # Зеленый (Пинг ОК + HTTP 200)
+    elif [ "$loss" -eq 100 ]; then
+        color="\e[31m" # Красный (Полная потеря пакетов)
+    else
+        color="\e[33m" # Желтый (Есть потери или HTTP не 200)
+    fi
+
+    printf "${color}  IF: %-10s | Loss: %3s%% | HTTP: %s\e[0m\n" "$iface" "$loss" "$http_code"
+done
 
 
 # [ $NEED_RESOLVE_TEST -eq 1 ] && sleep 3
