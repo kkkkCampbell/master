@@ -614,12 +614,10 @@ fi
 
 
 
-# --- ТЕСТ ВСЕХ VPN-КАНАЛОВ РОУТЕРА ---
-
+# --- ТЕСТ ВСЕХ VPN-КАНАЛОВ В ZEROBLOCK ---
+cap=0
 # Проверяем наличие VPN секций напрямую через exit code grep
 if uci show zeroblock 2>/dev/null | grep -q "connection_type='vpn'"; then
-
-    echo -e "${CYAN}  Проверка остальных ВПН-интерфейсов в системе...${CLR_OFF}"
 
     _ifacelocs=$(uci show zeroblock | grep "connection_type='vpn'" | cut -d. -f2 | while read -r section; do
         uci -q get zeroblock."$section".interface
@@ -629,7 +627,8 @@ if uci show zeroblock 2>/dev/null | grep -q "connection_type='vpn'"; then
         [ -z "$_ifaceloc" ] && continue
 		[ "$_ifaceloc" = "awg10" ] && continue
 		echo "$_ifaceloc" | grep -q "pppoe" && continue
-
+		[ "${cap}" = "0" ] && echo -e "${CYAN}  Проверка остальных ВПН-интерфейсов в ZeroBlock...${CLR_OFF}" && cap=1
+		
         # 1. Пинг
         _loss=$(ping -I "$_ifaceloc" -c 3 -W 3 -i 1 ${PING_URL} 2>/dev/null | grep -oE '[0-9]+% packet loss' | cut -d% -f1)
         [ -z "$_loss" ] && _loss=100
