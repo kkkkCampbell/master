@@ -5,7 +5,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.0.77"
+VER="0.0.78"
 
 ifdown "$IFACE"
 # /etc/init.d/opera-proxy restart >/dev/null 2>&1
@@ -611,31 +611,54 @@ fi
 	# fi
 fi
 
-echo "  Проверка остальных ВПН-интерфейсов (временное решение)"
-uci show zeroblock | grep "connection_type='vpn'" | cut -d. -f2 | while read -r section; do
-    uci -q get zeroblock."$section".interface
-done | sort -u | while read -r iface; do
-    [ -z "$iface" ] && continue
-    
-    # 1. Проверка Ping
-    loss=$(ping -I "$iface" -c 4 www.youtube.com 2>/dev/null | grep -oE '[0-9]+% packet loss' | cut -d% -f1)
-    [ -z "$loss" ] && loss=100
 
-    # 2. Проверка Curl (таймаут 5 сек, только код ответа)
-    # --interface привязывает curl к конкретному устройству
-    http_code=$(curl -I -s --interface "$iface" --connect-timeout 5 https://www.youtube.com -o /dev/null -w "%{http_code}")
+# Проверяем наличие VPN секций напрямую через exit code grep
+if uci show zeroblock 2>/dev/null | grep -q "connection_type='vpn'"; then
+    echo -e "${CYAN}  Проверка остальных ВПН-интерфейсов...${CLR_OFF}"
 
-    # Логика цвета
-    if [ "$loss" -eq 0 ] && [ "$http_code" -eq 200 ]; then
-        color="\e[32m" # Зеленый (Пинг ОК + HTTP 200)
-    elif [ "$loss" -eq 100 ]; then
-        color="\e[31m" # Красный (Полная потеря пакетов)
-    else
-        color="\e[33m" # Желтый (Есть потери или HTTP не 200)
-    fi
+    _ifaces=$(uci show zeroblock | grep "connection_type='vpn'" | cut -d. -f2 | while read -r section; do
+        uci -q get zeroblock."$section".interface
+    done | sort -u)
 
-    printf "${color}  IF: %-10s | Loss: %3s%% | HTTP: %s\e[0m\n" "$iface" "$loss" "$http_code"
-done
+    for _iface in $_ifaces; do
+        [ -z "$_iface" ] && continue
+
+        # 1. Пинг через ИМЯ интерфейса
+        loss=$(ping -I "$_iface" -c 3 -W 2 -i 1 8.8.8.8 2>/dev/null | grep -oE '[0-9]+% packet loss' | cut -d% -f1)
+        [ -z "$loss" ] && loss=100
+
+        # 2. Curl (логика твоего check_WARP)
+        # Пробуем TLS 1.3, если глухо — TLS 1.2
+        http_code="000"
+        for tls_ver in tlsv1.3 tlsv1.2; do
+            http_code=$(curl -4 -I -s --no-progress-meter \
+                --user-agent 'Mozilla/5.0' \
+                --interface "$_iface" \
+                --connect-timeout 9 --max-time 19 \
+                --insecure --$tls_ver \
+                "$TEST_URL" -w "%{http_code}" -o /dev/null)
+            
+            # Если получили вменяемый ответ (не 000), выходим из цикла TLS
+            [ "$http_code" != "000" ] && break
+        done
+        
+        # Логика цвета
+        # Зеленый: HTTP 2xx/3xx И отсутствие потерь
+        if echo "$http_code" | grep -qE '^2|^3' && [ "$loss" -eq 0 ]; then
+            COLOR="$GREEN"
+        # Красный: Нет HTTP ответа ИЛИ 100% потери
+        elif [ "$http_code" = "000" ] || [ "$loss" -ge 100 ]; then
+            COLOR="$RED_BRIGHT"
+        # Желтый: Все остальное (есть коннект, но есть потери, или странный код)
+        else
+            COLOR="$YELLOW"
+        fi
+
+        printf "${COLOR}  IF: %-10s | Loss: %3s%% | HTTP: %s${CLR_OFF}\n" "$_iface" "$loss" "$http_code ${TEST_URL}"
+    done
+fi
+
+
 
 
 # [ $NEED_RESOLVE_TEST -eq 1 ] && sleep 3
