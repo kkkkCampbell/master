@@ -5,7 +5,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.0.78"
+VER="0.0.79"
 
 ifdown "$IFACE"
 # /etc/init.d/opera-proxy restart >/dev/null 2>&1
@@ -85,7 +85,7 @@ fi
 if [ $WGET_INSTALLED -eq 0 ] || [ $CURL_INSTALLED -eq 0 ] || [ $OPERA_INSTALLED -eq 0 ]; then
 
     to_install=""   # начальное значение – пустая строка
-    [ $WGET_INSTALLED -eq 0 ] && to_install="${to_install} wget"
+    [ $WGET_INSTALLED -eq 0 ] && to_install="${to_install} wget-ssl"
     [ $CURL_INSTALLED -eq 0 ] && to_install="${to_install} curl"
     [ $OPERA_INSTALLED -eq 0 ] && to_install="${to_install} opera-proxy" && /etc/init.d/opera-proxy stop >/dev/null 2>&1
     # Убираем лишний пробел в начале (если была добавлена хоть одна программа)
@@ -504,14 +504,14 @@ echo ""
 
 TEST_URL="https://www.youtube.com"
 
-# 1. Удаляем протокол средствами Shell (Parameter Expansion)
-CLEAN_URL="${TEST_URL#*://}"
+# 1. Приводим к верхнему регистру через tr (используя явные диапазоны)
+TEST_URL=$(echo "$TEST_URL" | tr 'a-z' 'A-Z')
 
-# 2. Приводим к верхнему регистру через tr (используя явные диапазоны)
-CLEAN_URL=$(echo "$CLEAN_URL" | tr 'a-z' 'A-Z')
+# 2. Удаляем протокол средствами Shell (Parameter Expansion)
+PING_URL="${TEST_URL#*://}"
 
 NEED_RESOLVE_TEST=0
-echo "= ПРОВЕРКА ДОСТУПОВ (${CLEAN_URL}):"
+echo "= ПРОВЕРКА ДОСТУПОВ (${PING_URL}):"
 
 OPERA_TEST_CYCLE=3
 
@@ -612,52 +612,54 @@ fi
 fi
 
 
+
+
+# --- ТЕСТ ВСЕХ VPN-КАНАЛОВ РОУТЕРА ---
+
 # Проверяем наличие VPN секций напрямую через exit code grep
 if uci show zeroblock 2>/dev/null | grep -q "connection_type='vpn'"; then
-    echo -e "${CYAN}  Проверка остальных ВПН-интерфейсов...${CLR_OFF}"
 
-    _ifaces=$(uci show zeroblock | grep "connection_type='vpn'" | cut -d. -f2 | while read -r section; do
+    echo -e "${CYAN}  Проверка остальных ВПН-интерфейсов в системе...${CLR_OFF}"
+
+    _ifacelocs=$(uci show zeroblock | grep "connection_type='vpn'" | cut -d. -f2 | while read -r section; do
         uci -q get zeroblock."$section".interface
     done | sort -u)
 
-    for _iface in $_ifaces; do
-        [ -z "$_iface" ] && continue
+    for _ifaceloc in $_ifacelocs; do
+        [ -z "$_ifaceloc" ] && continue
+		[ "$_ifaceloc" = "awg10" ] && continue
+		echo "$_ifaceloc" | grep -q "pppoe" && continue
 
-        # 1. Пинг через ИМЯ интерфейса
-        loss=$(ping -I "$_iface" -c 3 -W 2 -i 1 8.8.8.8 2>/dev/null | grep -oE '[0-9]+% packet loss' | cut -d% -f1)
-        [ -z "$loss" ] && loss=100
+        # 1. Пинг
+        _loss=$(ping -I "$_ifaceloc" -c 3 -W 3 -i 1 ${PING_URL} 2>/dev/null | grep -oE '[0-9]+% packet loss' | cut -d% -f1)
+        [ -z "$_loss" ] && _loss=100
 
-        # 2. Curl (логика твоего check_WARP)
-        # Пробуем TLS 1.3, если глухо — TLS 1.2
-        http_code="000"
-        for tls_ver in tlsv1.3 tlsv1.2; do
-            http_code=$(curl -4 -I -s --no-progress-meter \
-                --user-agent 'Mozilla/5.0' \
-                --interface "$_iface" \
-                --connect-timeout 9 --max-time 19 \
-                --insecure --$tls_ver \
-                "$TEST_URL" -w "%{http_code}" -o /dev/null)
-            
-            # Если получили вменяемый ответ (не 000), выходим из цикла TLS
-            [ "$http_code" != "000" ] && break
-        done
-        
+        # 2. Настройка глобалов для подпрограммы
+        IFACE="$_ifaceloc"  # Вот тут задаем интерфейс
+
+        # Вызываем: $1 = URL, $2 = "v" (не пусто, значит 'закрытый' режим с логированием)
+        check_WARP "$TEST_URL" "v"
+
         # Логика цвета
-        # Зеленый: HTTP 2xx/3xx И отсутствие потерь
-        if echo "$http_code" | grep -qE '^2|^3' && [ "$loss" -eq 0 ]; then
+        if [ "$SUCCESS" -eq 1 ] && [ "$_loss" -eq 0 ]; then
             COLOR="$GREEN"
-        # Красный: Нет HTTP ответа ИЛИ 100% потери
-        elif [ "$http_code" = "000" ] || [ "$loss" -ge 100 ]; then
+        elif [ "$SUCCESS" -eq 0 ] || [ "$_loss" -ge 100 ]; then
             COLOR="$RED_BRIGHT"
-        # Желтый: Все остальное (есть коннект, но есть потери, или странный код)
         else
             COLOR="$YELLOW"
         fi
 
-        printf "${COLOR}  IF: %-10s | Loss: %3s%% | HTTP: %s${CLR_OFF}\n" "$_iface" "$loss" "$http_code ${TEST_URL}"
+        # Чистим вывод кода (HTTP/2 200 OK -> 200 OK)
+		_status=$(echo "$FINAL_W_CODE" | tr -d '\r' | awk '{sub(/HTTP\/[0-9.]+[ ]+/, ""); print}' | xargs)
+
+ #       printf "${COLOR}  IF: %-10s | Loss: %3s%% | HTTP(S): %-12s [%s] [try: %s]${CLR_OFF}\n" \
+ #            "$_ifaceloc" "$_loss" "${_status:-000}" "${FINAL_TLS:-N/A}" "$TRY $TEST_URL"
+        printf "${COLOR}  IF: %-10s | Loss: %3s%% | HTTP(S): %-12s  ${CLR_OFF}\n" \
+            "$_ifaceloc" "$_loss" "${_status:-000}"
     done
 fi
 
+IFACE="awg10"
 
 
 
