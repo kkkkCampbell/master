@@ -1553,4 +1553,5 @@ crontab -l | sed -e '/^[[:space:]]*#/d' -e 's/^/  /'
 
 # Блок 8: Очистка лога
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
+echo "${YELLOW}КОНЕЦ!${CLR_OFF}"
 echo ""
