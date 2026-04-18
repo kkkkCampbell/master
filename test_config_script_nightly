@@ -93,11 +93,15 @@ opkg list-installed | grep -q '^curl' && CURL_INSTALLED=1
 
 # Получаем установленную версию opera-proxy (обрезаем суффикс типа -1, +build)
 ver=$(opkg list-installed | awk '/^opera-proxy / {print $3}' | sed 's/[-+~].*//')
-# Проверяем, что версия меньше и при этом не равна
-if opkg compare-versions "$ver" "<" "1.15.10" && ! opkg compare-versions "$ver" "=" "1.15.1"; then
-    OPERA_INSTALLED=0
-fi
 
+if [ "$ver" != "" ]; then 
+	# Проверяем, что версия меньше и при этом не равна
+	if opkg compare-versions "$ver" "<" "1.15.10" && ! opkg compare-versions "$ver" "=" "1.15.1"; then
+		OPERA_INSTALLED=0
+	fi
+else
+	echo "Пакет \"opera-proxy\" не установлен. Пропускаем обновление пакета."
+fi
 
 # Устанавливаем curl, wget и opera-proxy если их нет или версия OPERA устарела
 if [ $WGET_INSTALLED -eq 0 ] || [ $CURL_INSTALLED -eq 0 ] || [ $OPERA_INSTALLED -eq 0 ]; then
@@ -707,7 +711,8 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 		# Секрет для Zeroblock
 		SECRET=$(uci -q get zeroblock.settings.yacd_secret_key)
 		if [ -z "$SECRET" ]; then
-			echo "❌ Не найден секрет для Zeroblock." >&2
+			#echo "  ❌ Не найден секрет для Zeroblock." >&2
+			yuiyiyiu=0
 		fi
 	else
 		APP_NAME="Podkop"
@@ -873,7 +878,7 @@ echo ""
 echo "= СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБРАЖАЮТСЯ):"
 
 PK_INST=0; echo $INSTALLED_SERVICES | grep -qw "podkop" && PK_INST=1
-CHAOS=0; [ ${ZB_AUTOSTART} -eq 1 ] && [ $PK_AUTOSTART -eq 1 ] && CHAOS=1
+CHAOS=0; [ $ZB_AUTOSTART -eq 1 ] && [ $PK_AUTOSTART -eq 1 ] && CHAOS=1
 
 for s in $INSTALLED_SERVICES; do
     [ -f "/etc/init.d/$s" ] || continue
@@ -1158,7 +1163,7 @@ for pkg in $active_services; do
     SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
 
     for sid in $SIDS; do
-        # Проверка активации/деактивации секций ZeroBlock!!!
+        # Проверка активации/деактивации секций ZeroBlock
         s_en=$(uci -q get "$pkg.$sid.enabled")
         if [ "${pkg}" = "zeroblock" ]; then
             [ -z "${s_en}" ] || [ $s_en -eq 0 ] && continue
@@ -1553,5 +1558,5 @@ crontab -l | sed -e '/^[[:space:]]*#/d' -e 's/^/  /'
 
 # Блок 8: Очистка лога
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
-echo -e "${YELLOW}КОНЕЦ!${CLR_OFF}"
+echo -e "${YELLOW}  --- КОНЕЦ! ---${CLR_OFF}"
 echo ""
