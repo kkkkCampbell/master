@@ -324,7 +324,7 @@ checkIFACE_DIAG() {
 
 	# Назначаем статусы
 	[ "$d_val" = "1" ] && CONF_STAT="DISABLED" || CONF_STAT="EN"
-	[ "$a_val" = "0" ] && AUTO_STAT="AutoStart: OFF" || AUTO_STAT="AuSt: ON"
+	[ "$a_val" = "0" ] && AUTO_STAT="AutoStart: OFF" || AUTO_STAT="AS:ON"
 	[ "$if_up" = "up" ] && SYS_RUN="UP" || SYS_RUN="DOWN"
 	
 	# Красим только проблемные места (пример для Auto: OFF)
@@ -544,7 +544,7 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
  
 
 
-
+echo -e "${YELLOW}  --- НАЧАЛО --- ${CLR_OFF}"
 # --- БЛОК 1: ПРОВЕРКА DNS ---
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
@@ -608,7 +608,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         MAX_CLR="${GREEN}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 150 ] && MAX_CLR="${YELLOW}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 250 ] && MAX_CLR="${RED_BRIGHT}"
         LOST_CLR="${GREEN}"; [ "$P_LOST_NUM" -gt 0 ] && LOST_CLR="${YELLOW}"; [ "$P_LOST_NUM" -gt 2 ] && LOST_CLR="${RED_BRIGHT}"
 
-        printf "ya.ru > %s: ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d потеряно${CLR_OFF})\n" \
+        printf "ya.ru > %s: ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d${CLR_OFF})\n" \
                "$IFACE" "$P_MIN" "$P_MAX" "$P_LOST_NUM" "$PING_COUNT"
     else
         printf "ya.ru > %s: ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}\n" "$IFACE"
@@ -865,12 +865,13 @@ done
 sleep 1
 
 for i in $(seq 1 10); do
-    if /etc/init.d/sing-box status 2>/dev/null | grep -q "running"; then
-        break
-    fi
+	if /etc/init.d/sing-box status | grep -q -i -E "running|active"; then
+		break
+	fi
     sleep 1
 done
 printf "\r\033[K"
+
 [ $NEED_RESOLVE_TEST -eq 1 ] && printf "\033[1A\033[K"
 
 # --- БЛОК 4: СТАТУС СЛУЖБ ---
