@@ -5,17 +5,34 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.1.0"
+VER="0.1.1"
+
+# --- ПРОВЕРКА NFTABLES ---
+check_nftables() {
+    nft list tables 2>/dev/null | grep -q "inet $1"
+}
 
 # перезапуск стандартных каналов доступа
+#/etc/init.d/opera-proxy restart >/dev/null 2>&1
 ifdown "$IFACE"
-/etc/init.d/opera-proxy restart >/dev/null 2>&1
+sleep 3
 ifup "$IFACE"
+start=30
+
+#check_nftables "PodkopTable" && PK_ACTIVE=1
+check_nftables "zeroblock" && ZB_ACTIVE=1
+if [ "$ZB_ACTIVE" = "1" ]; then 
+	/etc/init.d/zeroblock restart & >/dev/null 2>&1
+else 
+	/etc/init.d/opera-proxy restart >/dev/null 2>&1
+	start=20
+fi
+
 
 clear
 echo "${VER}"
 echo "Перезапускаем интерфейсы"
-for i in $(seq 20 -1 1); do
+for i in $(seq $start -1 1); do
     printf "$z$i "
 	[ $i = 11 ] && echo
 	[ $i = 10 ] && z="0"
@@ -55,7 +72,7 @@ LAN_IP=$(uci get network.lan.ipaddr)
 # --- НАСТРОЙКИ ТЕСТА ЧЕРЕЗ API ZEROBLOCK|PODKOP ---
 TEST_API_URL="${TEST_URL:-https://proton.me}"
 TIMEOUT_API="${TIMEOUT:-5000}"
-RETRIES_API=4
+RETRIES_API=10
 
 
 # --- MAIN CODE ---
@@ -543,8 +560,8 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
 
  
 
-
-echo -e "${YELLOW}  --- НАЧАЛО --- ${CLR_OFF}"
+printf "\033[1A\033[K"
+echo -e "${YELLOW}  --- НАЧАЛО (скрин отсюда и до слова КОНЕЦ!) --- ${CLR_OFF}"
 # --- БЛОК 1: ПРОВЕРКА DNS ---
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
@@ -590,7 +607,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
 
 	#	printf " ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}" 
 	printf "  Статус: ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}${CLR_OFF} | ↓${RX} / ↑${TX} | "
-    # printf "  Пинг (ya.ru > %s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
+    # printf "  Пинг (ya.ru>%s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
 
 	
     # Захватываем stderr для анализа причин падения
@@ -608,7 +625,7 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         MAX_CLR="${GREEN}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 150 ] && MAX_CLR="${YELLOW}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 250 ] && MAX_CLR="${RED_BRIGHT}"
         LOST_CLR="${GREEN}"; [ "$P_LOST_NUM" -gt 0 ] && LOST_CLR="${YELLOW}"; [ "$P_LOST_NUM" -gt 2 ] && LOST_CLR="${RED_BRIGHT}"
 
-        printf "ya.ru > %s: ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d${CLR_OFF})\n" \
+        printf "ya.ru>%s: ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d${CLR_OFF})\n" \
                "$IFACE" "$P_MIN" "$P_MAX" "$P_LOST_NUM" "$PING_COUNT"
     else
         printf "ya.ru > %s: ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}\n" "$IFACE"
@@ -669,15 +686,9 @@ echo "= ПРОВЕРКА ДОСТУПОВ/ИНТЕРФЕЙСОВ (${PING_URL})"
 
 # --- ТЕСТ ЧЕРЕЗ API ZEROBLOCK|PODKOP ---
 
-# --- ПРОВЕРКА NFTABLES ---
-check_nftables() {
-    nft list tables 2>/dev/null | grep -q "inet $1"
-}
 
 # --- ОПРЕДЕЛЕНИЕ АКТИВНОСТИ ПРИЛОЖЕНИЙ ЧЕРЕЗ NFTABLES ---
 
-#check_nftables "zeroblock" && ZB_ACTIVE=1
-#check_nftables "PodkopTable" && PK_ACTIVE=1
 INACTIVE_ZBPK="active" # если ZB и PK неактивны INACTIVE_ZBPK будет =""
 
 # --- ФУНКЦИЯ ДЛЯ ТЕСТОВОГО ЗАПРОСА К API (без секрета) ---
@@ -865,6 +876,7 @@ done
 sleep 1
 
 for i in $(seq 1 10); do
+	# printf "$i "
 	if /etc/init.d/sing-box status | grep -q -i -E "running|active"; then
 		break
 	fi
