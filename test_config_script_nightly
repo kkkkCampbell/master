@@ -17,7 +17,7 @@ check_nftables() {
 ifdown "$IFACE"
 sleep 3
 ifup "$IFACE"
-start=30
+start=40
 
 #check_nftables "PodkopTable" && PK_ACTIVE=1
 check_nftables "zeroblock" && ZB_ACTIVE=1
@@ -871,12 +871,12 @@ for pkg in $active_services; do
 #	[ "${pkg}" == "sing-box" ] && continue
 #	[ "${pkg}" == "opera-proxy" ] && continue
 #	[ "${pkg}" == "zeroblock" ] && continue
-	/etc/init.d/${pkg} start 1>/dev/null 2>&1
+	/etc/init.d/${pkg} start & 1>  /dev/null 2>&1
 done
 sleep 1
 
-for i in $(seq 1 10); do
-	# printf "$i "
+for i in $(seq 10 -1 1); do
+	printf "$i "
 	if /etc/init.d/sing-box status | grep -q -i -E "running|active"; then
 		break
 	fi
@@ -1551,9 +1551,10 @@ else
 		# printf "%b\n" "${YELLOW}  Предупреждение: DNS и DHCP, Строгий порядок активен!${CLR_OFF}"
 	#fi
 
-	if [ "$noresolv" != "1" ]; then
-		printf "%b\n" "${RED_BRIGHT}  DNS и DHCP, Игнорировать файл resolv отключено! ${CLR_OFF}"
-	fi
+	#if [ "$noresolv" != "1" ]; then
+	#echo "$noresolv"
+	#	printf "%b\n" "${RED_BRIGHT}  DNS и DHCP, Игнорировать файл resolv отключено! ${CLR_OFF}"
+	#fi
 fi
 
 
