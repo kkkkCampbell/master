@@ -106,7 +106,7 @@ zapret_installer() {
 	fi
 
 
-	 if [ "$opkg_updated" !=1  ]; then 
+	 if [ "$opkg_updated" != "1"  ]; then 
 		opkg update
 	fi
 	
