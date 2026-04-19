@@ -667,7 +667,7 @@ TEST_URL=$(echo "$TEST_URL" | tr 'a-z' 'A-Z')
 PING_URL="${TEST_URL#*://}"
 
 NEED_RESOLVE_TEST=0
-echo "= ПРОВЕРКА ДОСТУПОВ/ИНТЕРФЕЙСОВ (${PING_URL})"
+echo "= ПРОВЕРКА ДОСТУПОВ/ИНТЕРФЕЙСОВ" # (${PING_URL})"
 
 
 
