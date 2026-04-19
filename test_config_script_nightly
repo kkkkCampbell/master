@@ -815,9 +815,9 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 		}')
 
 		if [ -n "$delay" ]; then
-			printf "  ${GREEN}✅ %-24s %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "${delay}ms" "$section_list"
+			printf "  ${GREEN}✅ %-24s  %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "${delay}ms" "$section_list"
 		else
-			printf "  ${RED_BRIGHT} ❌ %-24s %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "---ms" "$section_list"
+			printf "  ${RED_BRIGHT}❌ %-24s  %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "---ms" "$section_list"
 		fi
 	done
 fi
@@ -874,12 +874,11 @@ fi
 printf "  ${YELLOW}Запускаем остановленные службы, ожидайте...${CLR_OFF}"
 
 for pkg in $active_services; do
-#	[ "${pkg}" == "sing-box" ] && continue
-#	[ "${pkg}" == "opera-proxy" ] && continue
-	[ "${pkg}" == "zeroblock" ] && continue
-	/etc/init.d/${pkg} start & 1>  /dev/null 2>&1
+	if echo "${pkg}" | grep -q -i -E "\bzapret\b|\bzeroblock\b"; then continue; fi
+	/etc/init.d/${pkg} start >/dev/null 2>&1
 done
-sleep 1
+
+sleep 4
 
 for i in $(seq 10 -1 1); do
 	printf "$i "
