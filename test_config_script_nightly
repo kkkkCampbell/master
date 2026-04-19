@@ -1122,7 +1122,8 @@ for pkg in $active_services; do
         echo "$bad_list" | while read -r d; do
             grep "^$d|" "$tmp_p" | cut -d'|' -f2,3 | sort -u | while read -r line; do
                 loc=$(echo "$line" | cut -d'|' -f1); cond=$(echo "$line" | cut -d'|' -f2)
-                printf "    %-25s : %s (Условия: %s)\n" "$pkg" "$loc" "$cond"
+                #printf "    %-25s : %s (Условия: %s)\n" "$pkg" "$loc" "$cond"
+				printf "    %-25s : %s (Дубли в \"Список польз. доменов\" )\n" "$pkg" "$loc" "$cond"
             done
         done
         printf "    ${CYAN}Домены:${CLR_OFF} %s\n\n" "$(echo $bad_list | tr '\n' ' ')"
