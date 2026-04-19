@@ -817,7 +817,7 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 		if [ -n "$delay" ]; then
 			printf "  ${GREEN}✅ %-24s %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "${delay}ms" "$section_list"
 		else
-			printf "  ${RED_BRIGHT}❌ %-24s %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "---ms" "$section_list"
+			printf "  ${RED_BRIGHT} ❌ %-24s %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "---ms" "$section_list"
 		fi
 	done
 fi
