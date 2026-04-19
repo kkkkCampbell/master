@@ -437,7 +437,7 @@ get_channel_desc() {
     ps=$(uci -q get ${UCI_CONFIG}.$s.proxy_string)
 
     if [ "$t" = "vpn" ] && [ -n "$i" ]; then
-        echo "VPN $i"
+        echo "vpn $i"
         return 0
     fi
 
@@ -452,9 +452,9 @@ get_channel_desc() {
         server=$(echo "$oj" | jq -r '.server // ""')
         port=$(echo "$oj" | jq -r '.server_port // ""')
         if [ "$server" = "127.0.0.1" ] && [ -n "$port" ]; then
-            echo "Outbound $typ local:$port"
+            echo "Outb $typ local:$port"
         else
-            echo "Outbound $typ"
+            echo "Outb $typ"
         fi
         return 0
     fi
@@ -471,13 +471,13 @@ get_channel_desc() {
             transport=$(echo "$ps" | grep -o 'type=[^&]*' | head -1 | cut -d= -f2 | tr 'a-z' 'A-Z')
             security=$(echo "$ps" | grep -o 'security=[^&]*' | head -1 | cut -d= -f2 | tr 'a-z' 'A-Z')
             if [ -n "$transport" ] && [ -n "$security" ]; then
-                echo "$scheme + $transport + $security"
+                echo "$scheme+$transport"
             else
                 if [ -n "$transport" ]; then
                     echo "$scheme + $transport"
                 else
                     if [ -n "$security" ]; then
-                        echo "$scheme + $security"
+                        echo "$scheme"
                     else
                         echo "$scheme"
                     fi
@@ -490,6 +490,12 @@ get_channel_desc() {
     echo "?"
     return 1
 }
+
+get_mtu() {
+    iface="$1"
+    ip link show "$iface" 2>/dev/null | awk -F'mtu ' 'NF>1{print $2}' | awk '{print $1}'
+}
+
 
 	# --- ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ЗАДЕРЖКИ ЧЕРЕЗ API ZB|PK ---
 get_delay() {
@@ -718,7 +724,7 @@ fi
 if [ ! -z "${INACTIVE_ZBPK}" ]; then
 	# --- УСТАНОВИМ ИМЯ ПРИЛОЖЕНИЯ ДЛЯ ВЫВОДА ---
 	if [ "$ACTIVE_API" = "zb" ]; then
-		APP_NAME="Zeroblock"
+		APP_NAME="ZB"
 		# Секрет для Zeroblock
 		SECRET=$(uci -q get zeroblock.settings.yacd_secret_key)
 		if [ -z "$SECRET" ]; then
@@ -726,7 +732,7 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 			yuiyiyiu=0
 		fi
 	else
-		APP_NAME="Podkop"
+		APP_NAME="PK"
 	fi
 
 	# --- ВРЕМЕННЫЙ ФАЙЛ ДЛЯ ГРУППИРОВКИ ---
@@ -783,17 +789,21 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 
 	# --- ТЕСТИРОВАНИЕ КАЖДОГО УНИКАЛЬНОГО КАНАЛА ---
 	echo "$grouped" | while IFS='|' read -r key desc sections test_sect; do
-		# Формируем имя прокси для API
+		# Определяем MTU для VPN-каналов
+		mtu="xxxx"
+		key_clean=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		case "$key_clean" in
+			vpn:*)
+				iface="${key_clean#vpn:}"
+				mtu_val=$(get_mtu "$iface")
+				[ -n "$mtu_val" ] && mtu="$mtu_val"
+				;;
+		esac
 		if [ "$ACTIVE_API" = "zb" ]; then
 			proxy_name="$test_sect"
-		else
-			proxy_name="${test_sect}-out"
-		fi
-
-		# Получаем задержку
-		if [ "$ACTIVE_API" = "zb" ]; then
 			delay=$(get_delay "$proxy_name" "$SECRET")
 		else
+			proxy_name="${test_sect}-out"
 			delay=$(get_delay "$proxy_name" "")
 		fi
 
@@ -804,14 +814,10 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 			else printf "%s, %s +%d", $1, $2, NF-2
 		}')
 
-		# Полное описание с названием приложения
-		full_desc="${APP_NAME} ${desc}"
-
-		# Вывод с форматированием (ширина 40 символов под описание)
 		if [ -n "$delay" ]; then
-			printf "  ${GREEN}✅ %-35s : %8s [ %s ]${CLR_OFF}\n" "$full_desc" "${delay}ms" "$section_list"
+			printf "  ${GREEN}✅ %-24s %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "${delay}ms" "$section_list"
 		else
-			printf "  ${RED_BRIGHT}❌ %-35s : %8s [ %s ]${CLR_OFF}\n" "$full_desc" "XXXms" "$section_list"
+			printf "  ${RED_BRIGHT}❌ %-24s %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "---ms" "$section_list"
 		fi
 	done
 fi
@@ -870,7 +876,7 @@ printf "  ${YELLOW}Запускаем остановленные службы, �
 for pkg in $active_services; do
 #	[ "${pkg}" == "sing-box" ] && continue
 #	[ "${pkg}" == "opera-proxy" ] && continue
-#	[ "${pkg}" == "zeroblock" ] && continue
+	[ "${pkg}" == "zeroblock" ] && continue
 	/etc/init.d/${pkg} start & 1>  /dev/null 2>&1
 done
 sleep 1
