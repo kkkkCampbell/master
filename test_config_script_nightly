@@ -568,6 +568,7 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
  
 
 printf "\033[1A\033[K"
+echo "\`\`\`" >> "$LOG_FILE"
 echo -e "${YELLOW}  --- НАЧАЛО (скрин отсюда и до слова КОНЕЦ!) --- ${CLR_OFF}"
 # --- БЛОК 1: ПРОВЕРКА DNS ---
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
@@ -1587,3 +1588,4 @@ crontab -l | sed -e '/^[[:space:]]*#/d' -e 's/^/  /'
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
 echo -e "${YELLOW}  --- КОНЕЦ! ---${CLR_OFF}"
 echo ""
+echo "\`\`\`" >> "$LOG_FILE"
