@@ -5,7 +5,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.1.2"
+VER="0.1.3"
 
 # --- ПРОВЕРКА NFTABLES ---
 check_nftables() {
@@ -875,7 +875,7 @@ fi
 printf "  ${YELLOW}Запускаем остановленные службы, ожидайте...${CLR_OFF}"
 
 for pkg in $active_services; do
-	if echo "${pkg}" | grep -q -i -E "\bzapret\b|\bzeroblock\b"; then continue; fi
+	if echo "${pkg}" | grep -q -i -E "\bzeroblock\b"; then continue; fi
 	/etc/init.d/${pkg} start >/dev/null 2>&1
 done
 
@@ -1564,8 +1564,8 @@ else
 	#fi
 fi
 
-if [ "${ACTIVE_API}" = "zb" ]; then
-	if [ "1" = $(uci get zeroblock.auto_config.sections_auto_load) ]; then
+if [ "${ACTIVE_API}" == "zb" ]; then
+	if [ ! -z $(uci -q get zeroblock.auto_config.sections_auto_load) ]; then
 		echo -e "${YELLOW}  !_Автозагрузка секций включена${CLR_OFF}"
 	fi
 fi
