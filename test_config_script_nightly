@@ -568,8 +568,9 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
  
 
 printf "\033[1A\033[K"
-echo "\`\`\`" >> "$LOG_FILE"
-echo -e "${YELLOW}  --- НАЧАЛО (скрин отсюда и до слова КОНЕЦ!) --- ${CLR_OFF}"
+# echo "\`\`\`" # >> "$LOG_FILE"
+
+echo -e "\`\`\`${YELLOW}  --- НАЧАЛО (скрин отсюда и до слова КОНЕЦ!) --- ${CLR_OFF}"
 # --- БЛОК 1: ПРОВЕРКА DNS ---
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
@@ -871,6 +872,10 @@ fi
 
 
 
+
+
+
+
 # --- ЗАПУСКАЕМ РАНЕЕ ОСТАНОВЛЕННЫЕ СЕРВИСЫ
 
 printf "  ${YELLOW}Запускаем остановленные службы, ожидайте...${CLR_OFF}"
@@ -883,13 +888,14 @@ done
 sleep 4
 
 for i in $(seq 10 -1 1); do
-	printf "$i "
 	if /etc/init.d/sing-box status | grep -q -i -E "running|active"; then
 		break
 	fi
     sleep 1
 done
 printf "\r\033[K"
+
+
 
 [ $NEED_RESOLVE_TEST -eq 1 ] && printf "\033[1A\033[K"
 
@@ -1586,6 +1592,6 @@ crontab -l | sed -e '/^[[:space:]]*#/d' -e 's/^/  /'
 
 # Блок 8: Очистка лога
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
+echo "\`\`\`" # >> "$LOG_FILE"
 echo -e "${YELLOW}  --- КОНЕЦ! ---${CLR_OFF}"
 echo ""
-echo "\`\`\`" >> "$LOG_FILE"
