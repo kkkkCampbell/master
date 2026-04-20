@@ -5,7 +5,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.1.1"
+VER="0.1.2"
 
 # --- ПРОВЕРКА NFTABLES ---
 check_nftables() {
@@ -25,6 +25,7 @@ if [ "$ZB_ACTIVE" = "1" ]; then
 	/etc/init.d/zeroblock restart & >/dev/null 2>&1
 else 
 	/etc/init.d/opera-proxy restart >/dev/null 2>&1
+	/etc/init.d/podkop restart >/dev/null 2>&1
 	start=20
 fi
 
@@ -591,10 +592,10 @@ printf "YouTube IP:  ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
 
 # Останавливаем сервисы (даже если они не запущены)
 for pkg in $INSTALLED_SERVICES; do
-	[ "${pkg}" = "opera-proxy" ] && continue
-	[ "${pkg}" = "zeroblock" ] && continue
-	[ "${pkg}" = "podkop" ] && continue
-	[ "${pkg}" = "sing-box" ] && continue
+	[ "${pkg}" = "opera-proxy" ] && continue # Перезапускает ZB
+	[ "${pkg}" = "zeroblock" ] && continue   # Перезапускается в начале скрипта
+	[ "${pkg}" = "podkop" ] && continue      # Перезапускается в начале скрипта
+	[ "${pkg}" = "sing-box" ] && continue    # Связанный перезапуск
 	[ -f /etc/init.d/${pkg} ] && /etc/init.d/${pkg} stop >/dev/null 2>&1
 done
 
@@ -815,9 +816,9 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 		}')
 
 		if [ -n "$delay" ]; then
-			printf "  ${GREEN}✅ %-24s  %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "${delay}ms" "$section_list"
+			printf "  ${GREEN}✅ %-24s  %6s %8s [ %s ]${CLR_OFF}\n" " $desc" "$mtu" "${delay}ms" "$section_list"
 		else
-			printf "  ${RED_BRIGHT}❌ %-24s  %6s %8s [ %s ]${CLR_OFF}\n" "$desc" "$mtu" "---ms" "$section_list"
+			printf "  ${RED_BRIGHT}❌ %-24s  %6s %8s [ %s ]${CLR_OFF}\n" " $desc" "$mtu" "---ms" "$section_list"
 		fi
 	done
 fi
@@ -1561,6 +1562,12 @@ else
 	#echo "$noresolv"
 	#	printf "%b\n" "${RED_BRIGHT}  DNS и DHCP, Игнорировать файл resolv отключено! ${CLR_OFF}"
 	#fi
+fi
+
+if [ "${ACTIVE_API}" = "zb" ]; then
+	if [ "1" = $(uci get zeroblock.auto_config.sections_auto_load) ]; then
+		echo -e "${YELLOW}  !_Автозагрузка секций включена${CLR_OFF}"
+	fi
 fi
 
 
