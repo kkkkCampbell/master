@@ -707,7 +707,7 @@ test_api() {
 
 # --- РАЗРЕШЕНИЕ КОНФЛИКТА, ЕСЛИ ОБА АКТИВНЫ ---
 if [ $ZB_ACTIVE -eq 1 ] && [ $PK_ACTIVE -eq 1 ]; then
-    echo "${RED_BRIGHT}  ⚠ ️Одновременно активны ZeroBlock и Podkop!!!${CLR_OFF}" >&2
+    echo -e "${RED_BRIGHT}  ⚠ ️Одновременно активны ZeroBlock и Podkop!!!${CLR_OFF}" >&2
     status=$(test_api)
 	echo $status
     if [ "$status" = "401" ]; then
