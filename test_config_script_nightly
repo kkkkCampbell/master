@@ -44,7 +44,7 @@ done
 
 # --- ЦВЕТА ---
 if [ -t 1 ]; then
-	CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
+	CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"; BLACK="\033[30m"
 fi
 # --- PODKOP GLOBAL_CHECK ERROR STRINGS ---
 p_check_include='Router DNS is NOT routed through sing-box|Sing-box does NOT work with FakeIP|❌ Bootstrap DNS:|❌ Main DNS:|❌ DNS on router'
@@ -570,7 +570,7 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
 printf "\033[1A\033[K"
 # echo "\`\`\`" # >> "$LOG_FILE"
 
-echo -e "\`\`\`${YELLOW}  --- НАЧАЛО (скрин отсюда и до слова КОНЕЦ!) --- ${CLR_OFF}"
+echo -e "${BLACK}\`\`\`${YELLOW}  --- НАЧАЛО (скрин отсюда и до слова КОНЕЦ!) --- ${CLR_OFF}"
 # --- БЛОК 1: ПРОВЕРКА DNS ---
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
@@ -802,6 +802,7 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 				[ -n "$mtu_val" ] && mtu="$mtu_val"
 				;;
 		esac
+
 		if [ "$ACTIVE_API" = "zb" ]; then
 			proxy_name="$test_sect"
 			delay=$(get_delay "$proxy_name" "$SECRET")
@@ -816,11 +817,19 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 			if (NF <= 2) print $0
 			else printf "%s, %s +%d", $1, $2, NF-2
 		}')
+		
+		MTU_COLOR=""
+		if [ -n "$mtu" ] && [ "$mtu" -eq "$mtu" ] 2>/dev/null && [ "$mtu" -gt 1280 ]; then
+			MTU_COLOR="$YELLOW"   # например YELLOW='\033[93m'
+			mtu="!_${mtu}"
+		fi
 
 		if [ -n "$delay" ]; then
-			printf "  ${GREEN}✅ %-24s  %6s %8s [ %s ]${CLR_OFF}\n" " $desc" "$mtu" "${delay}ms" "$section_list"
+			printf "  ${GREEN}✅ %-24s  ${MTU_COLOR}%s${GREEN}%8s [ %s ]${CLR_OFF}\n" \
+				" $desc" "$mtu" "${delay}ms" "$section_list"
 		else
-			printf "  ${RED_BRIGHT}❌ %-24s  %6s %8s [ %s ]${CLR_OFF}\n" " $desc" "$mtu" "---ms" "$section_list"
+			printf "  ${RED_BRIGHT}❌ %-24s  ${MTU_COLOR}%s${RED_BRIGHT}%8s [ %s ]${CLR_OFF}\n" \
+				" $desc" "$mtu" "---ms" "$section_list"
 		fi
 	done
 fi
@@ -1592,6 +1601,6 @@ crontab -l | sed -e '/^[[:space:]]*#/d' -e 's/^/  /'
 
 # Блок 8: Очистка лога
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
-echo "\`\`\`" # >> "$LOG_FILE"
-echo -e "${YELLOW}  --- КОНЕЦ! ---${CLR_OFF}"
+echo -e "${BLACK}\`\`\`${YELLOW}  --- КОНЕЦ! ---${CLR_OFF}" # >> "$LOG_FILE"
+#echo -e "${YELLOW}  --- КОНЕЦ! ---${CLR_OFF}"
 echo ""
