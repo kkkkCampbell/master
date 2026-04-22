@@ -29,8 +29,12 @@ else
 	start=20
 fi
 
-
 clear
+
+# Получаем состояние zapret и youtubeUnblock до запуска скрипта и восстанавливаем его
+[ "$1" = "running" ] && echo "zapret restart" && /etc/init.d/zapret start > /dev/null 2>&1
+[ "$2" = "running" ] && echo "youtubeUnblock restart" && /etc/init.d/youtubeUnblock start > /dev/null 2>&1
+
 echo "${VER}"
 echo "Перезапускаем интерфейсы"
 for i in $(seq $start -1 1); do
