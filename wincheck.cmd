@@ -17,7 +17,7 @@ REM ----- PART 1: Network config + nslookup (with empty line after DNSServer) --
 ( powershell -Command "Get-NetIPConfiguration | Where-Object {$_.NetAdapter.Status -eq 'Up'}; nslookup %NS_HOST% 2>&1" | findstr /v "^$" ) | powershell -Command "$input | ForEach-Object { $_; if ($_ -match 'DNSServer') { '' } }"
 
 echo.
-::echo --- PING RESULTS ---
+echo --- PING ---
 ::echo.
 chcp 866 > nul
 setlocal enabledelayedexpansion
@@ -28,8 +28,10 @@ ping ya.ru -n 10 | findstr /r /c:"\[" /c:"=" /c:"%%" | findstr /v /i "TTL"
 
 echo.
 
-echo ========== ПАРАМЕТРЫ СИСТЕМНОГО ПРОКСИ ==========
+chcp 866 > nul
 chcp 1251 > nul
+echo ========== ПАРАМЕТРЫ СИСТЕМНОГО ПРОКСИ ==========
+
 echo.
 
 set "PROXY_ACTIVE="
