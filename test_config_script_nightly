@@ -498,7 +498,7 @@ get_mtu() {
 }
 
 
-	# --- ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ЗАДЕРЖКИ ЧЕРЕЗ API ZB|PK ---
+	# --- ФУНКЦИЯ ПОЛУЧЕНИЯ ЗАДЕРЖКИ ЧЕРЕЗ API ZB|PK ---
 get_delay() {
     _proxy_name="$1"
     _secret="$2"
@@ -548,8 +548,8 @@ echo "$active_services" | grep -q "zeroblock" && ZB_ACTIVE=1
 
 
 
-
 # --- НАКРУЧИВАЕМ СЧЁТЧИКИ AWG10 ---
+
 
 TEST_URL="http://speedtest.tele2.net/10MB.zip"
 ROUNDS=1
@@ -613,11 +613,9 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     PING_COUNT=10
     RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
-
-	#	printf " ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}" 
-	printf "  Статус: ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}${CLR_OFF} | ↓${RX} / ↑${TX} | "
-    # printf "  Пинг (ya.ru>%s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
-
+	
+	RX_COL="${RED_BRIGHT}"; [ "${RX%%.*}" -ge 1 ] && RX_COL="${YELLOW}"; [ "${RX%%.*}" -ge 5 ] && RX_COL="${GREEN}"
+	printf "  Статус: ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}${CLR_OFF} | ${RX_COL}↓${RX} / ↑${TX}${CLR_OFF} | "
 	
     # Захватываем stderr для анализа причин падения
     PING_RAW=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>&1)
@@ -655,8 +653,6 @@ printf "  ${YELLOW}Программы в автозапуске:$autostarted_ser
 
 
 echo ""
-
-
 
 
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
@@ -1553,6 +1549,9 @@ uci show network | grep "\.proto='amneziawg'$" | while IFS= read -r line; do
 done
 # endregion
 
+
+
+
 # --- DNSMASQ SETTINGS CHECK ---
 
 
@@ -1580,10 +1579,18 @@ else
 	#fi
 fi
 
+
+
+
+# Дополнительные проверки на ошибки и неточности в настройке ZeroBlock
 if [ "${ACTIVE_API}" == "zb" ]; then
+	# проверка на состояние "Автозагрузка секций". Вкл|Выкл
 	if [ ! -z $(uci -q get zeroblock.auto_config.sections_auto_load) ]; then
 		echo -e "${YELLOW}  !_Автозагрузка секций включена${CLR_OFF}"
 	fi
+	# проверка на состояние "CIDR Списки сообщества". Вкл|Выкл
+	[ ! -z "$(uci -q get zeroblock.settings.download_cidr)" ] && \
+		echo -e "${YELLOW}  CIDR Списки сообщества: $(uci -q get zeroblock.settings.download_cidr)${CLR_OFF}"
 fi
 
 
