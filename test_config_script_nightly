@@ -6,18 +6,19 @@ export TERM=xterm-256color
 IFACE="awg10"
 FIRST_IN="0"
 VER="0.1.3"
+clear
+echo "${VER}"
+
+# перезапуск стандартных каналов доступа
+ifdown "$IFACE"
+sleep 4
+ifup "$IFACE"
+start=40
 
 # --- ПРОВЕРКА NFTABLES ---
 check_nftables() {
     nft list tables 2>/dev/null | grep -q "inet $1"
 }
-
-# перезапуск стандартных каналов доступа
-#/etc/init.d/opera-proxy restart >/dev/null 2>&1
-ifdown "$IFACE"
-sleep 3
-ifup "$IFACE"
-start=40
 
 #check_nftables "PodkopTable" && PK_ACTIVE=1
 check_nftables "zeroblock" && ZB_ACTIVE=1
@@ -29,13 +30,10 @@ else
 	start=20
 fi
 
-clear
-
 # Получаем состояние zapret и youtubeUnblock до запуска скрипта и восстанавливаем его
 [ "$1" = "running" ] && echo "zapret restart" && /etc/init.d/zapret start > /dev/null 2>&1
 [ "$2" = "running" ] && echo "youtubeUnblock restart" && /etc/init.d/youtubeUnblock start > /dev/null 2>&1
 
-echo "${VER}"
 echo "Перезапускаем интерфейсы"
 for i in $(seq $start -1 1); do
     printf "$z$i "
