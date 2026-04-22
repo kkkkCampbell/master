@@ -1590,7 +1590,7 @@ if [ "${ACTIVE_API}" == "zb" ]; then
 	fi
 	# проверка на состояние "CIDR Списки сообщества". Вкл|Выкл
 	[ ! -z "$(uci -q get zeroblock.settings.download_cidr)" ] && \
-		echo -e "${YELLOW}  CIDR Списки сообщества: $(uci -q get zeroblock.settings.download_cidr)${CLR_OFF}"
+		echo -e "${YELLOW}  !_CIDR Списки сообщества: $(uci -q get zeroblock.settings.download_cidr)${CLR_OFF}"
 fi
 
 
