@@ -13,18 +13,6 @@ echo "${VER}"
 ifdown "$IFACE"
 sleep 4
 ifup "$IFACE"
-start=40
-
-# Получаем установленную версию zeroblock (обрезаем суффикс типа -1, +build)
-ver=$(opkg list-installed | awk '/^zeroblock / {print $3}' | sed 's/[-+~].*//')
-
-if [ "$ver" != "" ]; then 
-	# Проверяем, что версия меньше и при этом не равна
-	if opkg compare-versions "$ver" "<" "0.8.2-r1" && ! opkg compare-versions "$ver" "=" "0.8.2-r1"; then
-		echo "ZeroBlock новой версии"
-		start=40
-	fi
-fi
 
 # --- ПРОВЕРКА NFTABLES ---
 check_nftables() {
@@ -33,7 +21,8 @@ check_nftables() {
 
 #check_nftables "PodkopTable" && PK_ACTIVE=1
 check_nftables "zeroblock" && ZB_ACTIVE=1
-if [ "$ZB_ACTIVE" = "1" ]; then 
+if [ "$ZB_ACTIVE" = "1" ]; then
+	start=40
 	/etc/init.d/zeroblock reload & >/dev/null 2>&1
 else 
 	/etc/init.d/opera-proxy restart >/dev/null 2>&1
@@ -48,6 +37,7 @@ fi
 echo "Перезапускаем интерфейсы и ожидаем их старта"
 for i in $(seq $start -1 1); do
     printf "$z$i "
+	[ $i = 31 ] && echo
 	[ $i = 21 ] && echo
 	[ $i = 21 ] && echo
 	[ $i = 11 ] && echo
