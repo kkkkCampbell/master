@@ -5,7 +5,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.1.5"
+VER="0.1.6"
 clear
 echo "${VER}"
 
@@ -36,14 +36,10 @@ fi
 
 echo "Перезапускаем интерфейсы и ожидаем их старта"
 for i in $(seq $start -1 1); do
-    printf "$z$i "
-	[ $i = 31 ] && echo
-	[ $i = 21 ] && echo
-	[ $i = 11 ] && echo
-	[ $i = 10 ] && z="0"
-    sleep 1
+    printf "%s%d " "$z" "$i"
+    if [ $((i % 10)) -eq 1 ] && [ $i -gt 10 ]; then echo; fi
+    [ $i = 10 ] && z="0"; sleep 1
 done
-
 
 
 # --- ЦВЕТА ---
@@ -389,7 +385,7 @@ check_WARP() {
 }
 
 
-# --- ФУНКЦИЯ: УНИКАЛЬНЫЙ КЛЮЧ КАНАЛА ---
+# --- ФУНКЦИЯ: УНИКАЛЬНЫЙ КЛЮЧ КАНАЛА (CLASH API)---
 get_channel_key() {
     s="$1"
     t=$(uci -q get ${UCI_CONFIG}.$s.connection_type)
@@ -496,13 +492,14 @@ get_channel_desc() {
     return 1
 }
 
+# ---ФУНКЦИЯ ПОЛУЧЕНИЯ MTU ИНТЕРФЕЙСА ---
 get_mtu() {
     iface="$1"
     ip link show "$iface" 2>/dev/null | awk -F'mtu ' 'NF>1{print $2}' | awk '{print $1}'
 }
 
 
-	# --- ФУНКЦИЯ ПОЛУЧЕНИЯ ЗАДЕРЖКИ ЧЕРЕЗ API ZB|PK ---
+	# --- ФУНКЦИЯ ПОЛУЧЕНИЯ ЗАДЕРЖКИ ЧЕРЕЗ API CLASH ZB|PK ---
 get_delay() {
     _proxy_name="$1"
     _secret="$2"
@@ -523,12 +520,29 @@ get_delay() {
     return 1
 }
 
+# --- ФУНКЦИЯ СБОРА ИМЁН ВСЕХ АКТИВНЫХ СЕКЦИЙ ZEROBLOCK|PODKOP ---
+f_get_all_sections_name(){
+	ZB_RAW_SECTIONS_NAME=""; PK_SECTIONS_NAME=""; s=""; ZB_SECTIONS_NAME=""
+	
+	ZB_RAW_SECTIONS_NAME=$(uci show zeroblock | grep '=section' | cut -d. -f2 | cut -d= -f1)
+	PK_SECTIONS_NAME=$(uci show podkop | grep '=section' | cut -d. -f2 | cut -d= -f1)
+	
+	for s in $ZB_RAW_SECTIONS_NAME; do
+		if [ "$(uci -q get zeroblock.$s.enabled)" = "1" ]; then		
+			# Добавляем имя в список, отделяя новой строкой
+			if [ -z "$ZB_SECTIONS_NAME" ]; then
+				ZB_SECTIONS_NAME="$s"
+			else
+				ZB_SECTIONS_NAME="$ZB_SECTIONS_NAME"$'\n'"$s"
+			fi
+		fi
+	done
+}
 
 # endregion FUNCTION
 # =====================
 # ФУНКЦИИ END
 # =====================
-
 
 echo ""
 
@@ -548,6 +562,11 @@ echo "$autostarted_services" | grep -q "podkop" && PK_AUTOSTART=1
 echo "$autostarted_services" | grep -q "zeroblock" && ZB_AUTOSTART=1
 echo "$active_services" | grep -q "podkop" && PK_ACTIVE=1
 echo "$active_services" | grep -q "zeroblock" && ZB_ACTIVE=1
+
+# --- СОБИРАЕМ ВСЕ АКТИВНЫЕ СЕКЦИИ ЗЕРОБЛОК|ПОДКОП В ПЕРЕМЕННЫЕ ---
+# $PK_SECTIONS_NAME
+# $ZB_SECTIONS_NAME
+f_get_all_sections_name
 
 
 
@@ -1594,16 +1613,45 @@ fi
 
 
 
-# Дополнительные проверки на ошибки и неточности в настройке ZeroBlock
+
+
+
+
+
+# ДОПОЛНИТЕЛЬНЫЕ ПРОВЕРКИ НА ОШИБКИ И НЕТОЧНОСТИ В НАСТРОЙКЕ ZeroBlock
+
 if [ "${ACTIVE_API}" == "zb" ]; then
+	
 	# проверка на состояние "Автозагрузка секций". Вкл|Выкл
 	if [ ! -z $(uci -q get zeroblock.auto_config.sections_auto_load) ]; then
 		echo -e "${YELLOW}  !_Автозагрузка секций включена${CLR_OFF}"
 	fi
+	
 	# проверка на состояние "CIDR Списки сообщества". Вкл|Выкл
 	[ ! -z "$(uci -q get zeroblock.settings.download_cidr)" ] && \
 		echo -e "${YELLOW}  !_CIDR Списки сообщества: $(uci -q get zeroblock.settings.download_cidr)${CLR_OFF}"
+		
+	# ищем и выводим имена секций с активным индивидуальным DNS
+	private_DNS=""
+	for s in $ZB_SECTIONS_NAME; do
+		dns_type=$(uci -q get "zeroblock.$s.dns_type")
+		if [ -n "$dns_type" ]; then
+			if [ -z "$private_DNS" ]; then
+				private_DNS="$s"
+			else
+				private_DNS="$private_DNS, $s"
+			fi
+		fi
+	done
+	[ -n "$private_DNS" ] && printf "  ${YELLOW}Секции с собственным DNS: ${private_DNS}${CLR_OFF}\n"
 fi
+
+
+
+
+
+
+
 
 
 
