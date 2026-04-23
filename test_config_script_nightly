@@ -634,10 +634,10 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         MAX_CLR="${GREEN}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 150 ] && MAX_CLR="${YELLOW}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 250 ] && MAX_CLR="${RED_BRIGHT}"
         LOST_CLR="${GREEN}"; [ "$P_LOST_NUM" -gt 0 ] && LOST_CLR="${YELLOW}"; [ "$P_LOST_NUM" -gt 2 ] && LOST_CLR="${RED_BRIGHT}"
 
-        printf "ya.ru>%s: ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d${CLR_OFF})\n" \
+        printf "ya.ru${GREEN}⭤${CLR_OFF}%s: ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d${CLR_OFF})\n" \
                "$IFACE" "$P_MIN" "$P_MAX" "$P_LOST_NUM" "$PING_COUNT"
     else
-        printf "ya.ru > %s: ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}\n" "$IFACE"
+        printf "ya.ru⇆%s: ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}\n" "$IFACE"
         # Выделяем причину (первая строка ошибки)
         _P_ERR=$(echo "$PING_RAW" | head -n 1 | sed "s/ping: //")
         printf "  ! Ошибка: ${YELLOW}%s${CLR_OFF}\n" "$_P_ERR"
@@ -889,7 +889,7 @@ printf "  ${YELLOW}Запускаем остановленные службы, �
 
 for pkg in $active_services; do
 	if echo "${pkg}" | grep -q -i -E "\bzeroblock\b"; then continue; fi
-	/etc/init.d/${pkg} start >/dev/null 2>&1
+	[ -f /etc/init.d/${pkg} ] && /etc/init.d/${pkg} start >/dev/null 2>&1
 done
 
 sleep 4
@@ -1137,7 +1137,10 @@ for pkg in $active_services; do
             grep "^$d|" "$tmp_p" | cut -d'|' -f2,3 | sort -u | while read -r line; do
                 loc=$(echo "$line" | cut -d'|' -f1); cond=$(echo "$line" | cut -d'|' -f2)
                 #printf "    %-25s : %s (Условия: %s)\n" "$pkg" "$loc" "$cond"
-				printf "    %-25s : %s (Дубли в \"Список польз. доменов\" )\n" "$pkg" "$loc" "$cond"
+				if [ -n "$loc" ]; then
+					printf "  %-25s : %s " "$pkg" " $loc" #"$cond"
+					printf "(Дубли в \"Список польз. доменов\")\n"
+				fi
             done
         done
         printf "    ${CYAN}Домены:${CLR_OFF} %s\n\n" "$(echo $bad_list | tr '\n' ' ')"
@@ -1598,7 +1601,7 @@ fi
 
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
-sleep 2 # "успокоение" процессора
+sleep 4 # "успокоение" процессора
 echo ""
 echo "= СИСТЕМНЫЕ РЕСУРСЫ:"
 printf "  LAN IP: %s\n" "${LAN_IP} | uptime: $(uptime | sed -E 's/^.*up ([^,]+),.*$/\1/') | (Прошивка: ${VERSION})"
@@ -1611,5 +1614,4 @@ crontab -l | sed -e '/^[[:space:]]*#/d' -e 's/^/  /'
 # Блок 8: Очистка лога
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
 echo -e "${BLACK}\`\`\`${YELLOW}  --- КОНЕЦ! ---${CLR_OFF}" # >> "$LOG_FILE"
-#echo -e "${YELLOW}  --- КОНЕЦ! ---${CLR_OFF}"
 echo ""
