@@ -48,6 +48,7 @@ fi
 echo "Перезапускаем интерфейсы и ожидаем их старта"
 for i in $(seq $start -1 1); do
     printf "$z$i "
+	[ $i = 31 ] && echo
 	[ $i = 21 ] && echo
 	[ $i = 11 ] && echo
 	[ $i = 10 ] && z="0"
