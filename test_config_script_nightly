@@ -5,7 +5,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.1.3"
+VER="0.1.4"
 clear
 echo "${VER}"
 
@@ -727,7 +727,12 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 	if [ "$ACTIVE_API" = "zb" ]; then
 		APP_NAME="ZB"
 		# Секрет для Zeroblock
+		
+		# ПРОВЕРКА ВЕРСИИ, ЕСЛИ СТАРАЯ
+		SECRET=""
 		SECRET=$(uci -q get zeroblock.settings.yacd_secret_key)
+		# ЕСЛИ НОВАЯ
+		[ -n $SECRET ] && SECRET=$(uci -q get zeroblock.engine.yacd_secret_key)
 		if [ -z "$SECRET" ]; then
 			#echo "  ❌ Не найден секрет для Zeroblock." >&2
 			yuiyiyiu=0
