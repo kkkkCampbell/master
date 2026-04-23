@@ -1138,7 +1138,7 @@ for pkg in $active_services; do
                 loc=$(echo "$line" | cut -d'|' -f1); cond=$(echo "$line" | cut -d'|' -f2)
                 #printf "    %-25s : %s (Условия: %s)\n" "$pkg" "$loc" "$cond"
 				if [ -n "$loc" ]; then
-					printf "  %-25s : %s " "$pkg" " $loc" #"$cond"
+					printf "    %-25s : %s " "$pkg" " $loc" #"$cond"
 					printf "(Дубли в \"Список польз. доменов\")\n"
 				fi
             done
