@@ -22,7 +22,7 @@ if [ "$ver" != "" ]; then
 	# Проверяем, что версия меньше и при этом не равна
 	if opkg compare-versions "$ver" "<" "0.8.2-r1" && ! opkg compare-versions "$ver" "=" "0.8.2-r1"; then
 		echo "ZeroBlock новой версии"
-		start=30
+		start=40
 	fi
 fi
 
