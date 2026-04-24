@@ -1658,8 +1658,8 @@ if [ "${ACTIVE_API}" == "zb" ]; then
 			for d in $UNWANTED_DOMAINS; do
 				case "$raw_unw_domains" in
 					*"$d"*) 
-					      unw_dom_found="${unw_dom_found} $d" # сборник нежелательных доменов
-					      unw_dom_sections="${unw_dom_sections} ${s}"
+					      unw_dom_found="${unw_dom_found} $d," # сборник нежелательных доменов
+					      unw_dom_sections="${unw_dom_sections} ${s},"
 					;;
 				esac
 			done
@@ -1671,9 +1671,15 @@ if [ "${ACTIVE_API}" == "zb" ]; then
 	unw_dom_sections="${unw_dom_sections# }"
 	
 	# выводим секции с нежелательными доменами
-	unw_dom_found="${unw_dom_found# }"; unw_dom_found=$(echo $unw_dom_found | tr ' ' '\n' | sort -u | tr '\n' ' ')
-	unw_dom_sections="${unw_dom_sections# }"; unw_dom_sections=$(echo $unw_dom_sections | tr ' ' '\n' | sort -u | tr '\n' ' ')
-	[ -n "$unw_dom_sections" ] && unw_dom_found="${unw_dom_found% }" && printf "  %b%s\n" "${YELLOW}Домены [ $unw_dom_found ] в: $unw_dom_sections${CLR_OFF}" && echo -e "  ${YELLOW}Убедитесь в том, что эти домены вам действительно нужны в юзердомен-списках.${CLR_OFF}"
+# 1. Вычищаем мусор, дубли и склеиваем через запятую
+unw_dom_found=$(echo $unw_dom_found | tr ' ,' '\n' | sort -u | tr '\n' ',' | sed 's/,,*/,/g; s/^,//; s/,$//')
+unw_dom_sections=$(echo $unw_dom_sections | tr ' ,' '\n' | sort -u | tr '\n' ',' | sed 's/,,*/,/g; s/^,//; s/,$//')
+
+# 2. Магия: заменяем запятую на "запятая+пробел"
+unw_dom_found=$(echo "$unw_dom_found" | sed 's/,/, /g')
+unw_dom_sections=$(echo "$unw_dom_sections" | sed 's/,/, /g')
+
+	[ -n "$unw_dom_sections" ] && unw_dom_found="${unw_dom_found% }" && printf "  %b%s\n" "${YELLOW}Домены [ $unw_dom_found ] в: ${CYAN}$unw_dom_sections${CLR_OFF}" && echo -e "  ${YELLOW}Убедитесь в том, что эти домены вам действительно нужны в юзердомен-списках.${CLR_OFF}"
 fi
 
 
