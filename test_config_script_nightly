@@ -7,32 +7,37 @@ IFACE="awg10"
 FIRST_IN="0"
 VER="0.1.7"
 clear
+
 echo "${VER}"
 
 # перезапуск стандартных каналов доступа
-ifdown "$IFACE"
+
+[ -f /etc/init.d/opera-proxy ] && echo "Перезапуск opera-proxy" && /etc/init.d/opera-proxy restart >/dev/null 2>&1
+
+# Получаем состояние zapret и youtubeUnblock до запуска скрипта и восстанавливаем его
+[ "$1" = "running" ] && echo "zapret restart" && /etc/init.d/zapret start > /dev/null 2>&1
+[ "$2" = "running" ] && echo "youtubeUnblock restart" && /etc/init.d/youtubeUnblock start > /dev/null 2>&1
+
+#ifdown "$IFACE"
 sleep 4
-ifup "$IFACE"
+#ifup "$IFACE"
 
 # --- ПРОВЕРКА NFTABLES ---
 check_nftables() {
     nft list tables 2>/dev/null | grep -q "inet $1"
 }
-
-#check_nftables "PodkopTable" && PK_ACTIVE=1
+check_nftables "PodkopTable" && PK_ACTIVE=1
 check_nftables "zeroblock" && ZB_ACTIVE=1
+
 if [ "$ZB_ACTIVE" = "1" ]; then
-	start=40
+	start=20
 	/etc/init.d/zeroblock reload & >/dev/null 2>&1
-else 
-	/etc/init.d/opera-proxy restart >/dev/null 2>&1
+elif [ "$PK_ACTIVE" = "1" ]; then
 	/etc/init.d/podkop restart >/dev/null 2>&1
 	start=20
 fi
 
-# Получаем состояние zapret и youtubeUnblock до запуска скрипта и восстанавливаем его
-[ "$1" = "running" ] && echo "zapret restart" && /etc/init.d/zapret start > /dev/null 2>&1
-[ "$2" = "running" ] && echo "youtubeUnblock restart" && /etc/init.d/youtubeUnblock start > /dev/null 2>&1
+
 
 echo "Перезапускаем интерфейсы и ожидаем их старта"
 for i in $(seq $start -1 1); do
