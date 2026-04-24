@@ -5,7 +5,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.1.7"
+VER="0.1.8"
 clear
 
 echo "${VER}"
@@ -58,6 +58,7 @@ p_check_include='Router DNS is NOT routed through sing-box|Sing-box does NOT wor
 SAME_AS_LIST="youtube youtube.com russia_inside googlevideo"
 WARNING_LISTS="russia_inside russia_outside cloudflare cdn_cloudflare"
 UNWANTED_DOMAINS="yandex.ru ya.ru yandex.net yastatic.net yandexcloud.net yandex.com.tr yandex.by yandex.kz yandex.uz yandex.st market.yandex.ru beru.ru eda.yandex.ru lavka.yandex.ru music.yandex.ru kinopoisk.ru hd.kinopoisk.ru auto.ru realty.ya.ru smartcaptcha.yandexcloud.net mc.yandex.ru sberbank.ru sber.ru sberbank-online.ru sberbankid.ru online.sberbank.ru sbrf.ru tbank.ru tinkoff.ru tcsbank.ru id.tinkoff.ru business.tinkoff.ru tinkoff.com vtb.ru vtb24.ru online.vtb.ru vtb.com alfabank.ru click.alfabank.ru web.alfabank.ru alfabank.com gazprombank.ru gpb.ru telecard.ru raiffeisen.ru rconnect.raiffeisen.ru raiffeisen.com psbank.ru ib.psbank.ru rosbank.ru open.ru nspk.ru mironline.ru sbp.nspk.ru privetmir.ru ozon.ru ozon-st.com ozon.travel seller.ozon.ru wildberries.ru wb.ru wbstatic.net avito.ru avito.st megamarket.ru sbermegamarket.ru kuper.ru sbermarket.ru samokat.ru samokat.io aliexpress.ru gosuslugi.ru gu-st.ru nalog.gov.ru nalog.ru pfr.gov.ru rzd.ru mos.ru mosreg.ru fss.ru zakupki.gov.ru mil.ru smotrim.ru 1tv.ru vgtrk.ru tass.ru ria.ru vk.com vk-portal.net vk-cdn.net vkplay.ru mail.ru cloud.mail.ru ok.ru rutube.ru wink.ru ivi.ru okko.tv more.tv zvuk.com rustore.ru 1c.ru dnevnik.ru edu.ru cdek.ru pochta.ru pochta-id.ru boxberry.ru dpd.ru dellin.ru pickpoint.ru ru.com dhl.ru ponyexpress.ru city-mobil.ru goldapple.ru leroymerlin.ru dns-shop.ru mvideo.ru eldorado.ru citilink.ru mts.ru megafon.ru beeline.ru tele2.ru t2.ru rt.ru aeroflot.ru s7.ru utair.ru pobeda.aero uralairlines.ru tutu.ru kupibilet.ru yandex.aero rusal.ru gazprom.ru lukoil.ru rosneft.ru sberbank.com sbercloud.ru gosuslugi41.ru gosuslugi71.ru emls.ru uisoz.ru gosuslugi.dev .ru .su .рф" # домены для проверки юзерсписков доменов, их там быть не должно
+EXCLUDE_FROM_UNWANTED="2ip.ru"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
 RAW_SERVICES="zeroblock podkop luci-app-podkop-plus sing-box sing-box-tiny zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
@@ -1640,7 +1641,9 @@ if [ "${ACTIVE_API}" == "zb" ]; then
 
 	
 
-	
+# --- БОЛЬШОЙ ЦИКЛ ПО ВСЕМ АКТИВНЫМ СЕКЦИЯМ ZB ---
+# внутри которого отдельными модулями выполняются некоторые операции с каждой секцией
+
 	# ищем и выводим имена секций с активным индивидуальным DNS
 	unw_dom_found=""
 	unw_dom_sections=""	
@@ -1657,32 +1660,45 @@ if [ "${ACTIVE_API}" == "zb" ]; then
 		fi
 
 		# также собираем данные по нежелательным доменам в юзерсписках доменов
-		
 		raw_unw_domains=$(uci -q get "zeroblock.$s.user_domains_text")
 		if [ -n "$raw_unw_domains" ]; then
+			# фильтрация: удаляем каждый домен из EXCLUDE_FROM_UNWANTED (включая субдомены)
+			filtered=""
+			for item in $(echo "$raw_unw_domains" | tr ', \n' ' ' | tr -s ' '); do
+				skip=0
+				for ex in $EXCLUDE_FROM_UNWANTED; do
+					case "$item" in
+						"$ex" | *".$ex") skip=1; break ;;
+					esac
+				done
+				[ $skip -eq 0 ] && filtered="${filtered:+$filtered }$item"
+			done
+			raw_unw_domains="$filtered"
+			[ -z "$raw_unw_domains" ] && continue
+			# оригинальный цикл по UNWANTED_DOMAINS без изменений
 			for d in $UNWANTED_DOMAINS; do
+				case "$EXCLUDE_FROM_UNWANTED " in *" $d "*) continue ;; esac
 				case "$raw_unw_domains" in
 					*"$d"*) 
-					      unw_dom_found="${unw_dom_found} $d," # сборник нежелательных доменов
-					      unw_dom_sections="${unw_dom_sections} ${s},"
+						unw_dom_found="${unw_dom_found} $d,"
+						unw_dom_sections="${unw_dom_sections} ${s},"
 					;;
 				esac
 			done
 		fi
-		
 	done
 	# выводим секции с приватным ДНС
 	[ -n "$private_DNS" ] && printf "  ${YELLOW}Секции с собственным DNS: ${private_DNS}${CLR_OFF}\n"
 	unw_dom_sections="${unw_dom_sections# }"
 	
 	# выводим секции с нежелательными доменами
-# 1. Вычищаем мусор, дубли и склеиваем через запятую
-unw_dom_found=$(echo $unw_dom_found | tr ' ,' '\n' | sort -u | tr '\n' ',' | sed 's/,,*/,/g; s/^,//; s/,$//')
-unw_dom_sections=$(echo $unw_dom_sections | tr ' ,' '\n' | sort -u | tr '\n' ',' | sed 's/,,*/,/g; s/^,//; s/,$//')
+	# 1. Вычищаем мусор, дубли и склеиваем через запятую
+	unw_dom_found=$(echo $unw_dom_found | tr ' ,' '\n' | sort -u | tr '\n' ',' | sed 's/,,*/,/g; s/^,//; s/,$//')
+	unw_dom_sections=$(echo $unw_dom_sections | tr ' ,' '\n' | sort -u | tr '\n' ',' | sed 's/,,*/,/g; s/^,//; s/,$//')
 
-# 2. Магия: заменяем запятую на "запятая+пробел"
-unw_dom_found=$(echo "$unw_dom_found" | sed 's/,/, /g')
-unw_dom_sections=$(echo "$unw_dom_sections" | sed 's/,/, /g')
+	# 2. Магия: заменяем запятую на "запятая+пробел"
+	unw_dom_found=$(echo "$unw_dom_found" | sed 's/,/, /g')
+	unw_dom_sections=$(echo "$unw_dom_sections" | sed 's/,/, /g')
 
 	[ -n "$unw_dom_sections" ] && unw_dom_found="${unw_dom_found% }" && printf "  %b%s\n" "${YELLOW}Домены [ $unw_dom_found ] в: ${CYAN}$unw_dom_sections${CLR_OFF}" && echo -e "  ${YELLOW}Убедитесь в том, что эти домены вам действительно нужны в юзердомен-списках.${CLR_OFF}"
 fi
