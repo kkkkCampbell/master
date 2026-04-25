@@ -104,8 +104,8 @@ LAN_IP=$(uci get network.lan.ipaddr)
 # --- НАСТРОЙКИ ТЕСТОВ ЧЕРЕЗ API ZEROBLOCK|PODKOP ---
 # TEST_API_URL="${TEST_URL:-https://proton.me}" 
 TEST_API_URL="https://1.1.1.1/cdn-cgi/trace"
-TIMEOUT_API="5000"
-RETRIES_API=2
+TIMEOUT_API="6000"
+RETRIES_API=3
 
 # LAN_IP=$(uci -q get network.lan.ipaddr 2>/dev/null || echo "127.0.0.1")
 
@@ -678,11 +678,11 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 
 
 # ======================================================================
-# ZeroBlock DNS Diagnostic (цветной вывод с !!!_ для логов)
+# ZeroBlock|Podkop DNS Diagnostic (цветной вывод с !!!_ для логов)
 # Выводит: [тип] main_dns(outbound) / bootstrap_dns(outbound)
 # Работает: зелёный – OK, красный – FAIL. !!!_ внутри скобок для outbound и перед адресом.
 # ======================================================================
-
+if [ "$region_DNS_Diagnostic" = "$region_DNS_Diagnostic" ]; then
 # --------------------------- Настройки ---------------------------
 
 
@@ -740,7 +740,7 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 	check_outbound() {
 		local out="$1"
 		[ -z "$out" ] && return 1
-		local url="http://${LAN_IP}:${CLASH_PORT}/proxies/${out}/delay?url=https://1.1.1.1/cdn-cgi/trace&timeout=${TIMEOUT_API}"
+		local url="http://${LAN_IP}:${CLASH_PORT}/proxies/${out}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}"
 		local resp
 		if [ -n "$CLASH_SECRET" ]; then
 			resp=$(curl -sf -H "Authorization: Bearer $CLASH_SECRET" "$url")
@@ -868,24 +868,9 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 	fi
 
 	printf "\n"
+fi
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# END ZeroBlock|Podkop DNS Diagnostic 
 
 
 
