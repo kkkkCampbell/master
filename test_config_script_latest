@@ -6,25 +6,59 @@ export TERM=xterm-256color
 IFACE="awg10"
 FIRST_IN="0"
 VER="0.0.12"
-
-ifdown "$IFACE"
-# /etc/init.d/opera-proxy restart >/dev/null 2>&1
-ifup "$IFACE"
-
 clear
+
 echo "${VER}"
-echo "Перезапускаем интерфейсы"
-sleep 8
+
+# перезапуск стандартных каналов доступа
+
+[ -f /etc/init.d/opera-proxy ] && echo "Перезапуск opera-proxy" && /etc/init.d/opera-proxy restart >/dev/null 2>&1
+
+# Получаем состояние zapret и youtubeUnblock до запуска скрипта и восстанавливаем его
+[ "$1" = "running" ] && echo "zapret restart" && /etc/init.d/zapret start > /dev/null 2>&1
+[ "$2" = "running" ] && echo "youtubeUnblock restart" && /etc/init.d/youtubeUnblock start > /dev/null 2>&1
+
+#ifdown "$IFACE"
+sleep 4
+#ifup "$IFACE"
+
+# --- ПРОВЕРКА NFTABLES ---
+check_nftables() {
+    nft list tables 2>/dev/null | grep -q "inet $1"
+}
+check_nftables "PodkopTable" && PK_ACTIVE=1
+check_nftables "zeroblock" && ZB_ACTIVE=1
+
+if [ "$ZB_ACTIVE" = "1" ]; then
+	start=20
+	/etc/init.d/zeroblock reload & >/dev/null 2>&1
+elif [ "$PK_ACTIVE" = "1" ]; then
+	/etc/init.d/podkop restart >/dev/null 2>&1
+	start=20
+fi
+
+
+
+echo "Перезапускаем интерфейсы и ожидаем их старта"
+for i in $(seq $start -1 1); do
+    printf "%s%d " "$z" "$i"
+    if [ $((i % 10)) -eq 1 ] && [ $i -gt 10 ]; then echo; fi
+    [ $i = 10 ] && z="0"; sleep 1
+done
+
 
 # --- ЦВЕТА ---
-CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"
-
+if [ -t 1 ]; then
+	CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"; BLACK="\033[30m"
+fi
 # --- PODKOP GLOBAL_CHECK ERROR STRINGS ---
 p_check_include='Router DNS is NOT routed through sing-box|Sing-box does NOT work with FakeIP|❌ Bootstrap DNS:|❌ Main DNS:|❌ DNS on router'
 
 # --- СПИСКИ ДЛЯ АЛЕРТОВ ---
 SAME_AS_LIST="youtube youtube.com russia_inside googlevideo"
 WARNING_LISTS="russia_inside russia_outside cloudflare cdn_cloudflare"
+UNWANTED_DOMAINS="yandex.ru ya.ru yandex.net yastatic.net yandexcloud.net yandex.com.tr yandex.by yandex.kz yandex.uz yandex.st market.yandex.ru beru.ru eda.yandex.ru lavka.yandex.ru music.yandex.ru kinopoisk.ru hd.kinopoisk.ru auto.ru realty.ya.ru smartcaptcha.yandexcloud.net mc.yandex.ru sberbank.ru sber.ru sberbank-online.ru sberbankid.ru online.sberbank.ru sbrf.ru tbank.ru tinkoff.ru tcsbank.ru id.tinkoff.ru business.tinkoff.ru tinkoff.com vtb.ru vtb24.ru online.vtb.ru vtb.com alfabank.ru click.alfabank.ru web.alfabank.ru alfabank.com gazprombank.ru gpb.ru telecard.ru raiffeisen.ru rconnect.raiffeisen.ru raiffeisen.com psbank.ru ib.psbank.ru rosbank.ru open.ru nspk.ru mironline.ru sbp.nspk.ru privetmir.ru ozon.ru ozon-st.com ozon.travel seller.ozon.ru wildberries.ru wb.ru wbstatic.net avito.ru avito.st megamarket.ru sbermegamarket.ru kuper.ru sbermarket.ru samokat.ru samokat.io aliexpress.ru gosuslugi.ru gu-st.ru nalog.gov.ru nalog.ru pfr.gov.ru rzd.ru mos.ru mosreg.ru fss.ru zakupki.gov.ru mil.ru smotrim.ru 1tv.ru vgtrk.ru tass.ru ria.ru vk.com vk-portal.net vk-cdn.net vkplay.ru mail.ru cloud.mail.ru ok.ru rutube.ru wink.ru ivi.ru okko.tv more.tv zvuk.com rustore.ru 1c.ru dnevnik.ru edu.ru cdek.ru pochta.ru pochta-id.ru boxberry.ru dpd.ru dellin.ru pickpoint.ru ru.com dhl.ru ponyexpress.ru city-mobil.ru goldapple.ru leroymerlin.ru dns-shop.ru mvideo.ru eldorado.ru citilink.ru mts.ru megafon.ru beeline.ru tele2.ru t2.ru rt.ru aeroflot.ru s7.ru utair.ru pobeda.aero uralairlines.ru tutu.ru kupibilet.ru yandex.aero rusal.ru gazprom.ru lukoil.ru rosneft.ru sberbank.com sbercloud.ru gosuslugi41.ru gosuslugi71.ru emls.ru uisoz.ru gosuslugi.dev .ru .su .рф" # домены для проверки юзерсписков доменов, их там быть не должно
+EXCLUDE_FROM_UNWANTED="2ip.ru"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
 RAW_SERVICES="zeroblock podkop luci-app-podkop-plus sing-box sing-box-tiny zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
@@ -37,6 +71,16 @@ rm -f "$LOG_FILE"
 PK_VER_OBSOLETE="0.5"
 PK_VER_MIN="0.7"
 
+# --- IFACES  ---
+# Получаем имя WAN-интерфейса
+WAN_IF=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device')
+# Получаем адрес LAN-интерфейса
+LAN_IP=$(uci get network.lan.ipaddr)
+
+# --- НАСТРОЙКИ ТЕСТА ЧЕРЕЗ API ZEROBLOCK|PODKOP ---
+TEST_API_URL="${TEST_URL:-https://proton.me}"
+TIMEOUT_API="${TIMEOUT:-5000}"
+RETRIES_API=10
 
 
 # --- MAIN CODE ---
@@ -71,15 +115,18 @@ OPERA_INSTALLED=1
 # проверяем наличие wget и curl в системе
 opkg list-installed | grep -q '^wget-ssl' && WGET_INSTALLED=1
 opkg list-installed | grep -q '^curl' && CURL_INSTALLED=1
-# opkg list-installed | grep "^opera-proxy - 1.15.0*-r*" && OPERA_INSTALLED=1
 
 # Получаем установленную версию opera-proxy (обрезаем суффикс типа -1, +build)
 ver=$(opkg list-installed | awk '/^opera-proxy / {print $3}' | sed 's/[-+~].*//')
-# Проверяем, что версия меньше И при этом не равна
-if opkg compare-versions "$ver" "<" "1.15.10" && ! opkg compare-versions "$ver" "=" "1.15.1"; then
-    OPERA_INSTALLED=0
-fi
 
+if [ "$ver" != "" ]; then 
+	# Проверяем, что версия меньше и при этом не равна
+	if opkg compare-versions "$ver" "<" "1.15.10" && ! opkg compare-versions "$ver" "=" "1.15.1"; then
+		OPERA_INSTALLED=0
+	fi
+else
+	echo "Пакет \"opera-proxy\" не установлен. Пропускаем обновление пакета."
+fi
 
 # Устанавливаем curl, wget и opera-proxy если их нет или версия OPERA устарела
 if [ $WGET_INSTALLED -eq 0 ] || [ $CURL_INSTALLED -eq 0 ] || [ $OPERA_INSTALLED -eq 0 ]; then
@@ -135,11 +182,11 @@ fi
 # =====================
 # ФУНКЦИИ
 # =====================
-# region FUNCTIONS
+# region FUNCTION
 
 # --- СПИСОК УСТАНОВЛЕННЫХ СЕРВИСОВ/ПРОГРАММ ---
 
-services_installed() {
+f_services_installed() {
 	for pkg in $RAW_SERVICES; do
 		if opkg list-installed | grep -q "^${pkg} - "; then 
 			if [ "${pkg}" = "sing-box-tiny" ]; then
@@ -153,22 +200,22 @@ services_installed() {
 
 # --- СПИСОК ЗАПУЩЕННЫХ СЕРВИСОВ ---
 
-services_active() {
-	active=""
+f_services_active() {
+	active_services=""
 	for s in $INSTALLED_SERVICES; do
 		# init.d status check
 		[ ! -f /etc/init.d/${s} ] && continue
 		status=$(/etc/init.d/$s status 2>/dev/null | head -1)
 		case "$status" in
 			*running)
-				active="$active $s"
+				active_services="$active_services $s"
 				continue
 				;;
 			*not\ running*)
-				active="$active $s"
+				active_services="$active_services $s"
 				continue
 				;;
-			*inactive*)
+			*inactive_services*)
 				continue
 				;;
 		esac
@@ -177,22 +224,21 @@ services_active() {
 		if pidof "$s" >/dev/null 2>&1 || \
 		   pgrep -f "$s" >/dev/null 2>&1 || \
 		   ubus call service list 2>/dev/null | grep -q "\"$s\""; then
-			active="$active $s"
+			active_services="$active_services $s"
 		fi
 	done
-	active="${active# }"
-	# echo "$active"
+	active_services="${active_services# }"
+	#echo "$active_services"
 }
 
 
-# Проверяем сервисы в автозапуске. Все с автозапуском вносим в $autostarted
+# Проверяем сервисы в автозапуске. Все с автозапуском вносим в $autostarted_services
 # вне зависимости от их состояния. Необходимо получить информацию о том
 # что запущено на роутере после его перезагрузки
-services_autostarted() {
+f_services_autostarted() {
 	for pkg in $INSTALLED_SERVICES; do
-		[ ${pkg} = "luci-app-podkop-plus" ] && pkg="podkop-plus"
 		if ls /etc/rc.d/S??${pkg} 1>/dev/null 2>&1; then
-			autostarted="$autostarted ${pkg}"
+			autostarted_services="$autostarted_services ${pkg}"
 		fi
 	done
 }
@@ -302,8 +348,8 @@ checkIFACE_DIAG() {
     local state_key="${d_val}:${a_val}:${if_up}"
 
 	# Назначаем статусы
-	[ "$d_val" = "1" ] && CONF_STAT="DISABLED" || CONF_STAT="ENABLED"
-	[ "$a_val" = "0" ] && AUTO_STAT="AutoStart: OFF" || AUTO_STAT="AutoStart: ON"
+	[ "$d_val" = "1" ] && CONF_STAT="DISABLED" || CONF_STAT="EN"
+	[ "$a_val" = "0" ] && AUTO_STAT="AutoStart: OFF" || AUTO_STAT="AS:ON"
 	[ "$if_up" = "up" ] && SYS_RUN="UP" || SYS_RUN="DOWN"
 	
 	# Красим только проблемные места (пример для Auto: OFF)
@@ -346,12 +392,164 @@ check_WARP() {
 }
 
 
+# --- ФУНКЦИЯ: УНИКАЛЬНЫЙ КЛЮЧ КАНАЛА (CLASH API)---
+get_channel_key() {
+    s="$1"
+    t=$(uci -q get ${UCI_CONFIG}.$s.connection_type)
+    i=$(uci -q get ${UCI_CONFIG}.$s.interface)
+    pct=$(uci -q get ${UCI_CONFIG}.$s.proxy_config_type)
+    oj=$(uci -q get ${UCI_CONFIG}.$s.outbound_json)
+    ps=$(uci -q get ${UCI_CONFIG}.$s.proxy_string)
 
-# endregion FUNCTIONS
+    if [ "$t" = "vpn" ] && [ -n "$i" ]; then
+        echo "vpn:$i"
+        return 0
+    fi
+
+    if [ "$t" != "proxy" ]; then
+        echo "unknown:$s"
+        return 1
+    fi
+
+    if [ "$pct" = "outbound" ] && [ -n "$oj" ]; then
+        typ=$(echo "$oj" | jq -r '.type // "unknown"')
+        server=$(echo "$oj" | jq -r '.server // ""')
+        port=$(echo "$oj" | jq -r '.server_port // ""')
+        if [ "$server" = "127.0.0.1" ] && [ -n "$port" ]; then
+            echo "outbound:$typ:local:$port"
+        else
+            echo "outbound:$typ:$server:$port"
+        fi
+        return 0
+    fi
+
+    if [ -n "$ps" ]; then
+        scheme=$(echo "$ps" | sed -n 's|^\([a-z0-9]*\)://.*|\1|p')
+        [ -z "$scheme" ] && scheme="proxy"
+        base_ps=$(echo "$ps" | sed 's/?.*//')
+        echo "proxy:$scheme:$base_ps"
+        return 0
+    fi
+
+    echo "unknown:$s"
+    return 1
+}
+
+# --- ФУНКЦИЯ: КРАСИВОЕ ОПИСАНИЕ КАНАЛА ---
+get_channel_desc() {
+    s="$1"
+    t=$(uci -q get ${UCI_CONFIG}.$s.connection_type)
+    i=$(uci -q get ${UCI_CONFIG}.$s.interface)
+    pct=$(uci -q get ${UCI_CONFIG}.$s.proxy_config_type)
+    oj=$(uci -q get ${UCI_CONFIG}.$s.outbound_json)
+    ps=$(uci -q get ${UCI_CONFIG}.$s.proxy_string)
+
+    if [ "$t" = "vpn" ] && [ -n "$i" ]; then
+        echo "vpn $i"
+        return 0
+    fi
+
+    if [ "$t" != "proxy" ]; then
+        echo "?"
+        return 1
+    fi
+
+    if [ "$pct" = "outbound" ] && [ -n "$oj" ]; then
+        typ=$(echo "$oj" | jq -r '.type // "unknown"')
+        typ=$(echo "$typ" | tr 'a-z' 'A-Z')
+        server=$(echo "$oj" | jq -r '.server // ""')
+        port=$(echo "$oj" | jq -r '.server_port // ""')
+        if [ "$server" = "127.0.0.1" ] && [ -n "$port" ]; then
+            echo "Outb $typ local:$port"
+        else
+            echo "Outb $typ"
+        fi
+        return 0
+    fi
+
+    if [ -n "$ps" ]; then
+        scheme=$(echo "$ps" | sed -n 's|^\([a-z0-9]*\)://.*|\1|p')
+        [ -z "$scheme" ] && scheme="proxy"
+        scheme=$(echo "$scheme" | tr 'a-z' 'A-Z')
+
+        if echo "$ps" | grep -q '@127.0.0.1'; then
+            port=$(echo "$ps" | sed -n 's|.*://[^@]*@127.0.0.1:\([0-9]*\).*|\1|p')
+            [ -n "$port" ] && echo "$scheme local:$port" || echo "$scheme local"
+        else
+            transport=$(echo "$ps" | grep -o 'type=[^&]*' | head -1 | cut -d= -f2 | tr 'a-z' 'A-Z')
+            security=$(echo "$ps" | grep -o 'security=[^&]*' | head -1 | cut -d= -f2 | tr 'a-z' 'A-Z')
+            if [ -n "$transport" ] && [ -n "$security" ]; then
+                echo "$scheme+$transport"
+            else
+                if [ -n "$transport" ]; then
+                    echo "$scheme + $transport"
+                else
+                    if [ -n "$security" ]; then
+                        echo "$scheme"
+                    else
+                        echo "$scheme"
+                    fi
+                fi
+            fi
+        fi
+        return 0
+    fi
+
+    echo "?"
+    return 1
+}
+
+# ---ФУНКЦИЯ ПОЛУЧЕНИЯ MTU ИНТЕРФЕЙСА ---
+get_mtu() {
+    iface="$1"
+    ip link show "$iface" 2>/dev/null | awk -F'mtu ' 'NF>1{print $2}' | awk '{print $1}'
+}
+
+
+	# --- ФУНКЦИЯ ПОЛУЧЕНИЯ ЗАДЕРЖКИ ЧЕРЕЗ API CLASH ZB|PK ---
+get_delay() {
+    _proxy_name="$1"
+    _secret="$2"
+    for i in $(seq 1 $RETRIES_API); do
+        if [ -n "$_secret" ]; then
+            resp=$(curl -s -H "Authorization: Bearer $_secret" "http://${LAN_IP}:9090/proxies/${_proxy_name}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}")
+        else
+            resp=$(curl -s "http://${LAN_IP}:9090/proxies/${_proxy_name}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}")
+        fi
+        delay=$(echo "$resp" | jq -r '.delay // ""')
+        if [ -n "$delay" ] && [ "$delay" -gt 0 ] 2>/dev/null; then
+            echo "$delay"
+            return 0
+        fi
+        sleep 1
+    done
+    echo ""
+    return 1
+}
+
+# --- ФУНКЦИЯ СБОРА ИМЁН ВСЕХ АКТИВНЫХ СЕКЦИЙ ZEROBLOCK|PODKOP ---
+f_get_all_sections_name(){
+	ZB_RAW_SECTIONS_NAME=""; PK_SECTIONS_NAME=""; s=""; ZB_SECTIONS_NAME=""
+	
+	ZB_RAW_SECTIONS_NAME=$(uci show zeroblock | grep '=section' | cut -d. -f2 | cut -d= -f1)
+	PK_SECTIONS_NAME=$(uci show podkop | grep '=section' | cut -d. -f2 | cut -d= -f1)
+	
+	for s in $ZB_RAW_SECTIONS_NAME; do
+		if [ "$(uci -q get zeroblock.$s.enabled)" = "1" ]; then		
+			# Добавляем имя в список, отделяя новой строкой
+			if [ -z "$ZB_SECTIONS_NAME" ]; then
+				ZB_SECTIONS_NAME="$s"
+			else
+				ZB_SECTIONS_NAME="$ZB_SECTIONS_NAME"$'\n'"$s"
+			fi
+		fi
+	done
+}
+
+# endregion FUNCTION
 # =====================
 # ФУНКЦИИ END
 # =====================
-
 
 echo ""
 
@@ -363,19 +561,25 @@ ZB_AUTOSTART=0
 PK_ACTIVE=0
 ZB_ACTIVE=0
 
-services_installed
-services_autostarted
-services_active
+f_services_installed
+f_services_autostarted
+f_services_active
 
-echo "$autostarted" | grep -q "podkop" && PK_AUTOSTART=1
-echo "$autostarted" | grep -q "zeroblock" && ZB_AUTOSTART=1
-echo "$active" | grep -q "podkop" && PK_ACTIVE=1
-echo "$active" | grep -q "zeroblock" && ZB_ACTIVE=1
+echo "$autostarted_services" | grep -q "podkop" && PK_AUTOSTART=1
+echo "$autostarted_services" | grep -q "zeroblock" && ZB_AUTOSTART=1
+echo "$active_services" | grep -q "podkop" && PK_ACTIVE=1
+echo "$active_services" | grep -q "zeroblock" && ZB_ACTIVE=1
+
+# --- СОБИРАЕМ ВСЕ АКТИВНЫЕ СЕКЦИИ ЗЕРОБЛОК|ПОДКОП В ПЕРЕМЕННЫЕ ---
+# $PK_SECTIONS_NAME
+# $ZB_SECTIONS_NAME
+f_get_all_sections_name
 
 
 
 
 # --- НАКРУЧИВАЕМ СЧЁТЧИКИ AWG10 ---
+
 
 TEST_URL="http://speedtest.tele2.net/10MB.zip"
 ROUNDS=1
@@ -387,15 +591,16 @@ done
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
 MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
 MEM_P=$((MEM_U * 100 / MEM_T))
-LAN_IP=$(ip addr show br-lan 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP=$(uci -q get "network.lan.ipaddr")
 NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
 
 
+ 
 
+printf "\033[1A\033[K"
+# echo "\`\`\`" # >> "$LOG_FILE"
 
-
-
+echo -e "${BLACK}\`\`\`${YELLOW}  --- НАЧАЛО (скрин отсюда и до слова КОНЕЦ!) --- ${CLR_OFF}"
 # --- БЛОК 1: ПРОВЕРКА DNS ---
 echo "= ПРОВЕРКА DNS  (Прошивка: ${VERSION}):"
 DNS_SRV=$(nslookup ya.ru 2>/dev/null | grep "Address:" | head -1 | awk '{print $2}')
@@ -417,29 +622,14 @@ printf "YouTube IP:  ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
 
 
 
-
-
-
-
-# --- ОПРЕДЕЛЯЕМ СОСТОЯНИЕ СЕРВИСОВ И ОСТАНАВЛИВАЕМ МЕШАЮЩИЕ ---
-# В $INSTALLED_SERVICES содержатся имена установленных сервисов обхода
-
 # Останавливаем сервисы (даже если они не запущены)
 for pkg in $INSTALLED_SERVICES; do
-    [ "${pkg}" == "opera-proxy" ] && continue
-    [ "${pkg}" == "zeroblock" ] && continue
+	[ "${pkg}" = "opera-proxy" ] && continue # Перезапускает ZB
+	[ "${pkg}" = "zeroblock" ] && continue   # Перезапускается в начале скрипта
+	[ "${pkg}" = "podkop" ] && continue      # Перезапускается в начале скрипта
+	[ "${pkg}" = "sing-box" ] && continue    # Связанный перезапуск
 	[ -f /etc/init.d/${pkg} ] && /etc/init.d/${pkg} stop >/dev/null 2>&1
 done
-
-
-
-
-# Проверяем сервисы в автозапуске. Все с автозапуском вносим в $autostarted
-# вне зависимости от их состояния. Необходимо получить информацию о том
-# что запущено на роутере после его перезагрузки
-# autostarted=""
-# services_active
-
 
 
 
@@ -453,16 +643,14 @@ if [ -d "/sys/class/net/$IFACE" ]; then
     PING_COUNT=10
     RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
     TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
-
-	#	printf " ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}" 
-	printf "  Статус                : ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}${CLR_OFF} | ↓${RX} / ↑${TX}\n"
-    printf "  Пинг (ya.ru via %s): Ожидайте, идет замер (%d пакетов)..." "$IFACE" "$PING_COUNT"
-
+	
+	RX_COL="${RED_BRIGHT}"; [ "${RX%%.*}" -ge 1 ] && RX_COL="${YELLOW}"; [ "${RX%%.*}" -ge 5 ] && RX_COL="${GREEN}"
+	printf "  Статус: ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}${CLR_OFF} | ${RX_COL}↓${RX} / ↑${TX}${CLR_OFF} | "
 	
     # Захватываем stderr для анализа причин падения
     PING_RAW=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>&1)
     EXIT_CODE=$?
-    printf "\r\033[K"
+    # printf "\r\033[K"; 
 
     if [ $EXIT_CODE -eq 0 ]; then
         P_MIN=$(echo "$PING_RAW" | tail -1 | awk -F'/' '{print $4}' | awk '{print $NF}')
@@ -474,15 +662,14 @@ if [ -d "/sys/class/net/$IFACE" ]; then
         MAX_CLR="${GREEN}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 150 ] && MAX_CLR="${YELLOW}"; [ "$(echo "$P_MAX" | cut -d. -f1)" -ge 250 ] && MAX_CLR="${RED_BRIGHT}"
         LOST_CLR="${GREEN}"; [ "$P_LOST_NUM" -gt 0 ] && LOST_CLR="${YELLOW}"; [ "$P_LOST_NUM" -gt 2 ] && LOST_CLR="${RED_BRIGHT}"
 
-        printf "  Пинг (ya.ru via %s): ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d потеряно${CLR_OFF})\n" \
+        printf "ya.ru${GREEN}⭤${CLR_OFF}%s: ${MIN_CLR}%s${CLR_OFF} / ${MAX_CLR}%s${CLR_OFF} (${LOST_CLR}%d из %d${CLR_OFF})\n" \
                "$IFACE" "$P_MIN" "$P_MAX" "$P_LOST_NUM" "$PING_COUNT"
     else
-        printf "  Пинг (ya.ru via %s): ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}\n" "$IFACE"
+        printf "ya.ru⇆%s: ${RED_BRIGHT}ERROR (OFFLINE)${CLR_OFF}\n" "$IFACE"
         # Выделяем причину (первая строка ошибки)
         _P_ERR=$(echo "$PING_RAW" | head -n 1 | sed "s/ping: //")
         printf "  ! Ошибка: ${YELLOW}%s${CLR_OFF}\n" "$_P_ERR"
     fi
-	
 else
 	#	printf " ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}" 
 	echo -e "  ${RED_BRIGHT}Интерфейс ${IFACE} не существует, или отключен.${CLR_OFF}"
@@ -492,17 +679,15 @@ fi
 
 
 
-printf "  ${YELLOW}Программы в автозапуске:$autostarted${CLR_OFF}\n"
+printf "  ${YELLOW}Программы в автозапуске:$autostarted_services${CLR_OFF}\n"
 
 
 echo ""
 
 
-
-
 # --- БЛОК 3: ПРОВЕРКА ДОСТУПОВ ---
 
-TEST_URL="https://www.youtube.com"
+TEST_URL="https://proton.me"
 
 # 1. Приводим к верхнему регистру через tr (используя явные диапазоны)
 TEST_URL=$(echo "$TEST_URL" | tr 'a-z' 'A-Z')
@@ -511,152 +696,193 @@ TEST_URL=$(echo "$TEST_URL" | tr 'a-z' 'A-Z')
 PING_URL="${TEST_URL#*://}"
 
 NEED_RESOLVE_TEST=0
-echo "= ПРОВЕРКА ДОСТУПОВ (${PING_URL}):"
-
-OPERA_TEST_CYCLE=3
+echo "= ПРОВЕРКА ДОСТУПОВ/ИНТЕРФЕЙСОВ" # (${PING_URL})"
 
 
 
-# 1. Проверка OPERA
 
-# Если опера-прокси установлена, проверям доступ через опера-прокси
-if opkg list-installed | grep -q "^opera-proxy"; then
 
-for i in $(seq 1 ${OPERA_TEST_CYCLE}); do
-    P_CODE=$(curl -I -s --connect-timeout 3 -x http://127.0.0.1:18080 "$TEST_URL" | head -n 1 | tr -d '\r\n')
-    # echo "test " "$i"
-    # /etc/init.d/opera-proxy restart
-    sleep 1
-done
 
-if [[ "$P_CODE" == *"200 OK"* ]]; then
-    printf "  OPERA (Proxy): %b (%s)\n" "${GREEN}ОНЛАЙН${CLR_OFF}" "$P_CODE"
-	elif [[ -n "$P_CODE" ]]; then
-		# Получен статус, но не 200 OK
-		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН [%s]${CLR_OFF}\n" "$P_CODE"
-		NEED_RESOLVE_TEST=1
-	else
-		# P_CODE пуст — ошибка соединения/таймаут
-		printf "  OPERA (Proxy): ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n"
-		NEED_RESOLVE_TEST=1
-	fi
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# --- ТЕСТ ЧЕРЕЗ API ZEROBLOCK|PODKOP ---
+
+
+# --- ОПРЕДЕЛЕНИЕ АКТИВНОСТИ ПРИЛОЖЕНИЙ ЧЕРЕЗ NFTABLES ---
+
+INACTIVE_ZBPK="active" # если ZB и PK неактивны INACTIVE_ZBPK будет =""
+
+# --- ФУНКЦИЯ ДЛЯ ТЕСТОВОГО ЗАПРОСА К API (без секрета) ---
+test_api() {
+    curl -s -o /dev/null -w "%{http_code}" "http://${LAN_IP}:9090/proxies/direct-out/delay?url=${TEST_API_URL}&timeout=1000"
+}
+
+# --- РАЗРЕШЕНИЕ КОНФЛИКТА, ЕСЛИ ОБА АКТИВНЫ ---
+if [ $ZB_ACTIVE -eq 1 ] && [ $PK_ACTIVE -eq 1 ]; then
+    echo -e "${RED_BRIGHT}  ⚠ ️Одновременно активны ZeroBlock и Podkop!!!${CLR_OFF}" >&2
+    status=$(test_api)
+	echo $status
+    if [ "$status" = "401" ]; then
+        ACTIVE_API="zb"
+    else
+        ACTIVE_API="pk"
+    fi
+elif [ $ZB_ACTIVE -eq 1 ]; then
+    ACTIVE_API="zb"
+elif [ $PK_ACTIVE -eq 1 ]; then
+    ACTIVE_API="pk"
+else
+    echo -e "  ${YELLOW}❌ Не активен ни ZeroBlock, ни Podkop. Пропускаем проверку${CLR_OFF}" >&2
+	INACTIVE_ZBPK=""
 fi
 
-
-
-
-
-# 2. Проверка интерфейса awg10
-
-if [ -d "/sys/class/net/$IFACE" ]; then
-    IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
-    IF_IP6=$(ip -6 addr show "$IFACE" 2>/dev/null | grep -w inet6 | grep -v "fe80" | awk '{print $2}' | cut -d/ -f1 | head -n 1 | tr -d '\r\n')
-	
-	# --- IPv4 с подсчётом попыток ---
-	if [ -n "$IF_IP4" ]; then
-    MAX_RETRIES=2
-    TRY=0
-    SUCCESS=0
-    FINAL_W_CODE=""
-    FINAL_TLS=""
-    FINAL_FULL_OUT=""
-	
-	# Проверяем открытый ресурс
-	check_WARP "https://ya.ru" ""
-	
-	# Проверяем закрытый ресурс
-	check_WARP "${TEST_URL}" "BLOCKED"
+if [ ! -z "${INACTIVE_ZBPK}" ]; then
+	# --- УСТАНОВИМ ИМЯ ПРИЛОЖЕНИЯ ДЛЯ ВЫВОДА ---
+	if [ "$ACTIVE_API" = "zb" ]; then
+		APP_NAME="ZB"
+		# Секрет для Zeroblock
 		
-    if [ $SUCCESS -eq 1 ]; then
-        # Убираем лишние пробелы и перевод строк
-        W_CODE_CLEAN=$(echo "$FINAL_W_CODE" | tr -d '\r' | sed 's/[[:space:]]*$//')
-        printf "  %-14s %b (%s) [%s] [try: %d]\n" \
-            "$IFACE (IPv4) :" "${GREEN}ОНЛАЙН${CLR_OFF}" \
-            "$W_CODE_CLEAN OK" "$FINAL_TLS" "$TRY"
-	else
-		# Ошибка: последняя непустая строка из последнего FULL_OUT
-		LAST_ERR=$(echo "$FULL_OUT" | grep -v '^[[:space:]]*$' | tail -n 1)
-		printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}" "$IFACE (IPv4) :"
-		if [ "${RKN_WARP_BLOCK}" = "1" ]; then
-			printf "%b" "${YELLOW} Доступ к ya.ru через WARP есть. ${RED_BRIGHT}РКН-БЛОК ЮТУБА!${CLR_OFF}\n"
-		else
-			echo ""
+		# ПРОВЕРКА ВЕРСИИ, ЕСЛИ СТАРАЯ
+		SECRET=""
+		SECRET=$(uci -q get zeroblock.settings.yacd_secret_key)
+		# ЕСЛИ НОВАЯ
+		[ -n $SECRET ] && SECRET=$(uci -q get zeroblock.engine.yacd_secret_key)
+		if [ -z "$SECRET" ]; then
+			#echo "  ❌ Не найден секрет для Zeroblock." >&2
+			yuiyiyiu=0
 		fi
-		echo "--------------------------------------------------------------"
-		echo "$LAST_ERR" | sed 's/^/  / '
-		# echo "------------------------------------------------------"
-		NEED_RESOLVE_TEST=1
-
+	else
+		APP_NAME="PK"
 	fi
-fi
 
-    # --- IPv6 ---
-	# if [ -n "$IF_IP6" ]; then
-		# W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_3 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL"  2>&1)
-		# W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
-		# TLS_VER6="TLSv1.3"
+	# --- ВРЕМЕННЫЙ ФАЙЛ ДЛЯ ГРУППИРОВКИ ---
+	tmpfile=$(mktemp)
 
-		# if [ -z "$W_CODE6" ]; then
-			# W_OUT6=$(wget --spider --server-response --no-check-certificate --secure-protocol=TLSv1_2 -6 --timeout=4 --tries=1 --bind-address="$IF_IP6" "$TEST_URL"  2>&1)
-			# W_CODE6=$(echo "$W_OUT6" | grep "HTTP/" | head -n 1 | sed 's/^[[:space:]]*//')
-			# TLS_VER6="TLSv1.2"
-		# fi
+	# --- СБОР СЕКЦИЙ В ЗАВИСИМОСТИ ОТ АКТИВНОГО ПРИЛОЖЕНИЯ ---
+	if [ "$ACTIVE_API" = "zb" ]; then
+		UCI_CONFIG="zeroblock"
+		for s in $(uci show zeroblock | grep '=section' | cut -d. -f2 | cut -d= -f1); do
+			enabled=$(uci -q get zeroblock.$s.enabled)
+			[ "$enabled" != "1" ] && continue
+			# Исключаем VPN-секции, указывающие на WAN-интерфейс
+			if [ -n "$WAN_IF" ]; then
+				if_type=$(uci -q get zeroblock.$s.connection_type)
+				iface=$(uci -q get zeroblock.$s.interface)
+				[ "$if_type" = "vpn" ] && [ "$iface" = "$WAN_IF" ] && continue
+			fi
+			key=$(get_channel_key "$s")
+			desc=$(get_channel_desc "$s")
+			echo "  $key|$desc|$s" >> "$tmpfile"
+		done
+	else
+		UCI_CONFIG="podkop"
+		for s in $(uci show podkop | grep '=section' | grep -v 'podkop.settings=' | cut -d. -f2 | cut -d= -f1); do
+			# Исключаем VPN-секции, указывающие на WAN-интерфейс
+			if [ -n "$WAN_IF" ]; then
+				if_type=$(uci -q get podkop.$s.connection_type)
+				iface=$(uci -q get podkop.$s.interface)
+				[ "$if_type" = "vpn" ] && [ "$iface" = "$WAN_IF" ] && continue
+			fi
+			key=$(get_channel_key "$s")
+			desc=$(get_channel_desc "$s")
+			echo "  $key|$desc|$s" >> "$tmpfile"
+		done
+	fi
 
-		# if [ -n "$W_CODE6" ]; then
-			# printf "  %-14s %b (%s) [%s]\n" "$IFACE (IPv6) :" "${GREEN}ОНЛАЙН${CLR_OFF}" "$W_CODE6" "$TLS_VER6"
-		# else
-			# printf "  %-14s ${RED_BRIGHT}ОФЛАЙН${CLR_OFF}\n" "$IFACE (IPv6) :"
-		# fi
-	# fi
-fi
+	# --- ГРУППИРОВКА ПО КЛЮЧАМ ---
+	grouped=$(sort -t'|' -k1,1 "$tmpfile" | awk -F'|' '
+	{
+		key = $1
+		desc = $2
+		sect = $3
+		if (!(key in d)) d[key] = desc
+		if (sections[key] == "") sections[key] = sect
+		else sections[key] = sections[key] ", " sect
+		if (!(key in test_sect)) test_sect[key] = sect
+	}
+	END {
+		for (k in sections) {
+			print k "|" d[k] "|" sections[k] "|" test_sect[k]
+		}
+	}')
+	rm -f "$tmpfile"
 
+	# --- ТЕСТИРОВАНИЕ КАЖДОГО УНИКАЛЬНОГО КАНАЛА ---
+	echo "$grouped" | while IFS='|' read -r key desc sections test_sect; do
+		# Определяем MTU для VPN-каналов
+		mtu="xxxx"
+		key_clean=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		case "$key_clean" in
+			vpn:*)
+				iface="${key_clean#vpn:}"
+				mtu_val=$(get_mtu "$iface")
+				[ -n "$mtu_val" ] && mtu="$mtu_val"
+				;;
+		esac
 
+		if [ "$ACTIVE_API" = "zb" ]; then
+			proxy_name="$test_sect"
+			delay=$(get_delay "$proxy_name" "$SECRET")
+		else
+			proxy_name="${test_sect}-out"
+			delay=$(get_delay "$proxy_name" "")
+		fi
 
-
-# --- ТЕСТ ВСЕХ VPN-КАНАЛОВ В ZEROBLOCK ---
-cap=0
-# Проверяем наличие VPN секций напрямую через exit code grep
-if uci show zeroblock 2>/dev/null | grep -q "connection_type='vpn'"; then
-
-    _ifacelocs=$(uci show zeroblock | grep "connection_type='vpn'" | cut -d. -f2 | while read -r section; do
-        uci -q get zeroblock."$section".interface
-    done | sort -u)
-
-    for _ifaceloc in $_ifacelocs; do
-        [ -z "$_ifaceloc" ] && continue
-		[ "$_ifaceloc" = "awg10" ] && continue
-		echo "$_ifaceloc" | grep -q "pppoe" && continue
-		[ "${cap}" = "0" ] && echo -e "${CYAN}  Проверка остальных ВПН-интерфейсов в ZeroBlock...${CLR_OFF}" && cap=1
+		# Формируем красивый список секций (первые две, остальные +N)
+		section_list=$(echo "$sections" | awk -F', ' '
+		{
+			if (NF <= 2) print $0
+			else printf "%s, %s +%d", $1, $2, NF-2
+		}')
 		
-        # 1. Пинг
-        _loss=$(ping -I "$_ifaceloc" -c 3 -W 3 -i 1 ${PING_URL} 2>/dev/null | grep -oE '[0-9]+% packet loss' | cut -d% -f1)
-        [ -z "$_loss" ] && _loss=100
+		MTU_COLOR=""
+		if [ -n "$mtu" ] && [ "$mtu" -eq "$mtu" ] 2>/dev/null && [ "$mtu" -gt 1280 ]; then
+			MTU_COLOR="$YELLOW"   # например YELLOW='\033[93m'
+			mtu="!_${mtu}"
+		fi
 
-        # 2. Настройка глобалов для подпрограммы
-        IFACE="$_ifaceloc"  # Вот тут задаем интерфейс
-
-        # Вызываем: $1 = URL, $2 = "v" (не пусто, значит 'закрытый' режим с логированием)
-        check_WARP "$TEST_URL" "v"
-
-        # Логика цвета
-        if [ "$SUCCESS" -eq 1 ] && [ "$_loss" -eq 0 ]; then
-            COLOR="$GREEN"
-        elif [ "$SUCCESS" -eq 0 ] || [ "$_loss" -ge 100 ]; then
-            COLOR="$RED_BRIGHT"
-        else
-            COLOR="$YELLOW"
-        fi
-
-        # Чистим вывод кода (HTTP/2 200 OK -> 200 OK)
-		_status=$(echo "$FINAL_W_CODE" | tr -d '\r' | awk '{sub(/HTTP\/[0-9.]+[ ]+/, ""); print}' | xargs)
-
- #       printf "${COLOR}  IF: %-10s | Loss: %3s%% | HTTP(S): %-12s [%s] [try: %s]${CLR_OFF}\n" \
- #            "$_ifaceloc" "$_loss" "${_status:-000}" "${FINAL_TLS:-N/A}" "$TRY $TEST_URL"
-        printf "${COLOR}  IF: %-10s | Loss: %3s%% | HTTP(S): %-12s  ${CLR_OFF}\n" \
-            "$_ifaceloc" "$_loss" "${_status:-000}"
-    done
+		if [ -n "$delay" ]; then
+			printf "  ${GREEN}✅ %-24s  ${MTU_COLOR}%s${GREEN}%8s [ %s ]${CLR_OFF}\n" \
+				" $desc" "$mtu" "${delay}ms" "$section_list"
+		else
+			printf "  ${RED_BRIGHT}❌ %-24s  ${MTU_COLOR}%s${RED_BRIGHT}%8s [ %s ]${CLR_OFF}\n" \
+				" $desc" "$mtu" "---ms" "$section_list"
+		fi
+	done
 fi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 IFACE="awg10"
 
@@ -686,25 +912,31 @@ fi
 
 
 
+
+
+
+
 # --- ЗАПУСКАЕМ РАНЕЕ ОСТАНОВЛЕННЫЕ СЕРВИСЫ
 
 printf "  ${YELLOW}Запускаем остановленные службы, ожидайте...${CLR_OFF}"
 
-#for pkg in $autostarted; do
-for pkg in $active; do
-	[ "${pkg}" == "sing-box" ] && continue
-	[ "${pkg}" == "opera-proxy" ] && continue
-	[ "${pkg}" == "zeroblock" ] && continue
-	/etc/init.d/${pkg} start 1>/dev/null 2>&1
+for pkg in $active_services; do
+	if echo "${pkg}" | grep -q -i -E "\bzeroblock\b"; then continue; fi
+	[ -f /etc/init.d/${pkg} ] && /etc/init.d/${pkg} start >/dev/null 2>&1
 done
 
-for i in $(seq 1 10); do
-    if /etc/init.d/sing-box status 2>/dev/null | grep -q "running"; then
-        break
-    fi
+sleep 4
+
+for i in $(seq 10 -1 1); do
+	if /etc/init.d/sing-box status | grep -q -i -E "running|active"; then
+		break
+	fi
     sleep 1
 done
 printf "\r\033[K"
+
+
+
 [ $NEED_RESOLVE_TEST -eq 1 ] && printf "\033[1A\033[K"
 
 # --- БЛОК 4: СТАТУС СЛУЖБ ---
@@ -712,15 +944,7 @@ echo ""
 echo "= СТАТУС СЛУЖБ (НЕ УСТАНОВЛЕННЫЕ НЕ ОТОБРАЖАЮТСЯ):"
 
 PK_INST=0; echo $INSTALLED_SERVICES | grep -qw "podkop" && PK_INST=1
-# PK_AUTOSTART=0; echo $autostarted | grep -q "podkop" && PK_AUTOSTART=1
-# ZB_AUTOSTART=0; echo $autostarted | grep -q "zeroblock" && ZB_AUTOSTART=1
-
 CHAOS=0; [ $ZB_AUTOSTART -eq 1 ] && [ $PK_AUTOSTART -eq 1 ] && CHAOS=1
-ZB_RUN=0; zeroblock status 2>/dev/null | grep -q "Overall: RUNNING" && ZB_RUN=1
-# Если есть таблица "PodkopTable", значит подкоп запущен
-PK_RUN=0; nft list tables 2>/dev/null | grep -q "PodkopTable" && PK_RUN=1 
-
-
 
 for s in $INSTALLED_SERVICES; do
     [ -f "/etc/init.d/$s" ] || continue
@@ -738,15 +962,15 @@ for s in $INSTALLED_SERVICES; do
         # Добавляем оркестратора в хвост
         if   [ $CHAOS -eq 1 ]; then
              SERV_STATE="$SERV_STATE (MANAGED BY CHAOS!)"; ST_C="${RED_BRIGHT}"; S_C="${RED_BRIGHT}"
-        elif [ $PK_RUN -eq 1 ]; then
+        elif [ $PK_ACTIVE -eq 1 ]; then
             SERV_STATE="$SERV_STATE (MANAGED BY PODKOP)"
-        elif [ $ZB_RUN -eq 1 ]; then
+        elif [ $ZB_ACTIVE -eq 1 ]; then
             SERV_STATE="$SERV_STATE (MANAGED BY ZB)"
         fi
 
         # Статус подкопа, запущен/нет
         if [ "$s" = "podkop" ]; then
-            if [ "$PK_RUN" == "1" ]; then
+            if [ "$PK_ACTIVE" == "1" ]; then
                 SERV_STATE="RUNNING"; ST_C="${GREEN}"
             fi
         fi
@@ -772,12 +996,6 @@ done
 
 
 
-
-
-
-
-
-
 # ==============================================================
 # БЛОК 5: ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ КОНФИГУРАЦИИ
 # ==============================================================
@@ -786,20 +1004,16 @@ done
 echo ""
 echo "= ПЕРЕСЕЧЕНИЯ ДОМЕНОВ И АНАЛИЗ КОНФИГУРАЦИИ:"
 tmp_dir="/tmp/analyzer_parts"; mkdir -p "$tmp_dir"; rm -f "$tmp_dir"/*
-ACTIVE_PKGS=""
 
 ZB_ERR=0
 
 for pkg in $INSTALLED_SERVICES; do
 
-    # # Проверка на существование
-    # [ -f "/etc/rc.d/S??$pkg" ] || continue
-    # [ -f "/etc/config/$pkg" ] || continue
-
     # Нет сервиса или он STOPPED + DISABLED — не тестируем
     # исключение для ZB
-    IS_RUNNING=0; /etc/init.d/$pkg status 2>/dev/null | grep -q "running" && IS_RUNNING=1
-    IS_ENABLED=0; /etc/init.d/$pkg enabled 2>/dev/null && IS_ENABLED=1
+
+    IS_RUNNING=0; echo "$active_services" | grep -q "${pkg}" && IS_RUNNING=1
+    IS_ENABLED=0; echo "$autostarted_services" | grep -q "${pkg}" && IS_ENABLED=1
 
     # выводим лог с возможной причиной незапуска ЗероБлок
     if [ "$pkg" = "zeroblock" ] && [ "$IS_RUNNING" = "0" ]; then
@@ -807,16 +1021,24 @@ for pkg in $INSTALLED_SERVICES; do
         ZB_ERR=1
     fi
 
-    [ $IS_RUNNING -eq 0 ] && [ $IS_ENABLED -eq 0 ] && continue
+	if [ ${IS_RUNNING} = 0 ] && [ ${IS_ENABLED} = 0 ]; then continue; fi
 
-    ACTIVE_PKGS="$ACTIVE_PKGS $pkg"
-    tmp_p="$tmp_dir/$pkg.tmp"
+	tmp_p="$tmp_dir/$pkg.tmp"
 
     # --- СЕКЦИЯ Б5.2: ПАРСИНГ ZAPRET (СПЕЦИФИЧНЫЙ) ---
     if [ "$pkg" = "zapret" ]; then
+
         # Получаем стратегию
         Z_OPTS=$(uci -q get "$pkg.config.NFQWS_OPT" | tr -d "'\"")
+			
+			
+		# Добавляем в $Z_OPTS поддельный --hostlist=/opt/zapret/ipset/zapret-hosts-user.txt
+		# для проверки юзерсписка на пустоту
+		Z_OPTS=$(printf "%s\n\n\n\n" $Z_OPTS)
+		Z_OPTS="$Z_OPTS --hostlist=/opt/zapret/ipset/zapret-hosts-user.txt"
 
+		
+			
         # Построчно читаем и обрабатываем стратегию
         echo "$Z_OPTS" | sed 's/--new/\n/g' | while read -r section; do
             # Пропускаем пустые строки
@@ -825,12 +1047,13 @@ for pkg in $INSTALLED_SERVICES; do
             F_KEY=$(echo "$section" | grep -oE "\-\-filter-(l3|tcp|udp|l7|ssid)=[^ ]+" | sort | tr '\n' ' ' | sed 's/ $//')
             # Если протокол не определён, обрабатываем секции с протоколом "any" если такие есть
             [ -z "$F_KEY" ] && F_KEY="any"
-
+			 
             # Ищем в строке конфига "--hostlist=" и в $fr вносим имя файла со списком доменов
+			# echo "Где мой хостлист? $section"
             echo "$section" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2 | while read -r fp; do
                 # Если файл со списком доменов пуст, выводим предупреждение
                 if ! grep -q '[[:alnum:][:punct:]]' "$fp"; then
-                    printf "  ${RED_BRIGHT}Файл $(basename "$fp") пустой! ${CLR_OFF}\n"
+                    printf "  ${RED_BRIGHT}Файл $(basename "$fp") пустой! Весь трафик обрабатывается zapret!!!${CLR_OFF}\n"
                     # Автофикс...
                     # echo "example.com" >"$fp"; /etc/init.d/zapret restart >/dev/null 2>&1
                     # echo -e "${GREEN}Выполнено! ${CLR_OFF}"
@@ -840,7 +1063,6 @@ for pkg in $INSTALLED_SERVICES; do
                 RP=""; [ -f "$fp" ] && RP="$fp"
                 [ -z "$RP" ] && [ -f "/etc/zapret/$fp" ] && RP="/etc/zapret/$fp"
                 [ -z "$RP" ] && [ -f "/opt/zapret/ipset/$fp" ] && RP="/opt/zapret/ipset/$fp"
-
                 if [ -n "$RP" ]; then
                     fname=$(basename "$RP")
                     while read -r d; do
@@ -935,7 +1157,7 @@ done
 
 # --- СЕКЦИЯ Б5.5: ВНУТРЕННИЕ ПЕРЕСЕЧЕНИЯ ---
 
-for pkg in $ACTIVE_PKGS; do
+for pkg in $active_services; do
     # Zapret пропускаем (его проверяет Б5.7 "Колымага")
     [ "$pkg" = "zapret" ] && continue
 
@@ -947,7 +1169,11 @@ for pkg in $ACTIVE_PKGS; do
         echo "$bad_list" | while read -r d; do
             grep "^$d|" "$tmp_p" | cut -d'|' -f2,3 | sort -u | while read -r line; do
                 loc=$(echo "$line" | cut -d'|' -f1); cond=$(echo "$line" | cut -d'|' -f2)
-                printf "    %-25s : %s (Условия: %s)\n" "$pkg" "$loc" "$cond"
+                #printf "    %-25s : %s (Условия: %s)\n" "$pkg" "$loc" "$cond"
+				if [ -n "$loc" ]; then
+					printf "    %-25s : %s " "$pkg" " $loc" #"$cond"
+					printf "(Дубли в \"Список польз. доменов\")\n"
+				fi
             done
         done
         printf "    ${CYAN}Домены:${CLR_OFF} %s\n\n" "$(echo $bad_list | tr '\n' ' ')"
@@ -956,7 +1182,7 @@ done
 
 # --- СЕКЦИЯ Б5.6: ВНЕШНИЕ ПЕРЕСЕЧЕНИЯ (МЕЖДУ СЕРВИСАМИ) ---
 
-set -- $ACTIVE_PKGS
+set -- $active_services
 while [ $# -gt 1 ]; do
     P1=$1; shift; tmp1_doms="$tmp_dir/$P1.doms"; [ -f "$tmp1_doms" ] || continue
     for P2 in "$@"; do
@@ -997,17 +1223,17 @@ rm -rf "$tmp_dir"
 
 ALL_ITEMS=""; CONFLICT_LISTS=""
 
-# 1. СОБИРАЕМ КОНФЛИКТЫ (Живые сервисы из ACTIVE_PKGS)
+# 1. СОБИРАЕМ КОНФЛИКТЫ (Живые сервисы из active_services)
 
 # Проверяем только zeroblock и podkop
-for pkg in $ACTIVE_PKGS; do
+for pkg in $active_services; do
     [ "$pkg" != "zeroblock" ] && [ "$pkg" != "podkop" ] && continue
 
     # Получаем список имён секций в анализируемой программе
     SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
 
     for sid in $SIDS; do
-        # Проверка активации/деактивации секций ZeroBlock!!!
+        # Проверка активации/деактивации секций ZeroBlock
         s_en=$(uci -q get "$pkg.$sid.enabled")
         if [ "${pkg}" = "zeroblock" ]; then
             [ -z "${s_en}" ] || [ $s_en -eq 0 ] && continue
@@ -1055,9 +1281,11 @@ done
 
 
 
-# 2. ВЫВОДИМ СПИСКИ ТОЛЬКО ДЛЯ ТЕХ, КТО В ACTIVE_PKGS
+# 2. ВЫВОДИМ СПИСКИ ТОЛЬКО ДЛЯ ТЕХ, КТО В active_services и в autostarted_services
 
-for pkg in $ACTIVE_PKGS; do
+summ_active_services=$(printf "%s\n" "$active_services" "$autostarted_services" | tr ' ' '\n' | sort -u)
+
+for pkg in $summ_active_services; do
     [ "$pkg" != "zeroblock" ] && [ "$pkg" != "podkop" ] && continue
 
     SIDS=$(uci show "$pkg" 2>/dev/null | grep "=section$" | cut -d. -f2 | cut -d= -f1 | sort -u)
@@ -1081,12 +1309,10 @@ for pkg in $ACTIVE_PKGS; do
 			_conn_url=$(uci -q get "$pkg.$sid.proxy_config_type")
 			[ -z "${_conn_url}" ] && _conn_url="ND!"
 			_conn_type=$(echo "prx ${_conn_url}" | cut -c 1-7)
-
-
-# # Получаем url vless итп, только в информационных целях
-# _conn_type=""
-# _conn_url=$(uci -q get "$pkg.$sid.proxy_string")
-# _conn_type=$(echo "prx ${_conn_url}" | cut -c 1-7)
+			# # Получаем url vless итп, только в информационных целях
+			# _conn_type=""
+			# _conn_url=$(uci -q get "$pkg.$sid.proxy_string")
+			# _conn_type=$(echo "prx ${_conn_url}" | cut -c 1-7)
 		fi
 
 		# Выводим на экран "программа имя_списка (тип_соединения)"
@@ -1111,7 +1337,6 @@ for pkg in $ACTIVE_PKGS; do
         printf "\n"
     done
 done
-
 
 
 
@@ -1222,15 +1447,10 @@ fi
 
 # --- БЛОК DNS ZEROBLOCK ---
 
-# zeroblock.settings.dns_main_via_outbound='1'
-# zeroblock.settings.dns_main_outbound='awg10'
-# zeroblock.settings.dns_bootstrap_via_outbound='1'
-# zeroblock.settings.dns_bootstrap_outbound='opera'
-
 dns_main_outbound=""
 dns_bootstrap_outbound=""
-# [ $IS_ENABLED -eq 1 ] && [ $IS_RUNNING -eq 1 ]
-if [ $ZB_AUTOSTART -eq 1 ] || [ $ZB_ERR -eq 1 ]; then
+
+if [ ${ZB_AUTOSTART} -eq 1 ] || [ $ZB_ERR -eq 1 ]; then
     ZB_DNS=$(uci -q get "zeroblock.settings.dns_server")
     ZB_B_DNS=$(uci -q get "zeroblock.settings.bootstrap_dns_server")
 	ZB_TYPE_DNS=$(uci -q get "zeroblock.settings.dns_type")
@@ -1289,7 +1509,7 @@ fi
 # Ищем пересечения внутри одной программы в юзерсписках доменов (списки, созданные самостоятельно)
 # ZeroBlock - отключенные секции не анализируются.
 [ $PK_AUTOSTART -eq 1 ] && check_userlists "podkop"
-[ $ZB_AUTOSTART -eq 1 ] && check_userlists "zeroblock"
+[ ${ZB_AUTOSTART} -eq 1 ] && check_userlists "zeroblock"
 
 # Печатаем допданные в конце вывода блока (надо же как-то скрипт обновлять...)
 if [ $PK_AUTOSTART -eq 1 ]; then
@@ -1299,7 +1519,7 @@ if [ $PK_AUTOSTART -eq 1 ]; then
     fi
 fi
 
-if [ $ZB_AUTOSTART -eq 1 ]; then
+if [ ${ZB_AUTOSTART} -eq 1 ]; then
     _ZB_json="/tmp/zeroblock_status.json"
     # Ищем catch-all секции
     if [ -f "$_ZB_json" ]; then
@@ -1367,6 +1587,9 @@ uci show network | grep "\.proto='amneziawg'$" | while IFS= read -r line; do
 done
 # endregion
 
+
+
+
 # --- DNSMASQ SETTINGS CHECK ---
 
 
@@ -1384,19 +1607,113 @@ else
 	strict=$(uci -q get "dhcp.@dnsmasq[$idx].strictorder")
 	noresolv=$(uci -q get "dhcp.@dnsmasq[$idx].noresolv")
 
-	if [ "$strict" = "1" ]; then
-		printf "%b\n" "${YELLOW}  Предупреждение: DNS и DHCP, Строгий порядок активен!${CLR_OFF}"
-	fi
+	#if [ "$strict" = "1" ]; then
+		# printf "%b\n" "${YELLOW}  Предупреждение: DNS и DHCP, Строгий порядок активен!${CLR_OFF}"
+	#fi
 
-	if [ "$noresolv" != "1" ]; then
-		printf "%b\n" "${RED_BRIGHT}  Ошибка: DNS и DHCP, Игнорировать файл resolv отключено! ${CLR_OFF}"
-	fi
+	#if [ "$noresolv" != "1" ]; then
+	#echo "$noresolv"
+	#	printf "%b\n" "${RED_BRIGHT}  DNS и DHCP, Игнорировать файл resolv отключено! ${CLR_OFF}"
+	#fi
 fi
 
 
 
+
+
+
+
+
+
+# ДОПОЛНИТЕЛЬНЫЕ ПРОВЕРКИ НА ОШИБКИ И НЕТОЧНОСТИ В НАСТРОЙКЕ ZeroBlock
+
+if [ "${ACTIVE_API}" == "zb" ]; then
+	
+	# проверка на состояние "Автозагрузка секций". Вкл|Выкл
+	if [ ! -z $(uci -q get zeroblock.auto_config.sections_auto_load) ]; then
+		echo -e "${YELLOW}  !_Автозагрузка секций включена${CLR_OFF}"
+	fi
+	
+	# проверка на состояние "CIDR Списки сообщества". Вкл|Выкл
+	[ ! -z "$(uci -q get zeroblock.settings.download_cidr)" ] && \
+		echo -e "${YELLOW}  !_CIDR Списки сообщества: $(uci -q get zeroblock.settings.download_cidr)${CLR_OFF}"
+
+
+	
+
+# --- БОЛЬШОЙ ЦИКЛ ПО ВСЕМ АКТИВНЫМ СЕКЦИЯМ ZB ---
+# внутри которого отдельными модулями выполняются некоторые операции с каждой секцией
+
+	# ищем и выводим имена секций с активным индивидуальным DNS
+	unw_dom_found=""
+	unw_dom_sections=""	
+	private_DNS=""
+	for s in $ZB_SECTIONS_NAME; do
+		dns_type=$(uci -q get "zeroblock.$s.dns_type")
+		
+		if [ -n "$dns_type" ]; then
+			if [ -z "$private_DNS" ]; then
+				private_DNS="$s"
+			else
+				private_DNS="$private_DNS, $s"
+			fi
+		fi
+
+		# также собираем данные по нежелательным доменам в юзерсписках доменов
+		raw_unw_domains=$(uci -q get "zeroblock.$s.user_domains_text")
+		if [ -n "$raw_unw_domains" ]; then
+			# фильтрация: удаляем каждый домен из EXCLUDE_FROM_UNWANTED (включая субдомены)
+			filtered=""
+			for item in $(echo "$raw_unw_domains" | tr ', \n' ' ' | tr -s ' '); do
+				skip=0
+				for ex in $EXCLUDE_FROM_UNWANTED; do
+					case "$item" in
+						"$ex" | *".$ex") skip=1; break ;;
+					esac
+				done
+				[ $skip -eq 0 ] && filtered="${filtered:+$filtered }$item"
+			done
+			raw_unw_domains="$filtered"
+			[ -z "$raw_unw_domains" ] && continue
+			# оригинальный цикл по UNWANTED_DOMAINS без изменений
+			for d in $UNWANTED_DOMAINS; do
+				case "$EXCLUDE_FROM_UNWANTED " in *" $d "*) continue ;; esac
+				case "$raw_unw_domains" in
+					*"$d"*) 
+						unw_dom_found="${unw_dom_found} $d,"
+						unw_dom_sections="${unw_dom_sections} ${s},"
+					;;
+				esac
+			done
+		fi
+	done
+	# выводим секции с приватным ДНС
+	[ -n "$private_DNS" ] && printf "  ${YELLOW}Секции с собственным DNS: ${private_DNS}${CLR_OFF}\n"
+	unw_dom_sections="${unw_dom_sections# }"
+	
+	# выводим секции с нежелательными доменами
+	# 1. Вычищаем мусор, дубли и склеиваем через запятую
+	unw_dom_found=$(echo $unw_dom_found | tr ' ,' '\n' | sort -u | tr '\n' ',' | sed 's/,,*/,/g; s/^,//; s/,$//')
+	unw_dom_sections=$(echo $unw_dom_sections | tr ' ,' '\n' | sort -u | tr '\n' ',' | sed 's/,,*/,/g; s/^,//; s/,$//')
+
+	# 2. Магия: заменяем запятую на "запятая+пробел"
+	unw_dom_found=$(echo "$unw_dom_found" | sed 's/,/, /g')
+	unw_dom_sections=$(echo "$unw_dom_sections" | sed 's/,/, /g')
+
+	[ -n "$unw_dom_sections" ] && unw_dom_found="${unw_dom_found% }" && printf "  %b%s\n" "${YELLOW}Домены [ $unw_dom_found ] в: ${CYAN}$unw_dom_sections${CLR_OFF}" && echo -e "  ${YELLOW}Убедитесь в том, что эти домены вам действительно нужны в юзердомен-списках.${CLR_OFF}"
+fi
+
+
+
+
+
+
+
+
+
+
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
-sleep 2 # "успокоение" процессора
+sleep 4 # "успокоение" процессора
 echo ""
 echo "= СИСТЕМНЫЕ РЕСУРСЫ:"
 printf "  LAN IP: %s\n" "${LAN_IP} | uptime: $(uptime | sed -E 's/^.*up ([^,]+),.*$/\1/') | (Прошивка: ${VERSION})"
@@ -1408,4 +1725,5 @@ crontab -l | sed -e '/^[[:space:]]*#/d' -e 's/^/  /'
 
 # Блок 8: Очистка лога
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
+echo -e "${BLACK}\`\`\`${YELLOW}  --- КОНЕЦ! ---${CLR_OFF}" # >> "$LOG_FILE"
 echo ""
