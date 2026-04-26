@@ -601,7 +601,22 @@ fi
 echo ""
 
 
+
+
+# --- СОБИРАЕМ ДАННЫЕ О СОСТОЯНИИ СИСТЕМЫ ---
+
+
+LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
+MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
+MEM_P=$((MEM_U * 100 / MEM_T))
+# [ -z "$LAN_IP" ] && LAN_IP=$(uci -q get "network.lan.ipaddr")
+NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
+
+
+
+
 # --- СОБИРАЕМ СПИСКИ ПРОГРАММ УСТАНОВЛЕННЫХ, В АВТОЗАПУСКЕ И ЗАПУЩЕННЫХ ---
+
 
 PK_AUTOSTART=0
 ZB_AUTOSTART=0
@@ -624,25 +639,6 @@ f_get_all_sections_name
 
 
 if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then 
-
-	# --- НАКРУЧИВАЕМ СЧЁТЧИКИ AWG10 ---
-
-
-	TEST_URL="http://speedtest.tele2.net/10MB.zip"
-	ROUNDS=1
-	IF_IP4=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | tr -d '\r\n')
-	for i in $(seq 1 "$ROUNDS"); do
-		curl -4 -L -A 'Mozilla/5.0' -s --no-progress-meter --interface "$IFACE" --max-time 20 --connect-timeout 10 --retry 0 --insecure --tlsv1.2 "$TEST_URL" >/dev/null 2>&1 || true
-	done
-
-	LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
-	MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
-	MEM_P=$((MEM_U * 100 / MEM_T))
-	# [ -z "$LAN_IP" ] && LAN_IP=$(uci -q get "network.lan.ipaddr")
-	NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(df -h "$NAND_PART" | awk 'NR==2 {print $5}'); NAND_FREE=$(df -h "$NAND_PART" | awk 'NR==2 {print $4}')
-
-
-	 
 
 	printf "\033[1A\033[K"
 	# echo "\`\`\`" # >> "$LOG_FILE"
@@ -880,11 +876,47 @@ fi
 		echo ""
 		echo "= ИНТЕРФЕЙС awg10 (ДЕТАЛИ):"
 		PING_COUNT=10
-		RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
-		TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
+		#RX=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
+		#TX=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2 | awk '{printf "%.2f MB", $1/1048576}')
 		
-		RX_COL="${RED_BRIGHT}"; [ "${RX%%.*}" -ge 1 ] && RX_COL="${YELLOW}"; [ "${RX%%.*}" -ge 5 ] && RX_COL="${GREEN}"
-		printf "  Статус: ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}${CLR_OFF} | ${RX_COL}↓${RX} / ↑${TX}${CLR_OFF} | "
+		
+		
+		
+
+		
+		# --- НАКРУЧИВАЕМ СЧЁТЧИКИ AWG10 ---
+	
+		ROUNDS=1
+		_TEST_URL="http://speedtest.tele2.net/10MB.zip"
+
+		# Получаем сырые байты (целые числа для арифметики)
+		rx0=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2)
+		tx0=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2)
+
+		# Скачиваем
+		for i in $(seq 1 "$ROUNDS"); do
+			curl -4 -L -A 'Mozilla/5.0' -s --no-progress-meter \
+				 --interface "$IFACE" --max-time 20 --connect-timeout 10 \
+				 --retry 0 --insecure --tlsv1.2 "$_TEST_URL" >/dev/null 2>&1 || true
+		done
+
+		# Снимаем байты после скачивания
+		rx1=$(ifconfig "$IFACE" | grep "RX bytes" | awk '{print $2}' | cut -d: -f2)
+		tx1=$(ifconfig "$IFACE" | grep "TX bytes" | awk '{print $6}' | cut -d: -f2)
+
+		# Разница в МБ
+		rx_mb=$(echo "$rx0 $rx1" | awk '{printf "%.1f", ($2-$1)/1048576}')
+		tx_mb=$(echo "$tx0 $tx1" | awk '{printf "%.1f", ($2-$1)/1048576}')
+
+		# Цвет по порогам
+		col=$(echo "$rx_mb" | awk -v r="$RED_BRIGHT" -v y="$YELLOW" -v g="$GREEN" \
+			'{if ($1+0 < 1) print r; else if ($1+0 < 5) print y; else print g}')
+
+		# Выводим результат скачивания файла (разница в счётчиках байт до скачивания и после скачивания) 
+		printf "  Статус: ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF} | ${col}↓${rx_mb} МБ / ↑${tx_mb} МБ${CLR_OFF} | "
+
+
+
 		
 		# Захватываем stderr для анализа причин падения
 		PING_RAW=$(ping -I "$IFACE" -c $PING_COUNT ya.ru 2>&1)
