@@ -5,7 +5,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.0"
+VER="0.2.1"
 
 clear
 
@@ -777,21 +777,6 @@ if [ "$region_DNS_Diagnostic" = "$region_DNS_Diagnostic" ]; then
 		return $?
 	}
 
-	# ----------------------------------------------------------------------
-	# Проверка DNS (прямая или через outbound)
-	# ----------------------------------------------------------------------
-	check_dns() {
-		local dns_server="$1"
-		local outbound_sec="$2"
-		local outbound_ok="$3"
-		[ -z "$dns_server" ] && return 1
-		if [ -n "$outbound_sec" ]; then
-			return $outbound_ok
-		else
-			zeroblock test dns_check openwrt.org "$dns_server" >/dev/null 2>&1
-			return $?
-		fi
-	}
 
 	# ----------------------------------------------------------------------
 	# Основной блок
@@ -816,19 +801,12 @@ if [ "$region_DNS_Diagnostic" = "$region_DNS_Diagnostic" ]; then
 		fi
 	fi
 
-	# 3. Проверяем DNS
+
+	# 3. Проверяем DNS через nslookup
 	check_dns_main=0
 	check_dns_boot=0
-	if [ -n "$MAIN_OUTBOUND_SEC" ]; then
-		check_dns_main=$MAIN_OUT_OK
-	else
-		zeroblock test dns_check openwrt.org "$MAIN_DNS" >/dev/null 2>&1 && check_dns_main=1
-	fi
-	if [ -n "$BOOTSTRAP_OUTBOUND_SEC" ]; then
-		check_dns_boot=$BOOT_OUT_OK
-	else
-		zeroblock test dns_check openwrt.org "$BOOTSTRAP_DNS" >/dev/null 2>&1 && check_dns_boot=1
-	fi
+	nslookup openwrt.org "$MAIN_DNS" >/dev/null 2>&1 && check_dns_main=1
+	nslookup openwrt.org "$BOOTSTRAP_DNS" >/dev/null 2>&1 && check_dns_boot=1
 
 	# 4. Вывод (с цветами, !!!_ только для адресов и outbound)
 	# Тип (без !!!_)
@@ -1905,7 +1883,7 @@ fi
 
 
 # --- БЛОК 7: СИСТЕМНЫЕ РЕСУРСЫ ---
-sleep 4 # "успокоение" процессора
+
 echo ""
 echo "= СИСТЕМНЫЕ РЕСУРСЫ:"
 printf "  LAN IP: %s\n" "${LAN_IP} | uptime: $(uptime | sed -E 's/^.*up ([^,]+),.*$/\1/') | (Прошивка: ${VERSION})"
