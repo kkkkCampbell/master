@@ -35,11 +35,9 @@ if [ "$ZB_ACTIVE" = "1" ] && [ "$PK_ACTIVE" = "1" ]; then
 	exit 0
 fi
 
-
 echo "${VER}"
 
 # перезапуск стандартных каналов доступа
-
 [ -f /etc/init.d/opera-proxy ] && echo "Перезапуск opera-proxy" && /etc/init.d/opera-proxy restart >/dev/null 2>&1
 
 # Получаем состояние zapret и youtubeUnblock до запуска скрипта и восстанавливаем его
@@ -52,7 +50,6 @@ ubus call zeroblock diagnose > "/tmp/zb_diag.txt" 2>/dev/null &
 sleep 4
 #ifup "$IFACE"
 
-
 if [ "$ZB_ACTIVE" = "1" ]; then
 	start=20
 	/etc/init.d/zeroblock reload & >/dev/null 2>&1
@@ -61,15 +58,12 @@ elif [ "$PK_ACTIVE" = "1" ]; then
 	start=20
 fi
 
-
-
 echo "Перезапускаем интерфейсы и ожидаем их старта"
 for i in $(seq $start -1 1); do
     printf "%s%d " "$z" "$i"
     if [ $((i % 10)) -eq 1 ] && [ $i -gt 10 ]; then echo; fi
     [ $i = 10 ] && z="0"; sleep 1
 done
-
 
 # --- ЦВЕТА ---
 if [ -t 1 ]; then
@@ -104,17 +98,19 @@ LAN_IP=$(uci get network.lan.ipaddr)
 # --- НАСТРОЙКИ ТЕСТОВ ЧЕРЕЗ API ZEROBLOCK|PODKOP ---
 # TEST_API_URL="${TEST_URL:-https://proton.me}" 
 TEST_API_URL="https://1.1.1.1/cdn-cgi/trace"
-TIMEOUT_API="6000"
+TIMEOUT_API="7000"
 RETRIES_API=3
 
-# LAN_IP=$(uci -q get network.lan.ipaddr 2>/dev/null || echo "127.0.0.1")
-
+# В зависимости от того, какой версии пакет будет тестироваться
+# модифицируются запросы к uci, старая версия engine="settings"
+# новая версия engine="engine"
 engine="engine"
 ver=$(opkg list-installed | awk '/^zeroblock / {print $3}' | sed 's/[-+~].*//')
 if [ -n "$ver" ] && opkg compare-versions "$ver" "<" "0.8.2" && ! opkg compare-versions "$ver" "=" "0.8.2"; then
     engine="settings"
 fi
 
+# получаем порт и токен-пароль для CLASH API 
 CLASH_PORT=$(uci -q get "zeroblock.$engine.clash_api_port" 2>/dev/null || echo "9090")
 CLASH_SECRET=$(uci -q get "zeroblock.$engine.yacd_secret_key" 2>/dev/null)
 
@@ -131,8 +127,12 @@ echo "Анализ запущен: $(date '+%Y-%m-%d %H:%M:%S')"
 echo -e "Лог сохраняется в: ${YELLOW}$LOG_FILE${CLR_OFF}"
 echo "--------------------------------------------------------------"
 
-# --- УСТАНОВКА ЗАВИСИМОСТЕЙ ---
 
+
+
+
+# --- УСТАНОВКА ЗАВИСИМОСТЕЙ ---
+if [ "$region_depend_install" = "$region_depend_install" ]; then
 
 _i=1
 _retries=4
@@ -214,6 +214,10 @@ if [ $WGET_INSTALLED -eq 0 ] || [ $CURL_INSTALLED -eq 0 ] || [ $OPERA_INSTALLED 
         _i=$((_i + 1))
     done
 fi
+fi
+# --- УСТАНОВКА ЗАВИСИМОСТЕЙ END ---
+
+
 
 
 
@@ -221,7 +225,7 @@ fi
 # ФУНКЦИИ
 # =====================
 # region FUNCTION
-
+if [ "$FUNCTIONS" = "$FUNCTIONS" ]; then
 # --- СПИСОК УСТАНОВЛЕННЫХ СЕРВИСОВ/ПРОГРАММ ---
 
 f_services_installed() {
@@ -253,7 +257,7 @@ f_services_active() {
 				active_services="$active_services $s"
 				continue
 				;;
-			*inactive_services*)
+			*inactive*)
 				continue
 				;;
 		esac
@@ -583,11 +587,16 @@ f_get_all_sections_name(){
 		fi
 	done
 }
-
+fi
 # endregion FUNCTION
 # =====================
 # ФУНКЦИИ END
 # =====================
+
+
+
+
+
 
 echo ""
 
@@ -876,11 +885,11 @@ fi
 
 	# Останавливаем сервисы (даже если они не запущены)
 	for pkg in $INSTALLED_SERVICES; do
-		[ "${pkg}" = "opera-proxy" ] && continue # Перезапускает ZB
+		[ "${pkg}" = "opera-proxy" ] && continue # Её перезапускает ZB
 		[ "${pkg}" = "zeroblock" ] && continue   # Перезапускается в начале скрипта
 		[ "${pkg}" = "podkop" ] && continue      # Перезапускается в начале скрипта
 		[ "${pkg}" = "sing-box" ] && continue    # Связанный перезапуск
-		[ -f /etc/init.d/${pkg} ] && /etc/init.d/${pkg} stop >/dev/null 2>&1
+		[ -f /etc/init.d/${pkg} ] && /etc/init.d/"${pkg}" stop >/dev/null 2>&1
 	done
 
 
@@ -1150,7 +1159,7 @@ printf "  ${YELLOW}Запускаем остановленные службы, �
 
 for pkg in $active_services; do
 	if echo "${pkg}" | grep -q -i -E "\bzeroblock\b"; then continue; fi
-	[ -f /etc/init.d/${pkg} ] && /etc/init.d/${pkg} start >/dev/null 2>&1
+	[ -f /etc/init.d/"${pkg}" ] && /etc/init.d/"${pkg}" start >/dev/null 2>&1
 done
 
 sleep 4
