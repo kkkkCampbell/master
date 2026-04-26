@@ -55,7 +55,7 @@ if [ "$ZB_ACTIVE" = "1" ]; then
 	/etc/init.d/zeroblock reload & >/dev/null 2>&1
 elif [ "$PK_ACTIVE" = "1" ]; then
 	/etc/init.d/podkop restart >/dev/null 2>&1
-	start=20
+	start=10
 fi
 
 echo "Перезапускаем интерфейсы и ожидаем их старта"
@@ -934,7 +934,7 @@ TEST_URL=$(echo "$TEST_URL" | tr 'a-z' 'A-Z')
 PING_URL="${TEST_URL#*://}"
 
 NEED_RESOLVE_TEST=0
-echo "= ПРОВЕРКА ДОСТУПОВ/ИНТЕРФЕЙСОВ (${PING_URL})"
+echo "= ПРОВЕРКА ДОСТУПОВ/ИНТЕРФЕЙСОВ (БЕЗ ИСПОЛЬЗОВАНИЯ DNS)" # (${PING_URL})"
 
 # --- ТЕСТ ЧЕРЕЗ API ZEROBLOCK|PODKOP ---
 
