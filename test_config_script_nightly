@@ -5,7 +5,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.2"
+VER="0.2.3"
 
 clear
 
@@ -40,9 +40,6 @@ echo "${VER}"
 # перезапуск стандартных каналов доступа
 [ -f /etc/init.d/opera-proxy ] && echo "Перезапуск opera-proxy" && /etc/init.d/opera-proxy restart >/dev/null 2>&1
 
-# Получаем состояние zapret и youtubeUnblock до запуска скрипта и восстанавливаем его
-[ "$1" = "running" ] && echo "zapret restart" && /etc/init.d/zapret start > /dev/null 2>&1
-[ "$2" = "running" ] && echo "youtubeUnblock restart" && /etc/init.d/youtubeUnblock start > /dev/null 2>&1
 
 #ifdown "$IFACE"
 # Сброс диагностики ZB
@@ -218,7 +215,9 @@ fi
 # --- УСТАНОВКА ЗАВИСИМОСТЕЙ END ---
 
 
-
+# Получаем состояние zapret и youtubeUnblock до запуска скрипта и восстанавливаем его
+[ "$1" = "running" ] && echo "zapret restart" && /etc/init.d/zapret start > /dev/null 2>&1
+[ "$2" = "running" ] && echo "youtubeUnblock restart" && /etc/init.d/youtubeUnblock start > /dev/null 2>&1
 
 
 # =====================
@@ -554,9 +553,9 @@ get_delay() {
     _secret="$2"
     for i in $(seq 1 $RETRIES_API); do
         if [ -n "$_secret" ]; then
-            resp=$(curl -s -H "Authorization: Bearer $_secret" "http://${LAN_IP}:9090/proxies/${_proxy_name}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}")
+            resp=$(curl -s -H "Authorization: Bearer $_secret" "http://${LAN_IP}:${CLASH_PORT}/proxies/${_proxy_name}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}")
         else
-            resp=$(curl -s "http://${LAN_IP}:9090/proxies/${_proxy_name}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}")
+            resp=$(curl -s "http://${LAN_IP}:${CLASH_PORT}/proxies/${_proxy_name}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}")
         fi
         delay=$(echo "$resp" | jq -r '.delay // ""')
         if [ -n "$delay" ] && [ "$delay" -gt 0 ] 2>/dev/null; then
@@ -1008,7 +1007,7 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 		SECRET=""
 		SECRET=$(uci -q get zeroblock.settings.yacd_secret_key)
 		# ЕСЛИ НОВАЯ
-		[ -n $SECRET ] && SECRET=$(uci -q get zeroblock.engine.yacd_secret_key)
+		[ -z "$SECRET" ] && SECRET=$(uci -q get zeroblock.engine.yacd_secret_key)
 		if [ -z "$SECRET" ]; then
 			#echo "  ❌ Не найден секрет для Zeroblock." >&2
 			yuiyiyiu=0
@@ -1832,7 +1831,7 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 	if [ "${ACTIVE_API}" == "zb" ]; then
 		
 		# проверка на состояние "Автозагрузка секций". Вкл|Выкл
-		if [ ! -z $(uci -q get zeroblock.auto_config.sections_auto_load) ]; then
+		if [ -n "$(uci -q get zeroblock.auto_config.sections_auto_load)" ]; then
 			echo -e "${YELLOW}  !_Автозагрузка секций включена${CLR_OFF}"
 		fi
 		
@@ -1902,7 +1901,7 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 		unw_dom_found=$(echo "$unw_dom_found" | sed 's/,/, /g')
 		unw_dom_sections=$(echo "$unw_dom_sections" | sed 's/,/, /g')
 
-		[ -n "$unw_dom_sections" ] && unw_dom_found="${unw_dom_found% }" && printf "  %b%s\n" "${YELLOW}Домены [ $unw_dom_found ] в: ${CYAN}$unw_dom_sections${CLR_OFF}" && echo -e "  ${YELLOW}Убедитесь в том, что эти домены вам действительно нужны в юзердомен-списках.${CLR_OFF}"
+		[ -n "$unw_dom_sections" ] && unw_dom_found="${unw_dom_found% }" && printf "  %b%s\n" "${YELLOW}Домены [ $unw_dom_found ] в: ${CYAN}$unw_dom_sections${CLR_OFF}" && echo -e "  ${YELLOW}Убедитесь в том, что эти домены вам действительно нужны в \"Список пользовательских доменов\".${CLR_OFF}"
 	fi
 fi
 
