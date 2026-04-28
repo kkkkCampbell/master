@@ -1,11 +1,15 @@
 #!/bin/sh
 # analyzer.sh
 
+zapret_state="$1"
+youtubeUnblock_state="$2"
+zapret2_state="$3"
+
 export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.3"
+VER="0.2.4"
 
 clear
 
@@ -216,9 +220,11 @@ fi
 
 
 # Получаем состояние zapret и youtubeUnblock до запуска скрипта и восстанавливаем его
-[ "$1" = "running" ] && echo "zapret restart" && /etc/init.d/zapret start > /dev/null 2>&1
-[ "$2" = "running" ] && echo "youtubeUnblock restart" && /etc/init.d/youtubeUnblock start > /dev/null 2>&1
+[ "$zapret_state" = "running" ] && /etc/init.d/zapret start > /dev/null 2>&1
+[ "$youtubeUnblock_state" = "running" ] && /etc/init.d/youtubeUnblock start > /dev/null 2>&1
+[ "$zapret2_state" = "running" ] && /etc/init.d/zapret2 start > /dev/null 2>&1
 
+sleep 1
 
 # =====================
 # ФУНКЦИИ
@@ -603,6 +609,7 @@ echo ""
 
 
 # --- СОБИРАЕМ ДАННЫЕ О СОСТОЯНИИ СИСТЕМЫ ---
+# --- СОБИРАЕМ ДАННЫЕ О СОСТОЯНИИ СИСТЕМЫ ---
 
 
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
@@ -942,7 +949,7 @@ fi
 		fi
 	else
 		#	printf " ${S_CLR}${SYS_RUN} ${C_CLR}${CONF_STAT} ${A_CLR}${AUTO_STAT}${CLR_OFF}" 
-		echo -e "  ${RED_BRIGHT}Интерфейс ${IFACE} не существует, или отключен.${CLR_OFF}"
+		echo -e "  ${YELLOW}Интерфейс ${IFACE} не существует, или отключен.${CLR_OFF}"
 	fi
 fi
 
@@ -1721,18 +1728,10 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 	fi
 
 	if [ ${ZB_AUTOSTART} -eq 1 ]; then
-		_ZB_json="/tmp/zeroblock_status.json"
-		# Ищем catch-all секции
-		if [ -f "$_ZB_json" ]; then
-			ZB_CATCH_ALL=$(grep -o '"\([^"]*\)":{"is_catch_all":true}' /tmp/zeroblock_status.json | cut -d'"' -f2)
-			if [ -n "$ZB_CATCH_ALL" ]; then printf "  ${YELLOW}Секция в режиме catch-all: $ZB_CATCH_ALL${CLR_OFF}\n"; fi
-		fi
 
 		ZB_VER=$(zeroblock --version 2>/dev/null)
 		
-		# получаем zeroblock.cacholl.fully_routed_ips
-		# выделяем .cacholl., то есть имя секции
-		# запрашиваем uci -q get "zeroblock.cacholl.enabled" если ноль (секция неактивна), пропускаем, если не ноль, то выводим
+		# ищем секции с полной маршрутизацией по ip
 		itog=""
 		RAW=$(uci show zeroblock | grep "fully_routed_ips")
 		# ищем ВКЛЮЧЕННЫЕ секции с полной маршрутизацией
@@ -1759,9 +1758,18 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 			ZB_VER=$(echo "$ZB_VER" | sed 's/^ZeroBlock v//')
 			printf "  Версия zeroblock: ${PK_COLOR}%s${CLR_OFF}\n" "$ZB_VER"
 		fi
+
+
+		_ZB_json=""
+		_ZB_CATCH_ALL=""
+		_ZB_json=$(find /tmp -maxdepth 2 -type f -name "status.json" -path "*/zeroblock*" 2>/dev/null | head -1)
+		if [ -f "$_ZB_json" ] && command -v jq >/dev/null 2>&1; then
+			# Получаем имя секции, где is_catch_all = true, убираем кавычки
+			CATCH_ALL_SECTION=$(jq -r 'to_entries[] | select(.value.is_catch_all == true) | .key' "$_ZB_json" 2>/dev/null | tr -d '"')
+			[ -n "$CATCH_ALL_SECTION" ] && printf "  ${YELLOW}Секция в режиме catch-all: ${CYAN}%s${CLR_OFF}\n" "$CATCH_ALL_SECTION"
+		fi
 	fi
-
-
+	
 	# --- ИЩЕМ ROUTE_ALLOWED_IPS И NOHOSTROUTE ---
 
 	# region ИЩЕМ ROUTE_ALLOWED_IPS И NOHOSTROUTE
