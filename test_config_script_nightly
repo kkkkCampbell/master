@@ -177,7 +177,7 @@ if [ $WGET_INSTALLED -eq 0 ] || [ $CURL_INSTALLED -eq 0 ] || [ $OPERA_INSTALLED 
     # Убираем лишний пробел в начале (если была добавлена хоть одна программа)
     to_install="${to_install# }"
 
-	echo -e "${GREEN}Устанавливаем/обновляем: $to_install${CLR_OFF}"
+	echo -e "${GREEN}Обновляем: $to_install${CLR_OFF}"
 
     while [ "$_i" -le "$_retries" ]; do
         echo -e "${YELLOW}Попытка обновления списка пакетов:${CLR_OFF} ($_i/$_retries)"
@@ -497,7 +497,7 @@ get_channel_desc() {
     fi
 
     if [ "$t" != "proxy" ]; then
-        echo "?"
+        echo "Подписка?"
         return 1
     fi
 
@@ -542,7 +542,7 @@ get_channel_desc() {
         return 0
     fi
 
-    echo "?"
+    echo "Подписка?"
     return 1
 }
 
@@ -1076,14 +1076,24 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 	rm -f "$tmpfile"
 
 	# --- ТЕСТИРОВАНИЕ КАЖДОГО УНИКАЛЬНОГО КАНАЛА ---
+	temp_ifaces="/tmp/iface_restart.$$"
+	> "$temp_ifaces"
 	echo "$grouped" | while IFS='|' read -r key desc sections test_sect; do
-		# Определяем MTU для VPN-каналов
 		mtu="xxxx"
 		key_clean=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 		case "$key_clean" in
 			vpn:*)
 				iface="${key_clean#vpn:}"
 				mtu_val=$(get_mtu "$iface")
+				# Безусловно устанавливаем 'nohostroute=1'
+				uci set network.${iface}.nohostroute=1
+				if [ -z "$mtu_val" ] || [ "$mtu_val" -gt 1280 ]; then
+					echo "  Замена $iface $mtu_val > 1280"
+					uci set network."${iface}".mtu=1280
+
+					echo "$iface" >> "$temp_ifaces"
+					mtu_val=1280
+				fi
 				[ -n "$mtu_val" ] && mtu="$mtu_val"
 				;;
 		esac
@@ -1310,8 +1320,9 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 					if ! grep -q '[[:alnum:][:punct:]]' "$fp"; then
 						printf "  ${RED_BRIGHT}Файл $(basename "$fp") пустой! Весь трафик обрабатывается zapret!!!${CLR_OFF}\n"
 						# Автофикс...
-						# echo "example.com" >"$fp"; /etc/init.d/zapret restart >/dev/null 2>&1
-						# echo -e "${GREEN}Выполнено! ${CLR_OFF}"
+						printf "  Автофикс $(basename "$fp")... "
+						echo "example.com" >>"$fp"; /etc/init.d/zapret restart >/dev/null 2>&1
+						printf "${GREEN} Выполнено! ${CLR_OFF}\n"
 					fi
 
 					[ -z "$fp" ] && continue
@@ -1766,7 +1777,7 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 		if [ -f "$_ZB_json" ] && command -v jq >/dev/null 2>&1; then
 			# Получаем имя секции, где is_catch_all = true, убираем кавычки
 			CATCH_ALL_SECTION=$(jq -r 'to_entries[] | select(.value.is_catch_all == true) | .key' "$_ZB_json" 2>/dev/null | tr -d '"')
-			[ -n "$CATCH_ALL_SECTION" ] && printf "  ${YELLOW}Секция в режиме catch-all: ${CYAN}%s${CLR_OFF}\n" "$CATCH_ALL_SECTION"
+			[ -n "$CATCH_ALL_SECTION" ] && printf "  ${YELLOW}!_Секция в режиме catch-all: ${CYAN}%s${CLR_OFF}\n" "$CATCH_ALL_SECTION"
 		fi
 	fi
 	
@@ -1785,8 +1796,11 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 		nohostroute=$(uci get "${config_id}.nohostroute" 2>/dev/null)
 		# Проверка nohostroute: ошибка, если значение не равно "1"
 		if [ -z "$nohostroute" ] || [ "$nohostroute" = "0" ]; then
-			printf "  !!!_${RED_BRIGHT}%s: \"Не создавать маршруты\" не установлен в 1${CLR_OFF}\n" \
-				"$interface_id"
+			uci set network.${interface_id}.nohostroute=1
+			uci set network.${interface_id}.mtu=1280
+			iface_restart="$iface_restart $interface_id"
+			#printf "  !!!_${RED_BRIGHT}%s: \"Не создавать маршруты\" не установлен в 1${CLR_OFF}\n" \
+			#	"$interface_id"
 		fi
 		# Проверка route_allowed_ips: ошибка, если значение равно "1"
 		if [ ! -z "${rai_raw}" ] && echo ${rai_raw} | grep -q "_ips='1'"; then
@@ -1935,4 +1949,19 @@ crontab -l | sed -e '/^[[:space:]]*#/d' -e 's/^/  /'
 # Блок 8: Очистка лога
 if [ -f "$LOG_FILE" ]; then sed -i 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"; fi
 echo -e "${BLACK}\`\`\`${YELLOW}  --- КОНЕЦ! ---${CLR_OFF}" # >> "$LOG_FILE"
+
+# перезапускаем интерфейсы, если были внесены изменения в настройки интерфейсов
+# Восстанавливаем переменную после цикла
+uci commit network; uci commit luci
+sleep 3
+iface_restart=$(cat "$temp_ifaces" | tr '\n' ' ')
+rm -f "$temp_ifaces"
+echo $iface_restart
+# Перезапуск интерфейсов
+if [ -n "$iface_restart" ]; then
+    for iface in $iface_restart; do
+        ifdown "$iface" >/dev/null 2>&1
+        ifup "$iface" >/dev/null 2>&1
+    done
+fi
 echo ""
