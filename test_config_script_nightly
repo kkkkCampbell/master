@@ -9,7 +9,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.4"
+VER="0.2.5"
 
 clear
 
@@ -1796,9 +1796,10 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 		nohostroute=$(uci get "${config_id}.nohostroute" 2>/dev/null)
 		# Проверка nohostroute: ошибка, если значение не равно "1"
 		if [ -z "$nohostroute" ] || [ "$nohostroute" = "0" ]; then
+		
 			uci set network.${interface_id}.nohostroute=1
 			uci set network.${interface_id}.mtu=1280
-			iface_restart="$iface_restart $interface_id"
+			echo " $interface_id" >>$temp_ifaces
 			#printf "  !!!_${RED_BRIGHT}%s: \"Не создавать маршруты\" не установлен в 1${CLR_OFF}\n" \
 			#	"$interface_id"
 		fi
@@ -1956,7 +1957,7 @@ uci commit network; uci commit luci
 sleep 3
 iface_restart=$(cat "$temp_ifaces" | tr '\n' ' ')
 rm -f "$temp_ifaces"
-echo $iface_restart
+
 # Перезапуск интерфейсов
 if [ -n "$iface_restart" ]; then
     for iface in $iface_restart; do
