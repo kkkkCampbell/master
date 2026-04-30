@@ -1118,8 +1118,9 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 		
 		MTU_COLOR=""
 		if [ -n "$mtu" ] && [ "$mtu" -eq "$mtu" ] 2>/dev/null && [ "$mtu" -gt 1280 ]; then
-			MTU_COLOR="$YELLOW"   # например YELLOW='\033[93m'
+			#MTU_COLOR="$YELLOW"   # например YELLOW='\033[93m'
 			#mtu="!_${mtu}"
+			a=a
 		fi
 
 		if [ -n "$delay" ]; then
