@@ -1,0 +1,72 @@
+#!/bin/sh
+#amnezia_mtu_autoconfig
+
+echo "=== ТЕСТ MTU И АВТОНАСТРОЙКА ДЛЯ AmneziaWG ==="
+
+for _iface_name in $(uci show network | grep -oE "network\.[^.]*\.proto='amneziawg'" | cut -d. -f2); do
+    echo ""
+    echo "=== НАЙДЕН AmneziaWG: $_iface_name ==="
+    
+    # Получаем IP интерфейса
+    ip_addr=$(ip -4 addr show $_iface_name 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}')
+    
+    if [ -n "$ip_addr" ]; then
+        echo "  📍 IP: $ip_addr"
+        
+        # Сохраняем текущий MTU
+        current_mtu=$(cat /sys/class/net/$_iface_name/mtu 2>/dev/null)
+        echo "  📌 Текущий MTU: $current_mtu"
+        
+        # Временно поднимаем MTU до 1420
+        echo "  🔧 Временно ставим MTU=1420 для теста"
+        ip link set dev $_iface_name mtu 1420 2>/dev/null
+        
+        # Ищем рабочий MTU
+		# Для проверки MTU 1420, 1410, 1400...
+		for size in 1392 1382 1372 1350 1320 1300 1280 1252 1220 1200 1150; do
+			mtu=$((size + 28))
+			echo "  Проверяем MTU=$mtu (ping -s $size)"
+
+            if ping -c1 -W2 -s $size -I $_iface_name 1.1.1.1 >/dev/null 2>&1; then
+                calculated_mtu=$((size + 28))
+                time=$(ping -c1 -W2 -s $size -I $_iface_name 1.1.1.1 2>/dev/null | grep 'time=' | sed 's/.*time=\([0-9.]*\) ms.*/\1/')
+                echo "  ✅ РАБОТАЕТ: size $size (MTU=$calculated_mtu): ${time}ms"
+                
+                # Ставим MTU в UCI
+                uci set network.$_iface_name.mtu="$calculated_mtu"
+                echo "  📝 uci set network.$_iface_name.mtu='$calculated_mtu'"
+                
+                # Применяем на лету
+                ip link set dev $_iface_name mtu $calculated_mtu 2>/dev/null
+                echo "  ⚡ Применено на интерфейсе $_iface_name (MTU=$calculated_mtu)"
+                break
+            else
+                echo "  ❌ size $size (MTU=$((size+28))): ТАЙМАУТ"
+            fi
+        done
+        
+        # Fallback если ничего не нашлось
+        if [ -z "$calculated_mtu" ]; then
+            echo "  ⚠️ НИЧЕГО НЕ РАБОТАЕТ! Ставим MTU=1280"
+            uci set network.$_iface_name.mtu="1280"
+            ip link set dev $_iface_name mtu 1280 2>/dev/null
+        fi
+    else
+        echo "  ⚠️ НЕТ IP ADDRESS, ПРОПУСКАЕМ"
+    fi
+done
+
+echo ""
+echo "=== СОХРАНЯЕМ КОНФИГУРАЦИЮ ==="
+uci commit network
+
+echo ""
+echo "=== ПЕРЕЗАПУСКАЕМ ТОЛЬКО AMNEZIAWG ИНТЕРФЕЙСЫ ==="
+for _iface_name in $(uci show network | grep -oE "network\.[^.]*\.proto='amneziawg'" | cut -d. -f2); do
+    echo "  🔄 Перезапуск $_iface_name"
+    ifdown $_iface_name 2>/dev/null
+    ifup $_iface_name 2>/dev/null
+done
+
+echo ""
+echo "=== ГОТОВО. AmneziaWG MTU НАСТРОЕНЫ ==="
