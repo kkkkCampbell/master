@@ -9,7 +9,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.5"
+VER="0.2.4 - rollback"
 
 clear
 
@@ -605,7 +605,9 @@ fi
 
 echo ""
 
-
+# Получам MTU wan_iface
+WAN_IFACE_MTU=$(get_mtu "$WAN_IF")
+# echo $WAN_IFACE_MTU #vopros
 
 
 # --- СОБИРАЕМ ДАННЫЕ О СОСТОЯНИИ СИСТЕМЫ ---
@@ -1085,15 +1087,16 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 			vpn:*)
 				iface="${key_clean#vpn:}"
 				mtu_val=$(get_mtu "$iface")
+				# Устанавливаем MTU и nohostroute для интерфейсoв ВПН в зероблок/подкоп
 				# Безусловно устанавливаем 'nohostroute=1'
-				uci set network.${iface}.nohostroute=1
-				if [ -z "$mtu_val" ] || [ "$mtu_val" -gt 1280 ]; then
-					echo "  Замена $iface $mtu_val > 1280"
-					uci set network."${iface}".mtu=1280
-
-					echo "$iface" >> "$temp_ifaces"
-					mtu_val=1280
-				fi
+				# uci set network.${iface}.nohostroute=1
+				
+				#if [ -z "$mtu_val" ] || [ "$mtu_val" -gt 1404 ]; then
+					#echo "  Замена $iface $mtu_val > 1404"
+					#uci set network."${iface}".mtu=1404
+					#echo "$iface" >> "$temp_ifaces"
+					#mtu_val=1404
+				#fi
 				[ -n "$mtu_val" ] && mtu="$mtu_val"
 				;;
 		esac
@@ -1116,7 +1119,7 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 		MTU_COLOR=""
 		if [ -n "$mtu" ] && [ "$mtu" -eq "$mtu" ] 2>/dev/null && [ "$mtu" -gt 1280 ]; then
 			MTU_COLOR="$YELLOW"   # например YELLOW='\033[93m'
-			mtu="!_${mtu}"
+			#mtu="!_${mtu}"
 		fi
 
 		if [ -n "$delay" ]; then
@@ -1796,12 +1799,11 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 		nohostroute=$(uci get "${config_id}.nohostroute" 2>/dev/null)
 		# Проверка nohostroute: ошибка, если значение не равно "1"
 		if [ -z "$nohostroute" ] || [ "$nohostroute" = "0" ]; then
-		
-			uci set network.${interface_id}.nohostroute=1
-			uci set network.${interface_id}.mtu=1280
-			echo " $interface_id" >>$temp_ifaces
-			#printf "  !!!_${RED_BRIGHT}%s: \"Не создавать маршруты\" не установлен в 1${CLR_OFF}\n" \
-			#	"$interface_id"
+			# Устанавливаем MTU и nohostroute для интерфейсов ВПН НЕ в зероблок/подкоп
+			# uci set network.${interface_id}.nohostroute=1
+			# uci set network.${interface_id}.mtu=1404
+			# echo " $interface_id" >>$temp_ifaces
+			printf "  !!!_${RED_BRIGHT}%s: \"Не создавать маршруты\" не установлен в 1${CLR_OFF}\n"	"$interface_id"
 		fi
 		# Проверка route_allowed_ips: ошибка, если значение равно "1"
 		if [ ! -z "${rai_raw}" ] && echo ${rai_raw} | grep -q "_ips='1'"; then
@@ -1859,7 +1861,7 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 		fi
 		
 		# проверка на состояние "CIDR Списки сообщества". Вкл|Выкл
-		[ ! -z "$(uci -q get zeroblock.settings.download_cidr)" ] && \
+		[ -n "$(uci -q get zeroblock.settings.download_cidr)" ] && \
 			echo -e "${YELLOW}  !_CIDR Списки сообщества: $(uci -q get zeroblock.settings.download_cidr)${CLR_OFF}"
 
 
