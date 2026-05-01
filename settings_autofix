@@ -18,7 +18,7 @@ for _iface_name in $(uci show network | grep -oE "network\.[^.]*\.proto='amnezia
     
     
 	current_mtu=$(cat /sys/class/net/$_iface_name/mtu 2>/dev/null)
-    ip link set dev $_iface_name mtu 1420 2>/dev/null
+    ip link set dev $_iface_name mtu 1500 2>/dev/null
     
     for size in 1392 1382 1372 1350 1320 1300 1280 1252 1220 1200 1150; do
         mtu=$((size + 28))
@@ -51,4 +51,6 @@ if [ "$need_reload" = "1" ]; then
         ifup $_iface_name 2>/dev/null
     done
 fi
+echo ""
+echo "--- КОНЕЦ ---"
 echo ""
