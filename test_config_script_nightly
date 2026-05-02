@@ -9,7 +9,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.4 - rollback"
+VER="0.2.5"
 
 clear
 
@@ -43,7 +43,8 @@ echo "${VER}"
 
 # перезапуск стандартных каналов доступа
 [ -f /etc/init.d/opera-proxy ] && echo "Перезапуск opera-proxy" && /etc/init.d/opera-proxy restart >/dev/null 2>&1
-
+echo "Перезапуск dnsmasq" 
+/etc/init.d/dnsmasq restart >/dev/null 2>&1
 
 #ifdown "$IFACE"
 # Сброс диагностики ZB
@@ -1785,6 +1786,9 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 		fi
 	fi
 	
+	
+	
+	
 	# --- ИЩЕМ ROUTE_ALLOWED_IPS И NOHOSTROUTE ---
 
 	# region ИЩЕМ ROUTE_ALLOWED_IPS И NOHOSTROUTE
@@ -1798,18 +1802,35 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 		interface_id="${config_id#network.}"
 		rai_raw=$(uci show | grep "amneziawg_${interface_id}" | grep route_allowed_ips)
 		nohostroute=$(uci get "${config_id}.nohostroute" 2>/dev/null)
+		
 		# Проверка nohostroute: ошибка, если значение не равно "1"
 		if [ -z "$nohostroute" ] || [ "$nohostroute" = "0" ]; then
-			# Устанавливаем MTU и nohostroute для интерфейсов ВПН НЕ в зероблок/подкоп
-			# uci set network.${interface_id}.nohostroute=1
-			# uci set network.${interface_id}.mtu=1404
-			# echo " $interface_id" >>$temp_ifaces
 			printf "  !!!_${RED_BRIGHT}%s: \"Не создавать маршруты\" не установлен в 1${CLR_OFF}\n"	"$interface_id"
 		fi
+
+
 		# Проверка route_allowed_ips: ошибка, если значение равно "1"
 		if [ ! -z "${rai_raw}" ] && echo ${rai_raw} | grep -q "_ips='1'"; then
-			printf "  !!!_${RED_BRIGHT}%s: \"Маршрутизировать разрешённые IP-адреса\" включено. Catch-all интерфейс!${CLR_OFF}\n" \
+			# Получаем значение allowed_ips
+			allowed_ips_value=$(uci show network | grep '\.allowed_ips' | grep "@amneziawg_${interface_id}" | cut -d'=' -f2 | tr -d "'")
+			
+			# проверка маршрутизируемых адресов allowed_ips_VALUE
+			if echo "$allowed_ips_value" | grep -q -F -e '0.0.0.0/0' -e '::/0' -e '0.0.0.0/1' -e '128.0.0.0/1' -e '::/1' -e '8000::/1'; then
+				printf "  ${RED_BRIGHT}%s: !!!_\"Маршрутизировать разрешённые IP-адреса\" включено. Catch-all интерфейс!\n" \
 				"$interface_id"
+				echo "  [ $allowed_ips_value ]"
+				printf "${CLR_OFF}"
+			elif [ -z "$allowed_ips_value" ]; then
+				printf "  ${RED_BRIGHT}%s: ОШИБКА КОНФИГУРАЦИИ! \"Маршрутизировать разрешённые IP-адреса\" включено, но список allowed_ips ПУСТ!\n" \
+				"$interface_id"
+				echo "  [ маршрутизация НИКУДА не настроена ]"
+				printf "${CLR_OFF}"
+			else
+				printf "  ${YELLOW}%s: \"Маршрутизировать разрешённые IP-адреса\" включено. Вероятно собственный VPN.\n" \
+				"$interface_id"
+				echo "  [ $allowed_ips_value ]"
+				printf "${CLR_OFF}"
+			fi
 		fi
 	done
 	# endregion
