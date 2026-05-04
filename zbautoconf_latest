@@ -8,7 +8,8 @@
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
-VER="v0.0.1"
+annoing_services="podkop podkop-plus zapret zapret2 youtubeUnblock ruantiblock"
+VER="v0.0.2"
 clear
 
 # --- ЦВЕТА ---
@@ -27,6 +28,8 @@ install_zeroblock() {
         return 0
     fi
     
+	new_install=1
+	
     # 2) opkg update в цикле 4 раза
     echo "→ opkg update (до 4 попыток)..."
     for i in 1 2 3 4; do
@@ -145,16 +148,24 @@ verify_backup() {
 
 # BACKUP END
 
-# Остановка и отключение podkop (если есть)
-kill_podkop() {
-    if [ -f /etc/init.d/podkop ]; then
-        /etc/init.d/podkop stop 2>/dev/null
-        /etc/init.d/podkop disable 2>/dev/null
-        echo "✓ podkop остановлен и отключён"
-    else
-        echo "→ podkop не найден, пропускаем"
-    fi
-	echo ""
+# Остановка и отключение мешающих сервисов
+kill_annoing_services() {
+	echo "→ Останавливаем потенциально мешающие службы"
+	add_spaces="  "
+	printf "$add_spaces"
+    for service in $annoing_services; do
+        if [ -f "/etc/init.d/$service" ]; then
+			if echo "$service" | grep -q -i "zapret"; then printf "✓ "; fi
+            /etc/init.d/"$service" stop 2>/dev/null
+            /etc/init.d/"$service" disable 2>/dev/null
+			if echo "$service" | grep -q -i "zapret"; then printf "$add_spaces"; fi
+            echo "✓ $service остановлен и отключён"; printf "$add_spaces"
+        else
+            a=a
+			# echo "→ $service не найден, пропускаем"; printf "$add_spaces"
+        fi
+    done
+    echo ""
 }
 
 # Остановка zeroblock и удаление конфигов
@@ -268,8 +279,9 @@ config diagnostic 'diagnostic'
 EOF
 
 	echo "✓ Конфиг zeroblock заменён"
-	sleep 2
+
     /etc/init.d/zeroblock start 2>/dev/null
+	sleep 5
 	/etc/init.d/zeroblock enable 2>/dev/null
 	echo "✓ zeroblock запущен"
     fi
@@ -341,8 +353,12 @@ refresh_luci() {
     rm -f /tmp/luci-indexcache.json 2>/dev/null
     /etc/init.d/rpcd reload >/dev/null 2>&1
     /etc/init.d/uhttpd reload >/dev/null 2>&1
-    echo -e  "${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
-Если обновление не помогло - перелогиньтесь.${CLR_OFF}"
+    echo -e  "
+${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
+Если обновление не помогло - перелогиньтесь.
+Если и это не помогло ${GREEN}ОЧИСТИТЕ КЭШ БРАУЗЕРА
+${YELLOW}или откройте админку роутера в инкогнито-окне браузера.
+${CLR_OFF}"
 }
 
 
@@ -374,33 +390,14 @@ draw_main_menu() {
             break
             ;;
         2) if [ "$BACKUP_COUNT" -gt 0 ]; then
-                echo -e ""; echo -e "${GREEN}→ Запуск восстановления...${CLR_OFF}"; restore_menu
+                echo -e ""; echo -e "${GREEN}→ Запуск восстановления...${CLR_OFF}"; draw_restore_menu
             else menu; fi; ;;
         0) echo -e ""; echo -e "${GREEN}→ Выход${CLR_OFF}"; echo -e ""; exit 0; ;;
         *) draw_main_menu; ;;
     esac
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-restore_menu() {
+draw_restore_menu() {
     # Формируем список бэкапов в одну строку через |
     BACKUP_LIST=""
     TOTAL=0
@@ -443,7 +440,8 @@ restore_menu() {
 
         printf "%b\n" ""
         printf "%b0%b — Возврат в главное меню\n" "${GREEN}" "${CLR_OFF}"
-        printf "%b1111%b — Удалить все бэкапы, кроме первого и последнего\n" "${RED_BRIGHT}" "${CLR_OFF}"
+        printf "%b1111%b — Удалить все бэкапы, кроме первого и последнего " "${RED_BRIGHT}" "${CLR_OFF}"
+		printf "%b\n" "${YELLOW}(Последний вверху)${CLR_OFF}"
         printf "%b\n" ""
         printf "%bВведите номер: %b" "${CYAN}" "${CLR_OFF}"
         read choice
@@ -453,10 +451,10 @@ restore_menu() {
 
         # Удаление старых
 		if [ "$choice" = "1111" ]; then
-			echo -e "${RED_BRIGHT}ВЫ УВЕРЕНЫ? (y/n)${CLR_OFF}"
+			printf "%b" "${RED_BRIGHT}ВЫ УВЕРЕНЫ? (y/n): ${CLR_OFF}"
 			read absolutly
 			if [ "$absolutly" != "y" ]; then 
-				restore_menu
+				draw_restore_menu
 			fi
 
 			if [ $TOTAL -gt 2 ]; then
@@ -517,31 +515,12 @@ restore_menu() {
                 printf "%b\nПерезагрузить роутер? (${RED_BRIGHT}y${CLR_OFF}/${GREEN}n${CLR_OFF}): %b" "${CYAN}" "${CLR_OFF}"
                 read reboot
 				[ "$reboot" = "y" ] || [ "$reboot" = "Y" ] && echo "РОУТЕР ПЕРЕЗАГРУЖАЕТСЯ" && reboot && exit
-                restore_menu
+                draw_restore_menu
                 return
             fi
         fi
     done
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # ============================================
 # MAIN
@@ -549,14 +528,10 @@ restore_menu() {
 
 
 draw_main_menu
-
-
-
-
 create_backup_dir
 create_backup
 verify_backup "${BACKUP_FILE}"
-kill_podkop
+kill_annoing_services
 dns_redirect "${TEMP_DNS}"
 install_zeroblock
 stop_and_rplce_config_zeroblock
@@ -564,7 +539,11 @@ wait_zeroblock_ready
 dns_redirect "recovery"
 refresh_luci
 
-echo ""
-echo -e  " ===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== "
-sleep 10 && reboot
+ubus call zeroblock flush_conntrack >/dev/null 2>&1
+/etc/init.d/zeroblock stop >/dev/null 2>&1
+sleep 3
+/etc/init.d/zeroblock start >/dev/null 2>&1
+
+[ "$new_install" = "1" ] && echo -e  " ===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
+echo "=== КОНЕЦ ==="
 echo ""
