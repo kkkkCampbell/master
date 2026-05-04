@@ -8,7 +8,8 @@
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
-echo "ver 0.0.1"
+VER="0.0.1"
+echo "ver $VER"
 sleep 3
 clear
 
@@ -352,7 +353,7 @@ refresh_luci() {
 draw_main_menu() {
     clear
     echo -e "${CYAN}=================================${CLR_OFF}"
-    echo -e "${CYAN}     ZEROBLOCK MANAGER v1.0${CLR_OFF}"
+    echo -e "${CYAN}     ZEROBLOCK MANAGER $VER${CLR_OFF}"
     echo -e "${CYAN}=================================${CLR_OFF}"
     echo -e ""
     echo -e "  ${GREEN}1${CLR_OFF} — Установить и настроить ZeroBlock"
