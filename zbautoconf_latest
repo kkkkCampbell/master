@@ -381,7 +381,7 @@ draw_main_menu() {
     
     echo -e "  ${RED_BRIGHT}0${CLR_OFF} — Выход"
     echo -e ""
-    echo -e -n "${CYAN}Введите номер пункта: ${CLR_OFF}"
+    echo -e -n "${CYAN}Введите номер пункта меню: ${CLR_OFF}"
     
     read input
     case "$input" in
@@ -412,7 +412,7 @@ draw_restore_menu() {
         printf "%b\n" "${CYAN}       ВЫБОР БЭКАПА${CLR_OFF}"
         printf "%b\n" "${CYAN}=================================${CLR_OFF}"
 		echo ""
-        echo "ВОССТАНОВЛЕНИЕ ИХ БЭКАПА"
+        echo "ВОССТАНОВЛЕНИЕ ИЗ БЭКАПА"
 		echo "ОТКАТИТ ВСЕ НАСТРОЙКИ РОУТЕРА"
 		echo "ДО СОСТОЯНИЯ НА ДАТУ БЭКАПА!!!"
 		echo ""
@@ -421,7 +421,7 @@ draw_restore_menu() {
             printf "%b\n" ""
             printf "%b0%b — Возврат\n" "${GREEN}" "${CLR_OFF}"
             printf "%b\n" ""
-            printf "%bВведите номер: %b" "${CYAN}" "${CLR_OFF}"
+            printf "%bВведите номер пункта меню: %b" "${CYAN}" "${CLR_OFF}"
             read choice
             [ "$choice" = "0" ] && menu
             continue
@@ -443,7 +443,7 @@ draw_restore_menu() {
         printf "%b1111%b — Удалить все бэкапы, кроме первого и последнего " "${RED_BRIGHT}" "${CLR_OFF}"
 		printf "%b\n" "${YELLOW}(Последний вверху)${CLR_OFF}"
         printf "%b\n" ""
-        printf "%bВведите номер: %b" "${CYAN}" "${CLR_OFF}"
+        printf "%bВведите номер пункта меню: %b" "${CYAN}" "${CLR_OFF}"
         read choice
 
         # Выход
