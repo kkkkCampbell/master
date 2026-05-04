@@ -1,0 +1,530 @@
+#!/bin/sh
+# zbautoconf.sh
+
+# ============================================
+# ZEROBLOCK AUTOSETUP SCRIPT - PART 0
+# Backup system configuration using native sysupgrade
+# ============================================
+
+BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
+TEMP_DNS="9.9.9.11"
+echo "ver 0.0.1"
+sleep 3
+clear
+
+# --- ЦВЕТА ---
+if [ -t 1 ]; then
+	CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"; BLACK="\033[30m"
+fi
+
+# Установка zeroblock с "защитой" от ТСПУ
+install_zeroblock() {
+    UPDATE_LOG="/tmp/opkg_update.log"
+	rm -f /etc/config/zeroblock
+
+    # -1) Проверка, установлен ли zeroblock
+    if opkg list-installed 2>/dev/null | grep -q "^zeroblock -"; then
+        echo "✓ zeroblock уже установлен"
+        return 0
+    fi
+    
+    # 2) opkg update в цикле 4 раза
+    echo "→ opkg update (до 4 попыток)..."
+    for i in 1 2 3 4; do
+        printf "  Попытка $i/4...  "
+        opkg update > "$UPDATE_LOG" 2>&1
+        
+        # 3) Анализ лога на ошибки
+        if grep -qiE "failed|error|unable|not found|returned [1-9]|bad address|refused|timeout" "$UPDATE_LOG"; then
+            echo "  ✗ Ошибки в попытке $i"
+            [ $i -eq 4 ] && { echo "✗ Не удалось обновить репозитории"; return 1; }
+            sleep 3
+        else
+            echo "  ✓ Репозитории обновлены (попытка $i)"
+            break
+        fi
+    done
+    
+    # 5) Установка zeroblock
+    echo "→ Установка zeroblock luci-app-zeroblock..."
+    opkg install zeroblock luci-app-zeroblock > /tmp/opkg_install.log 2>&1
+    
+    # 6) Проверка установки
+    if opkg list-installed 2>/dev/null | grep -q "^zeroblock -"; then
+        echo "✓ zeroblock успешно установлен"
+    else
+        echo "✗ Ошибка: zeroblock не установился"
+        cat /tmp/opkg_install.log
+        return 1
+    fi
+}
+
+
+
+# Функция создания директории
+create_backup_dir() {
+    if [ ! -d "$BACKUP_DIR" ]; then
+        mkdir -p "$BACKUP_DIR"
+        if [ $? -eq 0 ]; then
+            echo "✓ Директория $BACKUP_DIR создана"
+        else
+            echo "✗ Ошибка: не могу создать $BACKUP_DIR"
+            exit 1
+        fi
+    fi
+}
+
+# Функция создания штатного бэкапа через sysupgrade -b
+create_backup() {
+    DATE_TIME=$(date +%Y_%m_%d-%H_%M_%S)
+    BACKUP_FILE="$BACKUP_DIR/${DATE_TIME}.tar.gz"
+    
+    echo "→ Создание штатного бэкапа через sysupgrade -b"
+    echo "  Файл: $BACKUP_FILE"
+    
+    # Штатная команда OpenWRT для бэкапа конфигов
+	printf "  "
+    sysupgrade -b "$BACKUP_FILE"
+    
+    if [ $? -eq 0 ] && [ -f "$BACKUP_FILE" ]; then
+        printf "%b" "  ${GREEN}✓ Бэкап успешно создан${CLR_OFF}"
+        echo "  Размер: $(ls -lh "$BACKUP_FILE" | awk '{print $5}')"
+    else
+        printf "%b" "  ${RED_BRIGHT}✗ Ошибка: бэкап не создан${CLR_OFF}"
+        exit 1
+    fi
+	echo ""
+}
+
+
+# ============================================
+# Функция проверки бэкапа
+# ============================================
+
+verify_backup() {
+    BACKUP_FILE="$1"
+    
+    echo "→ Проверка бэкапа: $BACKUP_FILE"
+    
+    # Проверка 1: существует ли файл
+    if [ ! -f "$BACKUP_FILE" ]; then
+        echo "✗ Ошибка: файл бэкапа не найден"
+        return 1
+    fi
+    echo "  ✓ Файл существует"
+    
+    # Проверка 2: не нулевой ли размер
+    if [ ! -s "$BACKUP_FILE" ]; then
+        echo "✗ Ошибка: файл бэкапа пустой"
+        return 1
+    fi
+    echo "  ✓ Размер не нулевой"
+    
+    # Проверка 3: валидный ли tar.gz
+    if tar -tzf "$BACKUP_FILE" > /dev/null 2>&1; then
+        echo "  ✓ Архив валидный (tar.gz)"
+    else
+        echo "✗ Ошибка: архив повреждён или не tar.gz"
+        return 1
+    fi
+    
+    # Проверка 4: количество файлов в архиве (для информации)
+    FILE_COUNT=$(tar -tzf "$BACKUP_FILE" 2>/dev/null | wc -l)
+    echo "  ✓ Архив содержит $FILE_COUNT файлов/директорий"
+    
+    # Проверка 5: наличие ключевых конфигов (контрольная)
+    if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q "etc/config/system"; then
+        echo "  ✓ Найдены ключевые конфиги (etc/config/)"
+    else
+        echo "  ⚠ Внимание: etc/config/ не обнаружен (возможно, так и задумано)"
+    fi
+    
+    echo -e  "  ${GREEN}✓ Бэкап прошёл проверку${CLR_OFF}"
+    echo ""
+    return 0
+}
+
+# BACKUP END
+
+# Остановка и отключение podkop (если есть)
+kill_podkop() {
+    if [ -f /etc/init.d/podkop ]; then
+        /etc/init.d/podkop stop 2>/dev/null
+        /etc/init.d/podkop disable 2>/dev/null
+        echo "✓ podkop остановлен и отключён"
+    else
+        echo "→ podkop не найден, пропускаем"
+    fi
+	echo ""
+}
+
+# Остановка zeroblock и удаление конфигов
+stop_and_rplce_config_zeroblock() {
+    # Остановка, если есть
+    if [ -f /etc/init.d/zeroblock ]; then
+        /etc/init.d/zeroblock stop 2>/dev/null
+        /etc/init.d/zeroblock disable 2>/dev/null
+        echo "✓ zeroblock остановлен"
+
+# Замена конфига zeroblock
+	rm -f /etc/config/zeroblock
+    cat > /etc/config/zeroblock << 'EOF'
+config settings 'settings'
+	option log_level 'warn'
+	option show_trace_logs '0'
+	option health_interval '600'
+	option health_dns_check '1'
+	option health_ping_ip '77.88.8.8 8.8.8.8'
+	option health_opera_host 'ya.ru google.com'
+	option update_interval '1d'
+	option timeout_dnsmasq_restart '150'
+	option disable_startup_check '0'
+	option api 'v2'
+	option health_enabled '1'
+	option update_time '09:00'
+	option enable_bad_interface_monitoring '0'
+	option download_lists_via_proxy '0'
+	option auto_fallback_two_stage '1'
+	option whitelist_probe_max '100'
+	option lists_failure_mode 'degrade'
+	option timeout_singbox_check '60'
+	option timeout_singbox_kill '15'
+	option health_dns_server_check '0'
+	option health_dns_test_host 'ya.ru'
+	option dns_query_timeout '15'
+	option singbox_double_check '0'
+	option singbox_double_check_delay '15'
+	option lists_tls_insecure '0'
+	option opera_proxy_enabled '1'
+	option luci_disable_ubus_polling '0'
+	option timeouts_forced_to_max_v4 '1'
+	option text_lists_migrated '1'
+	option sub_max_proxies_capped '1'
+	option schema_version '44'
+	option subscription_update_interval 'off'
+
+config engine 'engine'
+	option dns_type 'dot'
+	option dns_server 'dns.quad9.net'
+	option bootstrap_dns_server '1.1.1.1'
+	option dns_rewrite_ttl '60'
+	option dns_strategy 'ipv4_only'
+	option clash_api_enabled '1'
+	option clash_api_port '9090'
+	option tproxy_mark '0x10000'
+	option direct_mark '0x20000'
+	option bt_mark '0x40000'
+	option ctmark_dns '0x10000'
+	option ctmark_bt '0x40000'
+	option disable_quic '1'
+	option desync_mark '0x40000000'
+	option log_level 'warn'
+	option dont_touch_dhcp '0'
+	option dns_hijack '1'
+	option enable_output_network_interface '0'
+	option proxy_router_traffic '0'
+	option ipv6_enabled '0'
+	option discord_voice '1'
+	option meta_force_cidr '1'
+	option exclude_bittorrent '1'
+	option exclude_ntp '1'
+	option singbox_logging '0'
+	option xray_logging '0'
+	option trusttunnel_logging '0'
+	option fakeip_query_type_filter '1'
+	option xray_path '/usr/bin/xray'
+	option trusttunnel_path '/usr/bin/trusttunnel_client'
+	option custom_config_dir '/etc/zeroblock/sing-box.d'
+	option dpi_check_timeout '15'
+	option adblock_convert_timeout '300'
+	option fallback_probe_timeout_default '3'
+	option singbox_startup_timeout '150000'
+	option xray_startup_timeout '60000'
+	option trusttunnel_startup_timeout '60000'
+	option version_check_timeout '31'
+	option bootstrap_port_free_timeout '5250'
+	option singbox_sighup_wait_timeout '15500'
+	option subscription_timeout '60000'
+	option subscription_max_proxies '100'
+	option subscription_user_agent 'clash-verge/v2.0.0'
+	option subscription_tls_insecure '0'
+	list source_network_interfaces 'br-lan'
+	option testing_url 'http://www.gstatic.com/generate_204'
+	option naive_logging '0'
+	option disable_startup_check '0'
+	option global_exclude_mode 'route'
+
+config auto_config 'auto_config'
+	option opera_auto_config '1'
+	option awg_auto_config '1'
+	option xray_auto_config '1'
+	option zapret2_auto_config '0'
+	option trusttunnel_auto_config '0'
+	option naive_auto_config '0'
+	option sections_auto_load '1'
+
+config dashboard 'dashboard'
+
+config diagnostic 'diagnostic'
+EOF
+
+	echo "✓ Конфиг zeroblock заменён"
+	sleep 2
+    /etc/init.d/zeroblock start 2>/dev/null
+	/etc/init.d/zeroblock enable 2>/dev/null
+	echo "✓ zeroblock запущен"
+    fi
+
+}
+
+# Ожидание завершения автонастройки zeroblock
+wait_zeroblock_ready() {
+    local timeout=180  # 3 минуты
+    local elapsed=0
+    
+    echo -n "→ Ожидание автонастройки zeroblock (макс. 3 минуты)"
+    
+    while [ $elapsed -lt $timeout ]; do
+        if uci show zeroblock 2>/dev/null | grep -q "zeroblock.awg10=section" && \
+           uci show zeroblock 2>/dev/null | grep -q "zeroblock.opera=section"; then
+            echo ""
+            echo "✓ Автонастройка завершена (через ${elapsed} сек)"
+			uci set zeroblock.auto_config.sections_auto_load='' 
+			uci commit zeroblock
+			uci commit luci
+            return 0
+        fi
+        
+        echo -n "."
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    
+    echo ""
+    echo "⚠ Таймаут: автонастройка не завершилась за 3 минуты"
+    return 1
+}
+
+# Управление DNS (аргумент = IP DNS сервера, или recovery = восстановление)
+dns_redirect() {
+    if [ "$1" = "recovery" ]; then
+        # Восстановление
+        if [ -f /tmp/dhcp.bak ]; then
+            cp /tmp/dhcp.bak /etc/config/dhcp
+            rm /tmp/dhcp.bak
+            /etc/init.d/dnsmasq restart >/dev/null 2>&1
+            echo "✓ DNS конфиг восстановлен"
+        fi
+    elif echo "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+        # Бэкап и замена
+        cp /etc/config/dhcp /tmp/dhcp.bak 2>/dev/null
+        uci set dhcp.@dnsmasq[0].server="$1"
+        uci commit dhcp
+        /etc/init.d/dnsmasq restart >/dev/null 2>&1
+        echo "✓ DNS переключен на $1"
+    else
+        echo "✗ Ошибка: аргумент должен быть IP адресом или recovery"
+        return 1
+    fi
+}
+
+# Обновление меню LuCI после установки пакетов
+refresh_luci() {
+    echo "→ Обновление меню LuCI..."
+	
+	# Перезапуск rpcd (отвечает за API и меню)
+	/etc/init.d/rpcd reload
+
+	# Перезапуск uhttpd (веб-сервер)
+	/etc/init.d/uhttpd reload
+	
+    rm -rf /tmp/luci-modulecache/ 2>/dev/null
+    rm -f /tmp/luci-indexcache.json 2>/dev/null
+    /etc/init.d/rpcd reload >/dev/null 2>&1
+    /etc/init.d/uhttpd reload >/dev/null 2>&1
+    echo -e  "${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
+Если обновление не помогло - перелогиньтесь.${CLR_OFF}"
+}
+
+
+# --- МЕНЮ ---
+
+draw_main_menu() {
+    clear
+    echo -e "${CYAN}=================================${CLR_OFF}"
+    echo -e "${CYAN}     ZEROBLOCK MANAGER v1.0${CLR_OFF}"
+    echo -e "${CYAN}=================================${CLR_OFF}"
+    echo -e ""
+    echo -e "  ${GREEN}1${CLR_OFF} — Установить и настроить ZeroBlock"
+    
+    BACKUP_COUNT=$(ls "$BACKUP_DIR"/*.tar.gz 2>/dev/null | wc -l)
+    if [ "$BACKUP_COUNT" -gt 0 ]; then
+        echo -e "  ${GREEN}2${CLR_OFF} — Восстановить настройки из бэкапа"
+    else
+        echo -e "  ${YELLOW}2${CLR_OFF} — Восстановить настройки из бэкапа ${YELLOW}[бэкапы отсутствуют]${CLR_OFF}"
+    fi
+    
+    echo -e "  ${RED_BRIGHT}0${CLR_OFF} — Выход"
+    echo -e ""
+    echo -e -n "${CYAN}Введите номер пункта: ${CLR_OFF}"
+    
+    read input
+    case "$input" in
+        1)  echo -e ""
+            echo -e "${GREEN}→ Запуск установки и настройки...${CLR_OFF}"
+            break
+            ;;
+        2) if [ "$BACKUP_COUNT" -gt 0 ]; then
+                echo -e ""; echo -e "${GREEN}→ Запуск восстановления...${CLR_OFF}"; restore_menu
+            else menu; fi; ;;
+        0) echo -e ""; echo -e "${GREEN}→ Выход${CLR_OFF}"; echo -e ""; exit 0; ;;
+        *) draw_main_menu; ;;
+    esac
+}
+
+restore_menu() {
+    # Формируем список бэкапов в одну строку через |
+    BACKUP_LIST=""
+    TOTAL=0
+    for f in $(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r); do
+        [ -z "$BACKUP_LIST" ] && BACKUP_LIST="$f" || BACKUP_LIST="$BACKUP_LIST|$f"
+        TOTAL=$((TOTAL + 1))
+    done
+
+    while true; do
+        clear
+        printf "%b\n" "${CYAN}=================================${CLR_OFF}"
+        printf "%b\n" "${CYAN}       ВЫБОР БЭКАПА${CLR_OFF}"
+        printf "%b\n" "${CYAN}=================================${CLR_OFF}"
+        printf "%b\n" ""
+
+        if [ $TOTAL -eq 0 ]; then
+            printf "%b\n" "  ${YELLOW}Нет доступных бэкапов${CLR_OFF}"
+            printf "%b\n" ""
+            printf "%b0%b — Возврат\n" "${GREEN}" "${CLR_OFF}"
+            printf "%b\n" ""
+            printf "%bВведите номер: %b" "${CYAN}" "${CLR_OFF}"
+            read choice
+            [ "$choice" = "0" ] && menu
+            continue
+        fi
+
+        # Выводим список
+        NUM=1
+        SAVED_IFS="$IFS"
+        IFS='|'
+        for b in $BACKUP_LIST; do
+            NAME=$(basename "$b" .tar.gz)
+            printf "%b%s%b — %s\n" "${GREEN}" "$NUM" "${CLR_OFF}" "$NAME"
+            NUM=$((NUM + 1))
+        done
+        IFS="$SAVED_IFS"
+
+        printf "%b\n" ""
+        printf "%b0%b — Возврат в главное меню\n" "${GREEN}" "${CLR_OFF}"
+        printf "%b1111%b — Удалить все бэкапы, кроме первого и последнего\n" "${RED_BRIGHT}" "${CLR_OFF}"
+        printf "%b\n" ""
+        printf "%bВведите номер: %b" "${CYAN}" "${CLR_OFF}"
+        read choice
+
+        # Выход
+        [ "$choice" = "0" ] && draw_main_menu && return
+
+        # Удаление старых
+		if [ "$choice" = "1111" ]; then
+			echo -e "${RED_BRIGHT}ВЫ УВЕРЕНЫ? (y/n)${CLR_OFF}"
+			read absolutly
+			if [ "$absolutly" != "y" ]; then 
+				restore_menu
+			fi
+
+			if [ $TOTAL -gt 2 ]; then
+				TMP_DIR="/tmp/backup_tmp_$$"
+				mkdir -p "$TMP_DIR"
+				
+				NUM=1
+				SAVED_IFS="$IFS"
+				IFS='|'
+				for b in $BACKUP_LIST; do
+					if [ $NUM -eq 1 ] || [ $NUM -eq $TOTAL ]; then
+						cp "$b" "$TMP_DIR/"
+					fi
+					NUM=$((NUM + 1))
+				done
+				IFS="$SAVED_IFS"
+				
+				# Удаляем всё
+				rm -rf "$BACKUP_DIR"/*
+				
+				# Возвращаем два файла
+				cp "$TMP_DIR"/* "$BACKUP_DIR/"
+				rm -rf "$TMP_DIR"
+				
+				# Пересобираем BACKUP_LIST
+				BACKUP_LIST=""
+				TOTAL=0
+				for f in $(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r); do
+					[ -z "$BACKUP_LIST" ] && BACKUP_LIST="$f" || BACKUP_LIST="$BACKUP_LIST|$f"
+					TOTAL=$((TOTAL + 1))
+				done
+				
+				printf "%b✓ Оставлены первый и последний бэкап (%d шт)%b\n" "${GREEN}" "$TOTAL" "${CLR_OFF}"
+				sleep 1
+			else
+				printf "%b⚠ Нечего удалять (бэкапов 2 или меньше)%b\n" "${YELLOW}" "${CLR_OFF}"
+				sleep 1
+			fi
+			continue
+		fi
+
+        # Проверка, что введено число в диапазоне
+        if [ "$choice" -ge 1 ] 2>/dev/null && [ "$choice" -le $TOTAL ]; then
+            SELECTED=$(echo "$BACKUP_LIST" | cut -d'|' -f"$choice")
+            NAME=$(basename "$SELECTED" .tar.gz)
+            printf "%b\n"
+            printf "%bВосстановить из бэкапа %s? (y/n): %b" "${YELLOW}" "$NAME" "${CLR_OFF}"
+            read confirm
+            if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+                printf "%b\n→ Восстановление...%b\n" "${CYAN}" "${CLR_OFF}"
+                sysupgrade -r "$SELECTED"
+                if [ $? -eq 0 ]; then
+                    printf "%b✓ Бэкап восстановлен%b\n" "${GREEN}" "${CLR_OFF}"
+                    printf "%b⚠ Требуется перезагрузка роутера%b\n" "${YELLOW}" "${CLR_OFF}"
+                else
+                    printf "%b✗ Ошибка восстановления%b\n" "${RED_BRIGHT}" "${CLR_OFF}"
+                fi
+                printf "%b\nПерезагрузить роутер? (${RED_BRIGHT}y${CLR_OFF}/${GREEN}n${CLR_OFF}): %b" "${CYAN}" "${CLR_OFF}"
+                read reboot
+				[ "$reboot" = "y" ] || [ "$reboot" = "Y" ] && echo "РОУТЕР ПЕРЕЗАГРУЖАЕТСЯ" && /sbin/reboot && exit
+                restore_menu
+                return
+            fi
+        fi
+    done
+}
+
+# ============================================
+# MAIN
+# ============================================
+
+
+draw_main_menu
+
+
+
+
+create_backup_dir
+create_backup
+verify_backup "${BACKUP_FILE}"
+kill_podkop
+dns_redirect "${TEMP_DNS}"
+install_zeroblock
+stop_and_rplce_config_zeroblock
+wait_zeroblock_ready
+dns_redirect "recovery"
+refresh_luci
+
+echo ""
+echo -e  " ===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== "
+sleep 10 && /sbin/reboot
+echo ""
