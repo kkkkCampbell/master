@@ -1,5 +1,5 @@
 #!/bin/sh
-# zbautoconf.sh
+# /zbautoconf.sh
 
 # ============================================
 # ZEROBLOCK AUTOSETUP SCRIPT - PART 0
@@ -8,8 +8,7 @@
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
-VER="0.0.1"
-echo "ver $VER"
+VER="v0.0.1"
 sleep 3
 clear
 
@@ -353,7 +352,7 @@ refresh_luci() {
 draw_main_menu() {
     clear
     echo -e "${CYAN}=================================${CLR_OFF}"
-    echo -e "${CYAN}     ZEROBLOCK MANAGER $VER${CLR_OFF}"
+    echo -e "${CYAN}     ZEROBLOCK MANAGER ${VER}${CLR_OFF}"
     echo -e "${CYAN}=================================${CLR_OFF}"
     echo -e ""
     echo -e "  ${GREEN}1${CLR_OFF} — Установить и настроить ZeroBlock"
@@ -383,6 +382,25 @@ draw_main_menu() {
     esac
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 restore_menu() {
     # Формируем список бэкапов в одну строку через |
     BACKUP_LIST=""
@@ -397,8 +415,11 @@ restore_menu() {
         printf "%b\n" "${CYAN}=================================${CLR_OFF}"
         printf "%b\n" "${CYAN}       ВЫБОР БЭКАПА${CLR_OFF}"
         printf "%b\n" "${CYAN}=================================${CLR_OFF}"
-        printf "%b\n" ""
-
+		echo ""
+        echo "ВОССТАНОВЛЕНИЕ ИХ БЭКАПА"
+		echo "ОТКАТИТ ВСЕ НАСТРОЙКИ РОУТЕРА"
+		echo "ДО СОСТОЯНИЯ НА ДАТУ БЭКАПА!!!"
+		echo ""
         if [ $TOTAL -eq 0 ]; then
             printf "%b\n" "  ${YELLOW}Нет доступных бэкапов${CLR_OFF}"
             printf "%b\n" ""
@@ -503,6 +524,25 @@ restore_menu() {
         fi
     done
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # ============================================
 # MAIN
