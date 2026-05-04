@@ -9,7 +9,6 @@
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
 VER="v0.0.1"
-sleep 3
 clear
 
 # --- ЦВЕТА ---
@@ -351,9 +350,9 @@ refresh_luci() {
 
 draw_main_menu() {
     clear
-    echo -e "${CYAN}=================================${CLR_OFF}"
-    echo -e "${CYAN}     ZEROBLOCK MANAGER ${VER}${CLR_OFF}"
-    echo -e "${CYAN}=================================${CLR_OFF}"
+    echo -e "${CYAN}==================================${CLR_OFF}"
+    echo -e "${CYAN}    ZEROBLOCK MANAGER ${VER}${CLR_OFF}"
+    echo -e "${CYAN}==================================${CLR_OFF}"
     echo -e ""
     echo -e "  ${GREEN}1${CLR_OFF} — Установить и настроить ZeroBlock"
     
@@ -517,7 +516,7 @@ restore_menu() {
                 fi
                 printf "%b\nПерезагрузить роутер? (${RED_BRIGHT}y${CLR_OFF}/${GREEN}n${CLR_OFF}): %b" "${CYAN}" "${CLR_OFF}"
                 read reboot
-				[ "$reboot" = "y" ] || [ "$reboot" = "Y" ] && echo "РОУТЕР ПЕРЕЗАГРУЖАЕТСЯ" && /sbin/reboot && exit
+				[ "$reboot" = "y" ] || [ "$reboot" = "Y" ] && echo "РОУТЕР ПЕРЕЗАГРУЖАЕТСЯ" && reboot && exit
                 restore_menu
                 return
             fi
@@ -567,5 +566,5 @@ refresh_luci
 
 echo ""
 echo -e  " ===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== "
-sleep 10 && /sbin/reboot
+sleep 10 && reboot
 echo ""
