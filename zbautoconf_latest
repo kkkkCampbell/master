@@ -2,14 +2,19 @@
 # /zbautoconf.sh
 
 # ============================================
-# ZEROBLOCK AUTOSETUP SCRIPT - PART 0
-# Backup system configuration using native sysupgrade
+# 
+# ZEROBLOCK AUTOSETUP SCRIPT
+# 
 # ============================================
+
+VER="v0.0.6"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
 annoying_services="podkop podkop-plus zapret zapret2 youtubeUnblock ruantiblock"
-VER="v0.0.5"
+awg10_community_lists="anime block discord googleplay messengers meta torrent video youtube"
+opera_community_lists="ai art geoblock games music shop tools porn socials news repo"
+
 clear
 
 # --- ЦВЕТА ---
@@ -367,7 +372,7 @@ refresh_luci() {
 ${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
 Если обновление не помогло - перелогиньтесь.
 Если и это не помогло ${GREEN}ОЧИСТИТЕ КЭШ БРАУЗЕРА
-${YELLOW}или откройте админку роутера в инкогнито-окне браузера.
+${YELLOW}или откройте админку роутера в ${GREEN}инкогнито-окне браузера.
 ${CLR_OFF}"
 }
 
@@ -547,12 +552,12 @@ on_the_end() {
 	uci commit
 
 	# awg10.community_lists
-	for item in anime block discord googleplay messengers meta torrent video youtube; do
+	for item in $awg10_community_lists; do
 		uci add_list zeroblock.awg10.community_lists="$item"
 	done; sleep 1; uci commit
 
 	# opera.community_lists
-	for item in ai art geoblock games music shop tools porn socials news; do
+	for item in $opera_community_lists; do
 		uci add_list zeroblock.opera.community_lists="$item"
 	done; sleep 1; uci commit; uci commit luci;	sleep 1
 
