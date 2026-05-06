@@ -9,7 +9,7 @@
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
 annoing_services="podkop podkop-plus zapret zapret2 youtubeUnblock ruantiblock"
-VER="v0.0.2"
+VER="v0.0.3"
 clear
 
 # --- ЦВЕТА ---
@@ -82,7 +82,7 @@ create_backup() {
     BACKUP_FILE="$BACKUP_DIR/${DATE_TIME}.tar.gz"
     
     echo "→ Создание штатного бэкапа через sysupgrade -b"
-    echo "  Файл: $BACKUP_FILE"
+    echo -e "  Файл: ${YELLOW}$BACKUP_FILE${CLR_OFF}"
     
     # Штатная команда OpenWRT для бэкапа конфигов
 	printf "  "
@@ -106,7 +106,7 @@ create_backup() {
 verify_backup() {
     BACKUP_FILE="$1"
     
-    echo "→ Проверка бэкапа: $BACKUP_FILE"
+    echo -e "→ Проверка бэкапа: ${YELLOW}$BACKUP_FILE${CLR_OFF}"
     
     # Проверка 1: существует ли файл
     if [ ! -f "$BACKUP_FILE" ]; then
@@ -148,7 +148,7 @@ verify_backup() {
 
 # BACKUP END
 
-# Остановка и отключение мешающих сервисов
+# Остановка, отключение и удаление мешающих сервисов
 kill_annoing_services() {
 	echo "→ Останавливаем потенциально мешающие службы"
 	add_spaces="  "
@@ -156,7 +156,7 @@ kill_annoing_services() {
     for service in $annoing_services; do
         if [ -f "/etc/init.d/$service" ]; then
 			if echo "$service" | grep -q -i "zapret"; then printf "✓ "; fi
-            /etc/init.d/"$service" stop 2>/dev/null
+			/etc/init.d/"$service" stop 2>/dev/null
             /etc/init.d/"$service" disable 2>/dev/null
 			if echo "$service" | grep -q -i "zapret"; then printf "$add_spaces"; fi
             echo "✓ $service остановлен и отключён"; printf "$add_spaces"
@@ -318,7 +318,7 @@ wait_zeroblock_ready() {
 
 # Управление DNS (аргумент = IP DNS сервера, или recovery = восстановление)
 dns_redirect() {
-    if [ "$1" = "recovery" ]; then
+    if [ "$1" = "recovery" ] && [ "$NOBACKUP" = "" ]; then
         # Восстановление
         if [ -f /tmp/dhcp.bak ]; then
             cp /tmp/dhcp.bak /etc/config/dhcp
@@ -328,12 +328,26 @@ dns_redirect() {
         fi
     elif echo "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
         # Бэкап и замена
-        cp /etc/config/dhcp /tmp/dhcp.bak 2>/dev/null
-        uci set dhcp.@dnsmasq[0].server="$1"
+		retval="$(uci get dhcp.@dnsmasq[0].server 2>/dev/null | tr -d '[:space:]')"
+		if [ -n "$retval" ]; then
+		  cp /etc/config/dhcp /tmp/dhcp.bak 2>/dev/null
+		  NOBACKUP=1
+		  sleep 1
+		fi
+			
+		#uci set dhcp.@dnsmasq[0].server="$1"
+		uci set dhcp.@dnsmasq[0].noresolv="1"
+		uci -q del dhcp.@dnsmasq[0].server
+		uci add_list dhcp.@dnsmasq[0].server="$1"
+		sleep 1
         uci commit dhcp
+		uci commit luci
+		sleep 1
         /etc/init.d/dnsmasq restart >/dev/null 2>&1
-        echo "✓ DNS переключен на $1"
-    else
+		if [ "$(uci get dhcp.@dnsmasq[0].server)" = "$1" ]; then 
+			echo "✓ DNS переключен на $1"
+		fi
+    elif [ "$NOBACKUP" = "" ]; then	
         echo "✗ Ошибка: аргумент должен быть IP адресом или recovery"
         return 1
     fi
@@ -541,9 +555,48 @@ refresh_luci
 
 ubus call zeroblock flush_conntrack >/dev/null 2>&1
 /etc/init.d/zeroblock stop >/dev/null 2>&1
-sleep 3
-/etc/init.d/zeroblock start >/dev/null 2>&1
+uci delete zeroblock.awg10.community_lists
+uci delete zeroblock.opera.community_lists
 
+sleep 1
+uci commit
+
+for item in anime block discord googleplay messengers meta news porn socials torrent video youtube; do
+    uci add_list zeroblock.awg10.community_lists="$item"
+done
+
+sleep 1
+uci commit
+
+for item in ai art geoblock games music shop tools; do
+    uci add_list zeroblock.opera.community_lists="$item"
+done
+sleep 1
+
+uci commit
+uci commit luci
+sleep 1
+
+
+/etc/init.d/zeroblock start
+/etc/init.d/zeroblock reload
+
+
+
+# оживляем авг10
+# echo "→ \"Оживляем\" авг10"
+# printf "  "
+# for i in $(seq 10 -1 1); do
+# 	ping -I awg10 8.8.8.8 -c 1 >/dev/null 2>&1
+# 	printf "$i "
+# 	sleep 1
+# done
+# echo ""
+# echo "→ Перезапускаем dnsmasq"
+# /etc/init.d/dnsmasq restart
+# echo ""
+
+new_install="1"
 [ "$new_install" = "1" ] && echo -e  " ===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
 echo "=== КОНЕЦ ==="
 echo ""
