@@ -9,7 +9,7 @@
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
 annoing_services="podkop podkop-plus zapret zapret2 youtubeUnblock ruantiblock"
-VER="v0.0.3"
+VER="v0.0.4"
 clear
 
 # --- ЦВЕТА ---
@@ -38,11 +38,11 @@ install_zeroblock() {
         
         # 3) Анализ лога на ошибки
         if grep -qiE "failed|error|unable|not found|returned [1-9]|bad address|refused|timeout" "$UPDATE_LOG"; then
-            echo "  ✗ Ошибки в попытке $i"
+            echo echo -e "  ${RED_BRIGHT}✗ Ошибки в попытке $i${CLR_OFF}"
             [ $i -eq 4 ] && { echo "✗ Не удалось обновить репозитории"; return 1; }
             sleep 3
         else
-            echo "  ✓ Репозитории обновлены (попытка $i)"
+            echo -e "  ${GREEN}✓ Репозитории обновлены (попытка $i)${CLR_OFF}"
             break
         fi
     done
@@ -318,6 +318,7 @@ wait_zeroblock_ready() {
 
 # Управление DNS (аргумент = IP DNS сервера, или recovery = восстановление)
 dns_redirect() {
+	# если передан аргумент 'recovery' для восстановления DNS 
     if [ "$1" = "recovery" ] && [ "$NOBACKUP" = "" ]; then
         # Восстановление
         if [ -f /tmp/dhcp.bak ]; then
@@ -326,30 +327,31 @@ dns_redirect() {
             /etc/init.d/dnsmasq restart >/dev/null 2>&1
             echo "✓ DNS конфиг восстановлен"
         fi
+		
     elif echo "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
-        # Бэкап и замена
+        # Бэкап
 		retval="$(uci get dhcp.@dnsmasq[0].server 2>/dev/null | tr -d '[:space:]')"
 		if [ -n "$retval" ]; then
 		  cp /etc/config/dhcp /tmp/dhcp.bak 2>/dev/null
-		  NOBACKUP=1
-		  sleep 1
+		  NOBACKUP=""
+		 else
+		  echo "✗ Передан DNS ${1}. Архивация пропущена."
+		  NOBACKUP="1"
 		fi
-			
+		
+		# Замена SNS
 		#uci set dhcp.@dnsmasq[0].server="$1"
 		uci set dhcp.@dnsmasq[0].noresolv="1"
 		uci -q del dhcp.@dnsmasq[0].server
 		uci add_list dhcp.@dnsmasq[0].server="$1"
 		sleep 1
-        uci commit dhcp
+		uci commit dhcp
 		uci commit luci
 		sleep 1
-        /etc/init.d/dnsmasq restart >/dev/null 2>&1
+		/etc/init.d/dnsmasq restart >/dev/null 2>&1
 		if [ "$(uci get dhcp.@dnsmasq[0].server)" = "$1" ]; then 
 			echo "✓ DNS переключен на $1"
 		fi
-    elif [ "$NOBACKUP" = "" ]; then	
-        echo "✗ Ошибка: аргумент должен быть IP адресом или recovery"
-        return 1
     fi
 }
 
@@ -452,8 +454,9 @@ draw_restore_menu() {
         done
         IFS="$SAVED_IFS"
 
-        printf "%b\n" ""
         printf "%b0%b — Возврат в главное меню\n" "${GREEN}" "${CLR_OFF}"
+
+        printf "%b\n" ""
         printf "%b1111%b — Удалить все бэкапы, кроме первого и последнего " "${RED_BRIGHT}" "${CLR_OFF}"
 		printf "%b\n" "${YELLOW}(Последний вверху)${CLR_OFF}"
         printf "%b\n" ""
@@ -536,6 +539,52 @@ draw_restore_menu() {
     done
 }
 
+to_the_end() {
+
+	ubus call zeroblock flush_conntrack >/dev/null 2>&1
+	/etc/init.d/zeroblock stop >/dev/null 2>&1
+	
+	# "Улучшаем" списки собщества
+	uci delete zeroblock.awg10.community_lists
+	uci delete zeroblock.opera.community_lists
+	sleep 1
+	uci commit
+
+	for item in anime block discord googleplay messengers meta news porn socials torrent video youtube; do
+		uci add_list zeroblock.awg10.community_lists="$item"
+	done
+	sleep 1
+	uci commit
+
+	for item in ai art geoblock games music shop tools; do
+		uci add_list zeroblock.opera.community_lists="$item"
+	done
+	sleep 1
+	uci commit
+	uci commit luci
+	
+	sleep 1
+
+	# Перезапускаем ZEROBLOCK
+	/etc/init.d/zeroblock start
+	/etc/init.d/zeroblock reload
+
+
+
+	# оживляем авг10
+	# echo "→ \"Оживляем\" авг10"
+	# printf "  "
+	# for i in $(seq 10 -1 1); do
+	# 	ping -I awg10 8.8.8.8 -c 1 >/dev/null 2>&1
+	# 	printf "$i "
+	# 	sleep 1
+	# done
+	# echo ""
+	# echo "→ Перезапускаем dnsmasq"
+	# /etc/init.d/dnsmasq restart
+	# echo ""
+}
+
 # ============================================
 # MAIN
 # ============================================
@@ -552,51 +601,8 @@ stop_and_rplce_config_zeroblock
 wait_zeroblock_ready
 dns_redirect "recovery"
 refresh_luci
+to_the_end
 
-ubus call zeroblock flush_conntrack >/dev/null 2>&1
-/etc/init.d/zeroblock stop >/dev/null 2>&1
-uci delete zeroblock.awg10.community_lists
-uci delete zeroblock.opera.community_lists
-
-sleep 1
-uci commit
-
-for item in anime block discord googleplay messengers meta news porn socials torrent video youtube; do
-    uci add_list zeroblock.awg10.community_lists="$item"
-done
-
-sleep 1
-uci commit
-
-for item in ai art geoblock games music shop tools; do
-    uci add_list zeroblock.opera.community_lists="$item"
-done
-sleep 1
-
-uci commit
-uci commit luci
-sleep 1
-
-
-/etc/init.d/zeroblock start
-/etc/init.d/zeroblock reload
-
-
-
-# оживляем авг10
-# echo "→ \"Оживляем\" авг10"
-# printf "  "
-# for i in $(seq 10 -1 1); do
-# 	ping -I awg10 8.8.8.8 -c 1 >/dev/null 2>&1
-# 	printf "$i "
-# 	sleep 1
-# done
-# echo ""
-# echo "→ Перезапускаем dnsmasq"
-# /etc/init.d/dnsmasq restart
-# echo ""
-
-new_install="1"
 [ "$new_install" = "1" ] && echo -e  " ===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
 echo "=== КОНЕЦ ==="
 echo ""
