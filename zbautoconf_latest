@@ -8,8 +8,8 @@
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
-annoing_services="podkop podkop-plus zapret zapret2 youtubeUnblock ruantiblock"
-VER="v0.0.4"
+annoying_services="podkop podkop-plus zapret zapret2 youtubeUnblock ruantiblock"
+VER="v0.0.5"
 clear
 
 # --- ЦВЕТА ---
@@ -61,8 +61,6 @@ install_zeroblock() {
     fi
 }
 
-
-
 # Функция создания директории
 create_backup_dir() {
     if [ ! -d "$BACKUP_DIR" ]; then
@@ -98,11 +96,7 @@ create_backup() {
 	echo ""
 }
 
-
-# ============================================
-# Функция проверки бэкапа
-# ============================================
-
+# Функция проверки штатного бэкапа 
 verify_backup() {
     BACKUP_FILE="$1"
     
@@ -149,11 +143,11 @@ verify_backup() {
 # BACKUP END
 
 # Остановка, отключение и удаление мешающих сервисов
-kill_annoing_services() {
+kill_annoying_services() {
 	echo "→ Останавливаем потенциально мешающие службы"
 	add_spaces="  "
 	printf "$add_spaces"
-    for service in $annoing_services; do
+    for service in $annoying_services; do
         if [ -f "/etc/init.d/$service" ]; then
 			if echo "$service" | grep -q -i "zapret"; then printf "✓ "; fi
 			/etc/init.d/"$service" stop 2>/dev/null
@@ -380,6 +374,7 @@ ${CLR_OFF}"
 
 # --- МЕНЮ ---
 
+
 draw_main_menu() {
     clear
     echo -e "${CYAN}==================================${CLR_OFF}"
@@ -539,7 +534,8 @@ draw_restore_menu() {
     done
 }
 
-to_the_end() {
+# Дополнительные действия 
+on_the_end() {
 
 	ubus call zeroblock flush_conntrack >/dev/null 2>&1
 	/etc/init.d/zeroblock stop >/dev/null 2>&1
@@ -550,26 +546,19 @@ to_the_end() {
 	sleep 1
 	uci commit
 
-	for item in anime block discord googleplay messengers meta news porn socials torrent video youtube; do
+	# awg10.community_lists
+	for item in anime block discord googleplay messengers meta torrent video youtube; do
 		uci add_list zeroblock.awg10.community_lists="$item"
-	done
-	sleep 1
-	uci commit
+	done; sleep 1; uci commit
 
-	for item in ai art geoblock games music shop tools; do
+	# opera.community_lists
+	for item in ai art geoblock games music shop tools porn socials news; do
 		uci add_list zeroblock.opera.community_lists="$item"
-	done
-	sleep 1
-	uci commit
-	uci commit luci
-	
-	sleep 1
+	done; sleep 1; uci commit; uci commit luci;	sleep 1
 
 	# Перезапускаем ZEROBLOCK
 	/etc/init.d/zeroblock start
 	/etc/init.d/zeroblock reload
-
-
 
 	# оживляем авг10
 	# echo "→ \"Оживляем\" авг10"
@@ -594,14 +583,14 @@ draw_main_menu
 create_backup_dir
 create_backup
 verify_backup "${BACKUP_FILE}"
-kill_annoing_services
+kill_annoying_services
 dns_redirect "${TEMP_DNS}"
 install_zeroblock
 stop_and_rplce_config_zeroblock
 wait_zeroblock_ready
 dns_redirect "recovery"
 refresh_luci
-to_the_end
+on_the_end
 
 [ "$new_install" = "1" ] && echo -e  " ===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
 echo "=== КОНЕЦ ==="
