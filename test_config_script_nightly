@@ -1990,3 +1990,4 @@ if [ -n "$iface_restart" ]; then
     done
 fi
 echo ""
+exit 234
