@@ -612,8 +612,6 @@ WAN_IFACE_MTU=$(get_mtu "$WAN_IF")
 
 
 # --- СОБИРАЕМ ДАННЫЕ О СОСТОЯНИИ СИСТЕМЫ ---
-# --- СОБИРАЕМ ДАННЫЕ О СОСТОЯНИИ СИСТЕМЫ ---
-
 
 LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g')
 MEM_T=$(free | grep Mem | awk '{print $2}'); MEM_U=$(free | grep Mem | awk '{print $3}')
@@ -625,7 +623,6 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
 
 
 # --- СОБИРАЕМ СПИСКИ ПРОГРАММ УСТАНОВЛЕННЫХ, В АВТОЗАПУСКЕ И ЗАПУЩЕННЫХ ---
-
 
 PK_AUTOSTART=0
 ZB_AUTOSTART=0
@@ -671,8 +668,10 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 	YT_IP=$(nslookup youtube.com 127.0.0.1 2>/dev/null | grep -A 1 "Name:" | grep "Address" | awk '{print $2}' | head -1)
 	printf "  Facebook IP:   ${YELLOW}%s${CLR_OFF}" "${FB_IP:-UNKNOWN} | "
 	printf "YouTube IP: ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
-
-
+	
+	# выводим данные по фейлсейф ДНС
+	printf "  FLD:           "
+	echo "[ $(uci -q get dns-failsafe-proxy.main.listen_ip):$(uci -q get dns-failsafe-proxy.main.listen_port) ] [ $(uci -q get dns-failsafe-proxy.main.dns_ip):$(uci -q get dns-failsafe-proxy.main.dns_port) ] [ $(uci -q get dns-failsafe-proxy.main.failback_ip):$(uci -q get dns-failsafe-proxy.main.failback_port) ]"
 
 
 
