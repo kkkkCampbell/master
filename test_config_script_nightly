@@ -9,7 +9,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.5"
+VER="0.2.6"
 
 clear
 
@@ -670,11 +670,34 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 	printf "YouTube IP: ${YELLOW}%s${CLR_OFF}\n" "${YT_IP:-UNKNOWN}"
 	
 	# выводим данные по фейлсейф ДНС
-	printf "  FLD:           "
-	echo "[ $(uci -q get dns-failsafe-proxy.main.listen_ip):$(uci -q get dns-failsafe-proxy.main.listen_port) ] [ $(uci -q get dns-failsafe-proxy.main.dns_ip):$(uci -q get dns-failsafe-proxy.main.dns_port) ] [ $(uci -q get dns-failsafe-proxy.main.failback_ip):$(uci -q get dns-failsafe-proxy.main.failback_port) ]"
+	printf "  FailSafeDNS:   "
+	#echo "[ $(uci -q get dns-failsafe-proxy.main.listen_ip):$(uci -q get dns-failsafe-proxy.main.listen_port) ] [ $(uci -q get dns-failsafe-proxy.main.dns_ip):$(uci -q get dns-failsafe-proxy.main.dns_port) ] [ $(uci -q get dns-failsafe-proxy.main.failback_ip):$(uci -q get dns-failsafe-proxy.main.failback_port) ]"
 
 
+	listen_ip=$(uci -q get dns-failsafe-proxy.main.listen_ip)
+	listen_port=$(uci -q get dns-failsafe-proxy.main.listen_port)
+	dns_ip=$(uci -q get dns-failsafe-proxy.main.dns_ip)
+	dns_port=$(uci -q get dns-failsafe-proxy.main.dns_port)
+	failback_ip=$(uci -q get dns-failsafe-proxy.main.failback_ip)
+	failback_port=$(uci -q get dns-failsafe-proxy.main.failback_port)
 
+	# Цвета
+
+	# Группа 1
+	dns_color="${GREEN}"; excl=""
+	[ "$listen_ip:$listen_port" != "127.0.0.1:5359" ] && excl="!!!_" && dns_color="$RED_BRIGHT"
+	printf "${excl}${dns_color}[$listen_ip:$listen_port]${CLR_OFF} "
+
+	# Группа 2
+	dns_color="${GREEN}"; excl=""
+	[ "$dns_ip:$dns_port" != "127.0.0.1:5053" ] && [ "$dns_ip:$dns_port" != "127.0.0.42:53" ] && excl="!!!_" && dns_color="$RED_BRIGHT"
+	printf "${excl}${dns_color}[$dns_ip:$dns_port]${CLR_OFF} "
+
+	# Группа 3
+	dns_color="${GREEN}"; excl=""
+	[ "$failback_ip:$failback_port" != "127.0.0.1:5453" ] && excl="!_" && dns_color="$YELLOW"
+	printf "${excl}${dns_color}[$failback_ip:$failback_port]${CLR_OFF} "
+	echo ""
 
 
 
