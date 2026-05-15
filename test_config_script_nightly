@@ -9,7 +9,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.6"
+VER="0.2.7"
 
 clear
 
@@ -1907,10 +1907,10 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 		# проверка на состояние "CIDR Списки сообщества". Вкл|Выкл
 		[ -n "$(uci -q get zeroblock.settings.download_cidr)" ] && \
 			echo -e "${YELLOW}  !_CIDR Списки сообщества: $(uci -q get zeroblock.settings.download_cidr)${CLR_OFF}"
-
-
-		
-
+			
+		# проверка на геоайпи
+		[ -n "$(uci get zeroblock.engine.excluded_geoip 2>/dev/null)" ] && echo -e "  ${YELLOW}GeoIP исключения: ${CYAN}$(uci get zeroblock.engine.excluded_geoip 2>/dev/null)${CLR_OFF}"
+ 
 	# --- БОЛЬШОЙ ЦИКЛ ПО ВСЕМ АКТИВНЫМ СЕКЦИЯМ ZB ---
 	# внутри которого отдельными модулями выполняются некоторые операции с каждой секцией
 
