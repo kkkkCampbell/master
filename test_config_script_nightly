@@ -9,7 +9,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.7"
+VER="0.2.8"
 
 clear
 
@@ -681,8 +681,6 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 	failback_ip=$(uci -q get dns-failsafe-proxy.main.failback_ip)
 	failback_port=$(uci -q get dns-failsafe-proxy.main.failback_port)
 
-	# Цвета
-
 	# Группа 1
 	dns_color="${GREEN}"; excl=""
 	[ "$listen_ip:$listen_port" != "127.0.0.1:5359" ] && excl="!!!_" && dns_color="$RED_BRIGHT"
@@ -699,7 +697,9 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 	printf "${excl}${dns_color}[$failback_ip:$failback_port]${CLR_OFF} "
 	echo ""
 
-
+	# выводим данные по /etc/hosts
+	printf "  /etc/hosts:    "
+	sed 's/#.*//' /etc/hosts | awk 'NF {for(i=2;i<=NF;i++) print "[ " $1 " " $i " ]"}' | awk '{printf "%s%s", $0, (NR%3==0?"\n":" ")} END {if(NR%3!=0) print ""}' | awk '{if(NR==1) print; else printf "%17s%s\n", "", $0}'
 
 
 
