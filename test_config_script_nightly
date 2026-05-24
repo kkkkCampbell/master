@@ -9,7 +9,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.8"
+VER="0.2.9"
 
 clear
 
@@ -1808,7 +1808,10 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 		fi
 	fi
 	
-	
+	# инверсные catch-all секции
+	printf "%b" "${YELLOW}  !_Инверсные catch-all секции : ${CYAN}"
+	uci show | grep "^zeroblock.*invert='1'" | awk -F"[.=]" '{print $2}' | tr '\n' ' '
+	echo -e "${CLR_OFF}"
 	
 	
 	# --- ИЩЕМ ROUTE_ALLOWED_IPS И NOHOSTROUTE ---
