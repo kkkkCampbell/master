@@ -1809,7 +1809,7 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 	fi
 	
 	# инверсные catch-all секции
-	names=$(uci show | grep "^zeroblock.*invert='1'" | awk -F"[.=]" '{
+	names=$(uci show | grep "^zeroblock.community_lists_invert='1'" | awk -F"[.=]" '{
 	  if (s=="") s=$2; else s=s" "$2
 	  found=1
 	}
