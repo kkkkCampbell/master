@@ -1913,7 +1913,7 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 	if [ "${ACTIVE_API}" == "zb" ]; then
 		
 		# проверка на состояние "Автозагрузка секций". Вкл|Выкл
-		if [ -n "$(uci -q get zeroblock.auto_config.sections_auto_load)" ]; then
+		if [ "$(uci -q get zeroblock.auto_config.sections_auto_load)" = "1" ]; then
 			echo -e "${YELLOW}  !_Автозагрузка секций включена${CLR_OFF}"
 		fi
 		
