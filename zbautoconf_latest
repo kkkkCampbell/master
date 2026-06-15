@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.1"
+VER="v0.1.2"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
@@ -512,6 +512,8 @@ draw_main_menu() {
     case "$input" in
         1)  echo -e ""
             echo -e "${GREEN}→ Запуск установки и настройки...${CLR_OFF}"
+			# очищаем папку /etc/zeroblock от старых файлов
+			find /etc/zeroblock -maxdepth 1 -type f -exec rm -f -- {} +
             break
             ;;
         2) if [ "$BACKUP_COUNT" -gt 0 ]; then
