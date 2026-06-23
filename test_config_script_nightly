@@ -9,7 +9,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.12"
+VER="0.2.13"
 
 clear
 
@@ -161,13 +161,9 @@ ver=$(opkg list-installed | awk '/^opera-proxy / {print $3}' | sed 's/[-+~].*//'
 
 if [ "$ver" != "" ]; then 
 	# Проверяем, что версия меньше и при этом не равна
-	if ! opkg compare-versions "$ver" "=" "1.15.2"; then
+	if opkg compare-versions "$ver" "<" "1.15.3" && ! opkg compare-versions "$ver" "=" "1.15.3"; then
 		OPERA_INSTALLED=0
 	fi
-
-	#if opkg compare-versions "$ver" "<" "1.15.10" && ! opkg compare-versions "$ver" "=" "1.15.1"; then
-	#	OPERA_INSTALLED=0
-	#fi
 
 else
 	echo "Пакет \"opera-proxy\" не установлен. Пропускаем обновление пакета."
