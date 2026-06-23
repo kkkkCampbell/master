@@ -161,9 +161,14 @@ ver=$(opkg list-installed | awk '/^opera-proxy / {print $3}' | sed 's/[-+~].*//'
 
 if [ "$ver" != "" ]; then 
 	# Проверяем, что версия меньше и при этом не равна
-	if opkg compare-versions "$ver" "<" "1.15.10" && ! opkg compare-versions "$ver" "=" "1.15.1"; then
+	if ! opkg compare-versions "$ver" "=" "1.15.2"; then
 		OPERA_INSTALLED=0
 	fi
+
+	#if opkg compare-versions "$ver" "<" "1.15.10" && ! opkg compare-versions "$ver" "=" "1.15.1"; then
+	#	OPERA_INSTALLED=0
+	#fi
+
 else
 	echo "Пакет \"opera-proxy\" не установлен. Пропускаем обновление пакета."
 fi
