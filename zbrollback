@@ -1,0 +1,38 @@
+#!/bin/sh
+
+MAX_ATTEMPTS=4
+attempt=0
+clear
+
+while [ $attempt -lt $MAX_ATTEMPTS ]; do
+    attempt=$((attempt + 1))
+    echo "=== Попытка $attempt из $MAX_ATTEMPTS ==="
+
+    opkg update
+
+    # Принудительное удаление (всегда)
+    opkg remove --force-depends zeroblock luci-app-zeroblock
+sleep 5
+    # Установка
+    opkg install zeroblock luci-app-zeroblock
+sleep 10
+    # Триггер выхода — оба пакета установлены
+    if opkg list-installed | grep -q "^zeroblock -" && \
+       opkg list-installed | grep -q "^luci-app-zeroblock -"; then
+        echo "Установка успешно завершена. Выход."
+        break
+    else
+        echo "Установка не удалась. Повтор через 2 секунды..."
+        sleep 2
+    fi
+done
+
+# Финальная проверка
+if ! (opkg list-installed | grep -q "^zeroblock -" && \
+      opkg list-installed | grep -q "^luci-app-zeroblock -"); then
+    echo "Ошибка: не удалось установить пакеты за $MAX_ATTEMPTS попыток."
+    exit 1
+fi
+
+echo "Все готово."
+
