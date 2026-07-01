@@ -14,8 +14,8 @@ while [ $attempt -lt $MAX_ATTEMPTS ]; do
     opkg remove --force-depends zeroblock luci-app-zeroblock
 sleep 5
     # Установка
-    opkg install zeroblock luci-app-zeroblock
-sleep 10
+    opkg install zeroblock luci-app-zeroblock >/dev/null 2>&1
+sleep 3
     # Триггер выхода — оба пакета установлены
     if opkg list-installed | grep -q "^zeroblock -" && \
        opkg list-installed | grep -q "^luci-app-zeroblock -"; then
