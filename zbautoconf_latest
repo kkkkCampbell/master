@@ -7,12 +7,12 @@
 # 
 # ============================================
 
-VER="v0.1.2"
+VER="v0.1.3"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
-annoying_services="podkop podkop-plus zapret zapret2 youtubeUnblock ruantiblock"
-awg10_community_lists="anime block discord googleplay messengers meta torrent video youtube"
+annoying_services="podkop podkop-plus forkop zapret zapret2 youtubeUnblock ruantiblock"
+awg10_community_lists="anime block discord googleplay torrent video youtube"
 opera_community_lists="ai art geoblock games music shop tools porn socials news repo"
 
 clear
@@ -266,6 +266,7 @@ stop_and_rplce_config_zeroblock() {
 	rm -f /etc/config/zeroblock
     cat > /etc/config/zeroblock << 'EOF'
 
+
 config settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
@@ -303,26 +304,118 @@ config settings 'settings'
 	option autoremove_static_lease_default_v1 '1'
 	option subscription_ua_migrated_v2 '1'
 	option subscription_update_interval 'off'
+	option whitelist_bootstrap_max_attempts '10'
+	option health_opera '1'
+	option whitelist_bootstrap_dns_server '77.88.8.8'
+	option whitelist_bootstrap_dns_via_whitelist '0'
+
+config section 'MRSSENGERS'
+	option connection_type 'vpn'
+	option force_disable_fakeip '0'
+	list server_community_lists 'geoblock'
+	list server_community_lists 'ai'
+	option disable_fakeip '1'
+	list community_lists 'messengers'
+	list community_lists 'meta'
+	option dscp_enabled '0'
+	option enable_mixed_proxy '1'
+	option per_section_tproxy '0'
+	option no_sniff '0'
+	option force_cidr_community '0'
+	option community_lists_invert '0'
+	option enable_user_lists '0'
+	option enable_exclusions '0'
+	option parental_control '0'
+	option failover_enabled '0'
+	option user_subnet_list_type 'text'
+	list user_subnets_text '# TELEGRAM #'
+	list user_subnets_text '############'
+	list user_subnets_text '# IPv4-подсети Telegram'
+	list user_subnets_text '91.105.192.0/23 91.108.4.0/22 91.108.8.0/21'
+	list user_subnets_text '91.108.16.0/21 91.108.56.0/22 149.154.160.0/20'
+	list user_subnets_text '185.76.151.0/24'
+	list user_subnets_text '#IPv6-подсети Telegram'
+	list user_subnets_text '2001:67c:4e8::/48 2001:b28:f23c::/48 2001:b28:f23d::/48'
+	list user_subnets_text '2001:b28:f23f::/48 2a0a:f280::/32'
+	option enabled '1'
+	option interface 'awg10'
+	option mixed_port '2080'
+
+config section 'opera'
+	option enabled '1'
+	option connection_type 'proxy'
+	option proxy_config_type 'outbound'
+	option outbound_json '{"type":"http","server":"127.0.0.1","server_port":18080}'
+	option force_disable_fakeip '0'
+	list server_community_lists 'geoblock'
+	list server_community_lists 'ai'
+	option disable_fakeip '0'
+	list community_lists 'ai'
+	list community_lists 'art'
+	list community_lists 'geoblock'
+	list community_lists 'games'
+	list community_lists 'music'
+	list community_lists 'shop'
+	list community_lists 'tools'
+	list community_lists 'porn'
+	list community_lists 'socials'
+	list community_lists 'news'
+	list community_lists 'repo'
+
+config section 'awg10'
+	option enabled '1'
+	option force_disable_fakeip '0'
+	option connection_type 'vpn'
+	option interface 'awg10'
+	list server_community_lists 'socials'
+	list server_community_lists 'block'
+	list server_community_lists 'porn'
+	list server_community_lists 'news'
+	list server_community_lists 'anime'
+	list server_community_lists 'youtube'
+	list server_community_lists 'discord'
+	list server_community_lists 'meta'
+	list server_community_lists 'video'
+	list server_community_lists 'messengers'
+	list server_community_lists 'googleplay'
+	option disable_fakeip '0'
+	option dscp_enabled '0'
+	option enable_mixed_proxy '0'
+	option per_section_tproxy '0'
+	option no_sniff '0'
+	list community_lists 'anime'
+	list community_lists 'block'
+	list community_lists 'discord'
+	list community_lists 'googleplay'
+	list community_lists 'torrent'
+	list community_lists 'video'
+	list community_lists 'youtube'
+	option force_cidr_community '0'
+	option community_lists_invert '0'
+	option enable_user_lists '0'
+	option enable_exclusions '0'
+	option parental_control '0'
+	option failover_enabled '0'
 
 config auto_config 'auto_config'
 	option opera_auto_config '1'
 	option awg_auto_config '1'
 	option xray_auto_config '1'
-	option zapret2_auto_config '0'
+	option zapret2_auto_config '1'
 	option trusttunnel_auto_config '0'
 	option naive_auto_config '0'
-	option sections_auto_load '1'
 	option zapret2_auto_strategies '0'
 	option opera_ownership_repair_pending '0'
 	option xray_ownership_repair_pending '0'
 	option awg_ownership_repair_pending '0'
+	option sections_auto_load '0'
 
 config dashboard 'dashboard'
 
 config diagnostic 'diagnostic'
 
 config engine 'engine'
-	option dns_type 'dot'
+	option dns_type 'doh'
 	option dns_server 'dns.quad9.net'
 	option bootstrap_dns_server '9.9.9.11'
 	option dns_rewrite_ttl '60'
@@ -380,6 +473,8 @@ config engine 'engine'
 	list source_network_interfaces 'br-lan'
 	option naive_logging '0'
 	option global_exclude_mode 'route'
+
+
 
 EOF
 
