@@ -309,7 +309,7 @@ config settings 'settings'
 	option whitelist_bootstrap_dns_server '77.88.8.8'
 	option whitelist_bootstrap_dns_via_whitelist '0'
 
-config section 'MRSSENGERS'
+config section 'MESSENGERS'
 	option connection_type 'vpn'
 	option force_disable_fakeip '0'
 	list server_community_lists 'geoblock'
