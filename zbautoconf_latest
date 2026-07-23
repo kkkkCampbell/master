@@ -267,7 +267,7 @@ stop_and_rplce_config_zeroblock() {
     cat > /etc/config/zeroblock << 'EOF'
 
 
-config settings 'settings'
+onfig settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
 	option health_enabled '1'
@@ -300,7 +300,7 @@ config settings 'settings'
 	option timeouts_forced_to_max_v4 '1'
 	option text_lists_migrated '1'
 	option sub_max_proxies_capped '1'
-	option schema_version '45'
+	option schema_version '46'
 	option autoremove_static_lease_default_v1 '1'
 	option subscription_ua_migrated_v2 '1'
 	option subscription_update_interval 'off'
