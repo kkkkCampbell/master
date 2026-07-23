@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.5"
+VER="v0.1.6"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
@@ -416,7 +416,7 @@ config diagnostic 'diagnostic'
 
 config engine 'engine'
 	option dns_type 'doh'
-	option dns_server 'dns.quad9.net'
+	option dns_server 'xbox-dns.ru'
 	option bootstrap_dns_server '9.9.9.11'
 	option dns_rewrite_ttl '60'
 	option dns_strategy 'ipv4_only'
@@ -473,8 +473,9 @@ config engine 'engine'
 	list source_network_interfaces 'br-lan'
 	option naive_logging '0'
 	option global_exclude_mode 'route'
-
-
+	option GOMEMLIMIT '0'
+	option xray_fragment '0'
+	option bootstrap_readiness_timeout '30'
 
 EOF
 
