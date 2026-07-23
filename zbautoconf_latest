@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.4"
+VER="v0.1.5"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
@@ -267,7 +267,7 @@ stop_and_rplce_config_zeroblock() {
     cat > /etc/config/zeroblock << 'EOF'
 
 
-onfig settings 'settings'
+config settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
 	option health_enabled '1'
