@@ -7,13 +7,13 @@
 # 
 # ============================================
 
-VER="v0.1.3"
+VER="v0.1.4"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
 annoying_services="podkop podkop-plus forkop zapret zapret2 youtubeUnblock ruantiblock"
-awg10_community_lists="anime block discord googleplay torrent video youtube"
-opera_community_lists="ai art geoblock games music shop tools porn socials news repo"
+awg10_community_lists="anime block discord googleplay torrent youtube"
+opera_community_lists="video art geoblock games music shop porn socials news repo"
 
 clear
 
