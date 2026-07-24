@@ -9,7 +9,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.13"
+VER="0.2.14"
 
 clear
 
@@ -81,7 +81,7 @@ UNWANTED_DOMAINS="yandex.ru ya.ru yandex.net yastatic.net yandexcloud.net yandex
 EXCLUDE_FROM_UNWANTED="2ip.ru"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
-RAW_SERVICES="zeroblock podkop luci-app-podkop-plus sing-box sing-box-tiny zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
+RAW_SERVICES="zeroblock podkop forkop luci-app-podkop-plus sing-box sing-box-tiny zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 LOG_FILE="/root/analyzer.log"
@@ -559,13 +559,16 @@ get_mtu() {
 get_delay() {
     _proxy_name="$1"
     _secret="$2"
-    for i in $(seq 1 $RETRIES_API); do
+    _zeb_suffix="$3"
+
+	for i in $(seq 1 $RETRIES_API); do
         if [ -n "$_secret" ]; then
-            resp=$(curl -s -H "Authorization: Bearer $_secret" "http://${LAN_IP}:${CLASH_PORT}/proxies/${_proxy_name}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}")
+            resp=$(curl -s -H "Authorization: Bearer $_secret" "http://${LAN_IP}:${CLASH_PORT}/proxies/${_proxy_name}${_zeb_suffix}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}")
         else
-            resp=$(curl -s "http://${LAN_IP}:${CLASH_PORT}/proxies/${_proxy_name}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}")
+            resp=$(curl -s "http://${LAN_IP}:${CLASH_PORT}/proxies/${_proxy_name}${_zeb_suffix}/delay?url=${TEST_API_URL}&timeout=${TIMEOUT_API}")
         fi
-        delay=$(echo "$resp" | jq -r '.delay // ""')
+        
+		delay=$(echo "$resp" | jq -r '.delay // ""')
         if [ -n "$delay" ] && [ "$delay" -gt 0 ] 2>/dev/null; then
             echo "$delay"
             return 0
@@ -1124,13 +1127,15 @@ if [ ! -z "${INACTIVE_ZBPK}" ]; then
 				[ -n "$mtu_val" ] && mtu="$mtu_val"
 				;;
 		esac
-
+		
 		if [ "$ACTIVE_API" = "zb" ]; then
 			proxy_name="$test_sect"
-			delay=$(get_delay "$proxy_name" "$SECRET")
+			zeb_suffix="__section"
+			delay=$(get_delay "$proxy_name" "$SECRET" "$zeb_suffix")
 		else
+			zeb_suffix=""
 			proxy_name="${test_sect}-out"
-			delay=$(get_delay "$proxy_name" "")
+			delay=$(get_delay "$proxy_name" "" "")
 		fi
 
 		# Формируем красивый список секций (первые две, остальные +N)
