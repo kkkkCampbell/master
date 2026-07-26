@@ -3,13 +3,25 @@
 # OPENWRT_FULL_BACKUP
 
 clear
-echo "(v0.4.1)"
+echo "(v0.4.2)"
 sleep 2
 clear
 ksmbd_otkaz=0
 
+#проверка версии OpenWRT
+if [ -f /usr/bin/apk ]; then
+        ipkg_bin="apk"
+		list_installed="list --installed"
+		install="add"
+else
+        ipkg_bin="opkg"
+		list_installed="list-installed"
+		install="install"
+fi
+
+ 
 # Проверяем, установлен ли ksmbd
-if ! opkg list-installed | grep -q '^ksmbd-server'; then
+if ! $ipkg_bin $list_installed | grep -q '^ksmbd-server'; then
     # Задаем вопрос об установке
     printf "Установить ksmbd для доступа к роутеру по сети? (\033[1;32mY\033[0m/\033[0mn): "
     read answer
@@ -18,8 +30,8 @@ if ! opkg list-installed | grep -q '^ksmbd-server'; then
     case "${answer:-Y}" in
         [Yy]*) 
             echo "Устанавливаем ksmbd..."
-            opkg update
-            opkg install luci-i18n-ksmbd-ru ksmbd-avahi-service
+            $ipkg_bin update
+            $ipkg_bin $install luci-i18n-ksmbd-ru ksmbd-avahi-service
             ;;
         *)
             echo "Установка ksmbd отклонена."
@@ -29,28 +41,28 @@ if ! opkg list-installed | grep -q '^ksmbd-server'; then
     esac
 fi
 
-if ! opkg list-installed | grep -q '^tar'; then
+if ! $ipkg_bin $list_installed | grep -q '^tar'; then
 	echo Устанавливаем полную версию tar
 	echo ================================
 	echo
-	opkg update
-	opkg install tar
+	$ipkg_bin update
+	$ipkg_bin $install tar
 fi
 
 
 # формируем скрипт очистки осиротевших пакетов
 
-CLEANUP_SCRIPT="/etc/opkg_cleanup_$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c8).sh" && cat > "$CLEANUP_SCRIPT" << 'EOF' && chmod +x "$CLEANUP_SCRIPT" && (sed -i '/^exit 0$/d;/^$/d' /etc/rc.local 2>/dev/null; echo "$CLEANUP_SCRIPT" >> /etc/rc.local; echo "exit 0" >> /etc/rc.local; chmod +x /etc/rc.local)
+CLEANUP_SCRIPT="/etc/$ipkg_bin_cleanup_$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c8).sh" && cat > "$CLEANUP_SCRIPT" << 'EOF' && chmod +x "$CLEANUP_SCRIPT" && (sed -i '/^exit 0$/d;/^$/d' /etc/rc.local 2>/dev/null; echo "$CLEANUP_SCRIPT" >> /etc/rc.local; echo "exit 0" >> /etc/rc.local; chmod +x /etc/rc.local)
 #!/bin/sh
 # Удаляем старые следы (если скрипт прерывался ранее)
 sed -i '/^exit 0$/d;/^$/d' /etc/rc.local 2>/dev/null
 
-# Основная очистка opkg
-grep "^Package: " /usr/lib/opkg/status | cut -d' ' -f2 | while read -r pkg; do
-    [ ! -f "/usr/lib/opkg/info/$pkg.list" ] && 
-    sed -i "/^Package: $pkg$/,/^$/d" /usr/lib/opkg/status
+# Основная очистка $ipkg_bin
+grep "^Package: " /usr/lib/$ipkg_bin/status | cut -d' ' -f2 | while read -r pkg; do
+    [ ! -f "/usr/lib/$ipkg_bin/info/$pkg.list" ] && 
+    sed -i "/^Package: $pkg$/,/^$/d" /usr/lib/$ipkg_bin/status
 done
-opkg update
+$ipkg_bin update
 
 # Чистим себя из rc.local и возвращаем exit 0
 sed -i "\|$(basename "$0")|d" /etc/rc.local
