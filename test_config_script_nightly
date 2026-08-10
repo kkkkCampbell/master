@@ -164,7 +164,6 @@ CURL_INSTALLED=0
 OPERA_INSTALLED=1
 
 # проверяем наличие wget и curl в системе
-echo $PKG_CMD
 $PKG_CMD info wget-ssl >/dev/null 2>&1 && WGET_INSTALLED=1
 $PKG_CMD info curl >/dev/null 2>&1 && CURL_INSTALLED=1
 
