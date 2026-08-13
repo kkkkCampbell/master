@@ -6,10 +6,14 @@ if [ -x /usr/bin/apk ]; then
     PKG_CMD="apk"
     INSTALL_OPT="add"
     UPDATE_OPT="update"
+	INFO_OPT="-e"
+	UNTRUSTED="--allow-untrusted"
 else
     PKG_CMD="opkg"
     INSTALL_OPT="install"
     UPDATE_OPT="update"
+	INFO_OPT=""
+	UNTRUSTED=""
 fi
 
 zapret_state="$1"
@@ -20,7 +24,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.15"
+VER="0.2.16 (preAPK)"
 
 clear
 
@@ -64,7 +68,7 @@ sleep 4
 #ifup "$IFACE"
 
 if [ "$ZB_ACTIVE" = "1" ]; then
-	start=20
+	start=1
 	/etc/init.d/zeroblock reload & >/dev/null 2>&1
 elif [ "$PK_ACTIVE" = "1" ]; then
 	/etc/init.d/podkop restart >/dev/null 2>&1
@@ -164,8 +168,8 @@ CURL_INSTALLED=0
 OPERA_INSTALLED=1
 
 # проверяем наличие wget и curl в системе
-$PKG_CMD info wget-ssl >/dev/null 2>&1 && WGET_INSTALLED=1
-$PKG_CMD info curl >/dev/null 2>&1 && CURL_INSTALLED=1
+$PKG_CMD info $INFO_OPT wget-ssl >/dev/null 2>&1 && WGET_INSTALLED=1
+$PKG_CMD info $INFO_OPT curl >/dev/null 2>&1 && CURL_INSTALLED=1
 
 
 # Получаем установленную версию opera-proxy (обрезаем суффикс типа -1, +build)
@@ -199,16 +203,22 @@ if [ $WGET_INSTALLED -eq 0 ] || [ $CURL_INSTALLED -eq 0 ] || [ $OPERA_INSTALLED 
 
         # Обновляем списки с перенаправлением в лог
         # Используем временный конфиг
-        if $PKG_CMD -f "$_tmp_conf" $UPDATE_OPT > "$_update_log" 2>&1; then
+        if $PKG_CMD -f "$_tmp_conf" $UPDATE_OPT $UNTRUSTED > "$_update_log" 2>&1; then
             # Проверяем лог на наличие сетевых ошибок и ошибок opkg
             if grep -qiE "failed|error|unable|not found|returned [1-9]|bad address|refused|timeout" "$_update_log"; then
                 echo -e "${RED_BRIGHT}В логе найдены ошибки скачивания, повтор...${CLR_OFF}"
             else
                 echo -e "${GREEN}Списки обновлены успешно${CLR_OFF}"
                 # Устанавливаем через тот же конфиг с таймаутом
-                $PKG_CMD -f "$_tmp_conf" $INSTALL_OPT ${to_install}
-                OPKG_UPDATED=1
-                break
+				if [ -n $UNTRUSTED ]; then 
+					$PKG_CMD $INSTALL_OPT $UNTRUSTED ${to_install}
+					OPKG_UPDATED=1
+					break
+				else
+					$PKG_CMD -f "$_tmp_conf" $INSTALL_OPT $UNTRUSTED ${to_install}
+					OPKG_UPDATED=1
+					break
+				fi
             fi
         fi
 
@@ -251,7 +261,7 @@ if [ "$FUNCTIONS" = "$FUNCTIONS" ]; then
 f_services_installed() {
     for pkg in $RAW_SERVICES; do
         # Проверяем, установлен ли пакет
-        if $PKG_CMD info "$pkg" >/dev/null 2>&1; then
+        if $PKG_CMD info $INFO_OPT "$pkg" >/dev/null 2>&1; then
             if [ "$pkg" = "sing-box-tiny" ]; then
                 INSTALLED_SERVICES="$INSTALLED_SERVICES sing-box"
             else
