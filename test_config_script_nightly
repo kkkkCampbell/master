@@ -26,7 +26,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.17 (preAPK)"
+VER="0.2.18 (preAPK)"
 
 clear
 
@@ -1374,9 +1374,11 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 				# Если протокол не определён, обрабатываем секции с протоколом "any" если такие есть
 				[ -z "$F_KEY" ] && F_KEY="any"
 				 
-				# Ищем в строке конфига "--hostlist=" и в $fr вносим имя файла со списком доменов
+				# Ищем в строке конфига "--hostlist=" и в $fp вносим имя файла со списком доменов
 				# echo "Где мой хостлист? $section"
+
 				echo "$section" | grep -oE "\-\-hostlist=[^ '\" ]+" | cut -d= -f2 | while read -r fp; do
+				if [ -f "/opt/zapret/ipset/zapret-hosts-user.txt" ]; then
 					# Если файл со списком доменов пуст, выводим предупреждение
 					if ! grep -q '[[:alnum:][:punct:]]' "$fp"; then
 						printf "  ${RED_BRIGHT}Файл $(basename "$fp") пустой! Весь трафик обрабатывается zapret!!!${CLR_OFF}\n"
@@ -1385,6 +1387,7 @@ if [ "$PK_ACTIVE" != "0" ] || [ "$ZB_ACTIVE" != "0" ]; then
 						echo "example.com" >>"$fp"; /etc/init.d/zapret restart >/dev/null 2>&1
 						printf "${GREEN} Выполнено! ${CLR_OFF}\n"
 					fi
+				fi
 
 					[ -z "$fp" ] && continue
 					RP=""; [ -f "$fp" ] && RP="$fp"
