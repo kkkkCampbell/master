@@ -8,12 +8,14 @@ if [ -x /usr/bin/apk ]; then
     UPDATE_OPT="update"
 	INFO_OPT="-e"
 	UNTRUSTED="--allow-untrusted"
+	GREP_OPKG=""
 else
     PKG_CMD="opkg"
     INSTALL_OPT="install"
     UPDATE_OPT="update"
 	INFO_OPT=""
 	UNTRUSTED=""
+	GREP_OPKG="Package: "
 fi
 
 zapret_state="$1"
@@ -24,7 +26,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.16 (preAPK)"
+VER="0.2.17 (preAPK)"
 
 clear
 
@@ -96,7 +98,7 @@ UNWANTED_DOMAINS="yandex.ru ya.ru yandex.net yastatic.net yandexcloud.net yandex
 EXCLUDE_FROM_UNWANTED="2ip.ru"
 
 # --- ЕДИНЫЙ СПИСОК СЕРВИСОВ ---
-RAW_SERVICES="zeroblock podkop forkop luci-app-podkop-plus sing-box sing-box-tiny zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
+RAW_SERVICES="zeroblock podkop forkop luci-app-podkop-plus sing-box sing-box-tiny sing-box-rr zapret zapret2 opera-proxy youtubeUnblock ruantiblock"
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 LOG_FILE="/root/analyzer.log"
@@ -158,9 +160,11 @@ _tmp_conf="/tmp/opkg_safe.conf"
 _update_log="/tmp/opkg_update_log"
 
 # --- ПОДГОТОВКА КОНФИГА OPKG ---
-cat /etc/opkg.conf > "$_tmp_conf"
-sed -i '/http_timeout/d' "$_tmp_conf"
-echo "option http_timeout $_opkg_timeout" >> "$_tmp_conf"
+if [ "$PKG_CMD" = "opkg" ]; then
+	cat /etc/opkg.conf > "$_tmp_conf"
+	sed -i '/http_timeout/d' "$_tmp_conf"
+	echo "option http_timeout $_opkg_timeout" >> "$_tmp_conf"
+fi
 
 # --- УСТАНОВКА ---
 WGET_INSTALLED=0
@@ -260,9 +264,9 @@ if [ "$FUNCTIONS" = "$FUNCTIONS" ]; then
 
 f_services_installed() {
     for pkg in $RAW_SERVICES; do
-        # Проверяем, установлен ли пакет
-        if $PKG_CMD info $INFO_OPT "$pkg" >/dev/null 2>&1; then
-            if [ "$pkg" = "sing-box-tiny" ]; then
+		tmpstr=$("$PKG_CMD" info "$INFO_OPT" "$pkg" 2>/dev/null | grep -Fx "${GREP_OPKG}${pkg}")
+        if [ "$tmpstr" = "$pkg" ] || [ "$tmpstr" = "Package: $pkg" ]; then
+            if [ "$pkg" = "sing-box-tiny" ] || [ "$pkg" = "sing-box-rr" ]; then
                 INSTALLED_SERVICES="$INSTALLED_SERVICES sing-box"
             else
                 INSTALLED_SERVICES="$INSTALLED_SERVICES $pkg"
