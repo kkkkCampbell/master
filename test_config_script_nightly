@@ -68,7 +68,7 @@ sleep 4
 #ifup "$IFACE"
 
 if [ "$ZB_ACTIVE" = "1" ]; then
-	start=1
+	start=20
 	/etc/init.d/zeroblock reload & >/dev/null 2>&1
 elif [ "$PK_ACTIVE" = "1" ]; then
 	/etc/init.d/podkop restart >/dev/null 2>&1
