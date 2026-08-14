@@ -15,7 +15,8 @@ else
     UPDATE_OPT="update"
 	INFO_OPT=""
 	UNTRUSTED=""
-	GREP_OPKG="Package: "
+	GREP_OPKG_ARGS="-x -F"
+	LIST-INSTALLED="list-installed"
 fi
 
 zapret_state="$1"
@@ -26,15 +27,17 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.18 (preAPK)"
+VER="0.2.19 (preAPK)"
 
 clear
 
 
 # --- ПРОВЕРКА NFTABLES ---
 check_nftables() {
-    nft list tables 2>/dev/null | grep -q "inet $1"
+    nft list tables 2>/dev/null | grep -q -i -F "inet $1"
 }
+PK_ACTIVE=0
+ZB_ACTIVE=0
 check_nftables "PodkopTable" && PK_ACTIVE=1
 check_nftables "zeroblock" && ZB_ACTIVE=1
 
@@ -70,7 +73,7 @@ sleep 4
 #ifup "$IFACE"
 
 if [ "$ZB_ACTIVE" = "1" ]; then
-	start=20
+	start=1
 	/etc/init.d/zeroblock reload & >/dev/null 2>&1
 elif [ "$PK_ACTIVE" = "1" ]; then
 	/etc/init.d/podkop restart >/dev/null 2>&1
@@ -263,9 +266,21 @@ if [ "$FUNCTIONS" = "$FUNCTIONS" ]; then
 # --- СПИСОК УСТАНОВЛЕННЫХ СЕРВИСОВ/ПРОГРАММ ---
 
 f_services_installed() {
+    INSTALLED_SERVICES=""
     for pkg in $RAW_SERVICES; do
-		tmpstr=$("$PKG_CMD" info "$INFO_OPT" "$pkg" 2>/dev/null | grep -Fx "${GREP_OPKG}${pkg}")
-        if [ "$tmpstr" = "$pkg" ] || [ "$tmpstr" = "Package: $pkg" ]; then
+        local installed=false
+        if [ "$PKG_CMD" = "apk" ]; then
+            if apk info -e "$pkg" >/dev/null 2>&1; then
+                installed=true
+            fi
+        else
+            # opkg
+            if opkg list-installed | awk -v pkg="$pkg" '$1 == pkg {found=1} END {exit !found}'; then
+                installed=true
+            fi
+        fi
+
+        if [ "$installed" = true ]; then
             if [ "$pkg" = "sing-box-tiny" ] || [ "$pkg" = "sing-box-rr" ]; then
                 INSTALLED_SERVICES="$INSTALLED_SERVICES sing-box"
             else
@@ -658,8 +673,8 @@ NAND_PART=$(df | grep -q "/overlay" && echo "/overlay" || echo "/"); NAND_PCT=$(
 
 PK_AUTOSTART=0
 ZB_AUTOSTART=0
-PK_ACTIVE=0
-ZB_ACTIVE=0
+# PK_ACTIVE=0
+# ZB_ACTIVE=0
 
 f_services_installed
 f_services_autostarted
@@ -1276,7 +1291,7 @@ for s in $INSTALLED_SERVICES; do
     # Сброс переменных для каждой итерации
     SERV_STATE=""; ST_C="${RED_BRIGHT}"; S_C=""; M_T=""; M_C=""
 
-    if [ "$s" = "sing-box" ]; then
+    if echo "$s" | grep -q "sing-box"; then
         if [ -n "$(pidof sing-box)" ]; then
             SERV_STATE="RUNNING"; ST_C="${GREEN}"
         else
