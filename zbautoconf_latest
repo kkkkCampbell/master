@@ -6,821 +6,822 @@
 # ZEROBLOCK AUTOSETUP SCRIPT
 # 
 # ============================================
+if [ 1 -eq 1 ]; then
+	VER="v0.1.10 (preAPK)"
 
-VER="v0.1.8 (preAPK)"
+	BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
+	TEMP_DNS="9.9.9.11"
+	annoying_services="podkop podkop-plus forkop zapret zapret2 youtubeUnblock ruantiblock"
+	awg10_community_lists="anime block discord googleplay torrent youtube"
+	opera_community_lists="video art geoblock games music shop porn socials news repo"
 
-BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
-TEMP_DNS="9.9.9.11"
-annoying_services="podkop podkop-plus forkop zapret zapret2 youtubeUnblock ruantiblock"
-awg10_community_lists="anime block discord googleplay torrent youtube"
-opera_community_lists="video art geoblock games music shop porn socials news repo"
+	# проверяем версию OpenWRT
+	if [ -f /usr/bin/apk ]; then
+		opkg="apk --allow-untrusted"
+		list_installed="--list-installed -q"
+		install="add"
+		MOD="apk"
+	else
+		opkg="opkg"
+		list_installed="list-installed"
+		install="install"
+		MOD="ipk"
+	fi
 
-# проверяем версию OpenWRT
-if [ -f /usr/bin/apk ]; then
-	opkg="apk --allow-untrusted"
-	list_installed="--list-installed -q"
-	install="add"
-	MOD="apk"
-else
-	opkg="opkg"
-	list_installed="list-installed"
-	install="install"
-	MOD="ipk"
-fi
-
-clear
+	clear
 
 
-# --- ЦВЕТА ---
-if [ -t 1 ]; then
-	CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"; BLACK="\033[30m"
-fi
+	# --- ЦВЕТА ---
+	if [ -t 1 ]; then
+		CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"; BLACK="\033[30m"
+	fi
 
-opkg_update(){
-	# opkg update в цикле 4 раза
-	UPDATE_LOG="/tmp/opkg_update.log"
-    echo -e "→ ${opkg} update (до 4 попыток)..."
-    for i in 1 2 3 4; do
-        echo "  Попытка $i/4...  "
-        $opkg update > "$UPDATE_LOG" 2>&1
-        
-        # 3) Анализ лога на ошибки
-        if grep -qiE "failed|error|unable|not found|returned [1-9]|bad address|refused|timeout" "$UPDATE_LOG"; then
-            echo -e "  ${RED_BRIGHT}✗ Ошибки в попытке $i${CLR_OFF}"
-            [ $i -eq 4 ] && { echo -e "${RED_BRIGHT}✗ Не удалось обновить репозитории${CLR_OFF}"; return 1; }
-            sleep 3
-        else
-            echo -e "  ${GREEN}✓ Репозитории обновлены (попытка $i)${CLR_OFF}"; echo ""
-            break
-        fi
-    done
-
-}
-
-install_zb_newest() {
-    no_zb_arch=0
-    ZB_ARCH_LINK="https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/zbautoconf/ZeroBlock_latest_$MOD.tar.gz"
-    
-    WORK_DIR="/tmp/zb_arch_work"
-    rm -rf "$WORK_DIR"
-    mkdir -p "$WORK_DIR"
-    cd "$WORK_DIR" || return 1
-    
-    printf "Скачивание свежего ZeroBlock\n"
-	sleep 5
-	
-	wget_attempt=1
-	max_attempts=4
-	while [ $wget_attempt -le $max_attempts ]; do
-		echo "Попытка скачивания $wget_attempt из $max_attempts..."
-		
-		if wget -O "archive.tar.gz" "$ZB_ARCH_LINK" --timeout=5; then
-			echo -e "${GREEN}Скачивание успешно${CLR_OFF}"; echo ""
-			break
-		else
-			echo -e "${RED_BRIGHT}Ошибка скачивания${CLR_OFF}"
-			wget_attempt=$((wget_attempt + 1))
+	opkg_update(){
+		# opkg update в цикле 4 раза
+		UPDATE_LOG="/tmp/opkg_update.log"
+		echo -e "→ ${opkg} update (до 4 попыток)..."
+		for i in 1 2 3 4; do
+			echo "  Попытка $i/4...  "
+			$opkg update > "$UPDATE_LOG" 2>&1
 			
-			if [ $wget_attempt -gt $max_attempts ]; then
-				echo -e "${YELLOW}Не удалось скачать после $max_attempts попыток${CLR_OFF}"
-				no_zb_arch=1
-				return 1
-			fi
-			
-			sleep 2
-		fi
-	done
-    
-    echo -e "Распаковка..."
-    tar -xzf "archive.tar.gz" -C "$WORK_DIR" || {
-        echo -e "${RED_BRIGHT}Ошибка распаковки${CLR_OFF}"
-        no_zb_arch=1
-        return 1
-    }
-    
-    rm -f "archive.tar.gz"
-    
-    # Простой поиск самого большого файла для установки
-    LARGEST_FILE=""
-    LARGEST_SIZE=0
-    
-    for file in $(find "$WORK_DIR" -name "*.${MOD}" -type f 2>/dev/null); do
-        size=$(ls -la "$file" | awk '{print $5}')
-        if [ "$size" -gt "$LARGEST_SIZE" ]; then
-		echo "$file"
-            LARGEST_SIZE=$size
-            LARGEST_FILE=$file
-        fi
-    done
-    
-    if [ -z "$LARGEST_FILE" ]; then
-        echo -e "${RED_BRIGHT}Ошибка: нет .$MOD файлов${CLR_OFF}"
-        no_zb_arch=1
-        return 1
-    fi
-    
-	opkg_update
-	
-    echo -e "Установка: $(basename "$LARGEST_FILE")"
-    $opkg $install "$LARGEST_FILE" || {
-        echo -e "${RED_BRIGHT}Ошибка установки${CLR_OFF}"
-        no_zb_arch=1
-        return 1
-    }
-    
-    # Второй файл
-    for file in $(find "$WORK_DIR" -name "*.${MOD}" -type f 2>/dev/null | grep -v "$LARGEST_FILE"); do
-        echo -e "Установка: $(basename "$file")"
-        $opkg $install "$file" || echo -e "${YELLOW}Предупреждение: не установлен $file${CLR_OFF}"
-        break
-    done
-    
-    echo -e "${GREEN}ZeroBlock установлен. ${CLR_OFF}"
-    return 0
-}
-
-# Установка zeroblock с "защитой" от ТСПУ
-install_zb_repo() {
-
-	[ "$no_zb_arch" != "1" ] && return 0
-	
-
-	rm -f /etc/config/zeroblock
-
-    # -1) Проверка, установлен ли zeroblock
-    if $opkg $list_installed 2>/dev/null | grep -q "^zeroblock -"; then
-        echo -e "✓ zeroblock уже установлен"
-        return 0
-    fi
-    
-	new_install=1
-	opkg_update
-
-    # 5) Установка zeroblock
-    echo -e "→ Установка zeroblock luci-app-zeroblock..."
-    $opkg $install zeroblock luci-app-zeroblock > /tmp/opkg_install.log 2>&1
-    
-    # 6) Проверка установки
-    if $opkg $list_installed 2>/dev/null | grep -q "^zeroblock -"; then
-        echo -e "✓ zeroblock успешно установлен"
-    else
-        echo -e "✗ Ошибка: zeroblock не установился"
-        cat /tmp/opkg_install.log
-        return 1
-    fi
-}
-
-# Функция создания директории
-create_backup_dir() {
-    if [ ! -d "$BACKUP_DIR" ]; then
-        mkdir -p "$BACKUP_DIR"
-        if [ $? -eq 0 ]; then
-            echo -e "✓ Директория $BACKUP_DIR создана"
-        else
-            echo -e "✗ Ошибка: не могу создать $BACKUP_DIR"
-            exit 1
-        fi
-    fi
-}
-
-# Функция создания штатного бэкапа через sysupgrade -b
-create_backup() {
-    DATE_TIME=$(date +%Y_%m_%d-%H_%M_%S)
-    BACKUP_FILE="$BACKUP_DIR/${DATE_TIME}.tar.gz"
-    
-    echo -e "→ Создание штатного бэкапа через sysupgrade -b"
-    echo -e "  Файл: ${YELLOW}$BACKUP_FILE${CLR_OFF}"
-    
-    # Штатная команда OpenWRT для бэкапа конфигов
-	printf "  "
-    sysupgrade -b "$BACKUP_FILE"
-    
-    if [ $? -eq 0 ] && [ -f "$BACKUP_FILE" ]; then
-        printf "%b" "  ${GREEN}✓ Бэкап успешно создан${CLR_OFF}"
-        echo -e "  Размер: $(ls -lh "$BACKUP_FILE" | awk '{print $5}')"
-    else
-        printf "%b" "  ${RED_BRIGHT}✗ Ошибка: бэкап не создан${CLR_OFF}"
-        exit 1
-    fi
-	echo -e ""
-}
-
-# Функция проверки штатного бэкапа 
-verify_backup() {
-    BACKUP_FILE="$1"
-    
-    echo -e "→ Проверка бэкапа: ${YELLOW}$BACKUP_FILE${CLR_OFF}"
-    
-    # Проверка 1: существует ли файл
-    if [ ! -f "$BACKUP_FILE" ]; then
-        echo -e "✗ Ошибка: файл бэкапа не найден"
-        return 1
-    fi
-    echo -e "  ✓ Файл существует"
-    
-    # Проверка 2: не нулевой ли размер
-    if [ ! -s "$BACKUP_FILE" ]; then
-        echo -e "✗ Ошибка: файл бэкапа пустой"
-        return 1
-    fi
-    echo -e "  ✓ Размер не нулевой"
-    
-    # Проверка 3: валидный ли tar.gz
-    if tar -tzf "$BACKUP_FILE" > /dev/null 2>&1; then
-        echo -e "  ✓ Архив валидный (tar.gz)"
-    else
-        echo -e "✗ Ошибка: архив повреждён или не tar.gz"
-        return 1
-    fi
-    
-    # Проверка 4: количество файлов в архиве (для информации)
-    FILE_COUNT=$(tar -tzf "$BACKUP_FILE" 2>/dev/null | wc -l)
-    echo -e "  ✓ Архив содержит $FILE_COUNT файлов/директорий"
-    
-    # Проверка 5: наличие ключевых конфигов (контрольная)
-    if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q "etc/config/system"; then
-        echo -e "  ✓ Найдены ключевые конфиги (etc/config/)"
-    else
-        echo -e "  ⚠ Внимание: etc/config/ не обнаружен (возможно, так и задумано)"
-    fi
-    
-    echo -e  "  ${GREEN}✓ Бэкап прошёл проверку${CLR_OFF}"
-    echo -e ""
-    return 0
-}
-
-# Остановка, отключение и удаление мешающих сервисов
-kill_annoying_services() {
-	echo -e "→ Останавливаем потенциально мешающие службы"
-	add_spaces="  "
-	printf "$add_spaces"
-    for service in $annoying_services; do
-        if [ -f "/etc/init.d/$service" ]; then
-			if echo -e "$service" | grep -q -i "zapret"; then printf "✓ "; fi
-			/etc/init.d/"$service" stop 2>/dev/null
-            /etc/init.d/"$service" disable 2>/dev/null
-			if echo -e "$service" | grep -q -i "zapret"; then printf "$add_spaces"; fi
-            echo -e "✓ $service остановлен и отключён"; printf "$add_spaces"
-        else
-            a=a
-			# echo -e "→ $service не найден, пропускаем"; printf "$add_spaces"
-        fi
-    done
-    echo -e ""
-}
-
-# Остановка zeroblock и удаление конфигов
-stop_and_rplce_config_zeroblock() {
-    # Остановка, если есть
-    if [ -f /etc/init.d/zeroblock ]; then
-        /etc/init.d/zeroblock stop 2>/dev/null
-        /etc/init.d/zeroblock disable 2>/dev/null
-        echo -e "✓ zeroblock остановлен"
-
-# Замена конфига zeroblock
-	rm -f /etc/config/zeroblock
-    cat > /etc/config/zeroblock << 'EOF'
-
-
-config settings 'settings'
-	option log_level 'warn'
-	option show_trace_logs '0'
-	option health_enabled '1'
-	option health_interval '600'
-	option health_dns_check '1'
-	option health_clash_api_check '1'
-	option health_ping_ip '77.88.8.8 8.8.8.8'
-	option health_opera_host 'ya.ru google.com'
-	option update_interval '1d'
-	option timeout_dnsmasq_restart '150'
-	option timeout_xray_check '60'
-	option disable_startup_check '0'
-	option manage_xray '1'
-	option update_time '09:00'
-	option api 'v2'
-	option enable_bad_interface_monitoring '0'
-	option download_lists_via_proxy '0'
-	option auto_fallback_two_stage '1'
-	option whitelist_probe_max '100'
-	option lists_failure_mode 'degrade'
-	option timeout_singbox_check '60'
-	option timeout_singbox_kill '15'
-	option health_dns_server_check '0'
-	option health_dns_test_host 'ya.ru'
-	option dns_query_timeout '15'
-	option singbox_double_check '0'
-	option singbox_double_check_delay '15'
-	option lists_tls_insecure '0'
-	option opera_proxy_enabled '1'
-	option timeouts_forced_to_max_v4 '1'
-	option text_lists_migrated '1'
-	option sub_max_proxies_capped '1'
-	option schema_version '46'
-	option autoremove_static_lease_default_v1 '1'
-	option subscription_ua_migrated_v2 '1'
-	option subscription_update_interval 'off'
-	option whitelist_bootstrap_max_attempts '10'
-	option health_opera '1'
-	option whitelist_bootstrap_dns_server '77.88.8.8'
-	option whitelist_bootstrap_dns_via_whitelist '0'
-
-config section 'MESSENGERS'
-	option connection_type 'vpn'
-	option force_disable_fakeip '0'
-	list server_community_lists 'geoblock'
-	list server_community_lists 'ai'
-	option disable_fakeip '1'
-	list community_lists 'messengers'
-	list community_lists 'meta'
-	option dscp_enabled '0'
-	option enable_mixed_proxy '1'
-	option per_section_tproxy '0'
-	option no_sniff '0'
-	option force_cidr_community '0'
-	option community_lists_invert '0'
-	option enable_user_lists '0'
-	option enable_exclusions '0'
-	option parental_control '0'
-	option failover_enabled '0'
-	option user_subnet_list_type 'text'
-	list user_subnets_text '# TELEGRAM #'
-	list user_subnets_text '############'
-	list user_subnets_text '# IPv4-подсети Telegram'
-	list user_subnets_text '91.105.192.0/23 91.108.4.0/22 91.108.8.0/21'
-	list user_subnets_text '91.108.16.0/21 91.108.56.0/22 149.154.160.0/20'
-	list user_subnets_text '185.76.151.0/24'
-	list user_subnets_text '#IPv6-подсети Telegram'
-	list user_subnets_text '2001:67c:4e8::/48 2001:b28:f23c::/48 2001:b28:f23d::/48'
-	list user_subnets_text '2001:b28:f23f::/48 2a0a:f280::/32'
-	option enabled '1'
-	option interface 'awg10'
-	option mixed_port '2080'
-
-config section 'opera'
-	option enabled '1'
-	option connection_type 'proxy'
-	option proxy_config_type 'outbound'
-	option outbound_json '{"type":"http","server":"127.0.0.1","server_port":18080}'
-	option force_disable_fakeip '0'
-	list server_community_lists 'geoblock'
-	list server_community_lists 'ai'
-	option disable_fakeip '0'
-	list community_lists 'ai'
-	list community_lists 'art'
-	list community_lists 'geoblock'
-	list community_lists 'games'
-	list community_lists 'music'
-	list community_lists 'shop'
-	list community_lists 'tools'
-	list community_lists 'porn'
-	list community_lists 'socials'
-	list community_lists 'news'
-	list community_lists 'repo'
-
-config section 'awg10'
-	option enabled '1'
-	option force_disable_fakeip '0'
-	option connection_type 'vpn'
-	option interface 'awg10'
-	list server_community_lists 'socials'
-	list server_community_lists 'block'
-	list server_community_lists 'porn'
-	list server_community_lists 'news'
-	list server_community_lists 'anime'
-	list server_community_lists 'youtube'
-	list server_community_lists 'discord'
-	list server_community_lists 'meta'
-	list server_community_lists 'video'
-	list server_community_lists 'messengers'
-	list server_community_lists 'googleplay'
-	option disable_fakeip '0'
-	option dscp_enabled '0'
-	option enable_mixed_proxy '0'
-	option per_section_tproxy '0'
-	option no_sniff '0'
-	list community_lists 'anime'
-	list community_lists 'block'
-	list community_lists 'discord'
-	list community_lists 'googleplay'
-	list community_lists 'torrent'
-	list community_lists 'video'
-	list community_lists 'youtube'
-	option force_cidr_community '0'
-	option community_lists_invert '0'
-	option enable_user_lists '0'
-	option enable_exclusions '0'
-	option parental_control '0'
-	option failover_enabled '0'
-
-config auto_config 'auto_config'
-	option opera_auto_config '1'
-	option awg_auto_config '1'
-	option xray_auto_config '1'
-	option zapret2_auto_config '1'
-	option trusttunnel_auto_config '0'
-	option naive_auto_config '0'
-	option zapret2_auto_strategies '0'
-	option opera_ownership_repair_pending '0'
-	option xray_ownership_repair_pending '0'
-	option awg_ownership_repair_pending '0'
-	option sections_auto_load '0'
-
-config dashboard 'dashboard'
-
-config diagnostic 'diagnostic'
-
-config engine 'engine'
-	option dns_type 'doh'
-	option dns_server 'xbox-dns.ru'
-	option bootstrap_dns_server '9.9.9.11'
-	option dns_rewrite_ttl '60'
-	option dns_strategy 'ipv4_only'
-	option autoremove_static_lease '1'
-	option clash_api_enabled '1'
-	option clash_api_port '9090'
-	option tproxy_mark '0x10000'
-	option direct_mark '0x20000'
-	option bt_mark '0x40000'
-	option ctmark_dns '0x10000'
-	option ctmark_bt '0x40000'
-	option disable_output_conntrack_rules '0'
-	option disable_quic '1'
-	option disable_quic_gso '0'
-	option MemoryMax '0'
-	option MemoryHigh '0'
-	option ulimit_v '0'
-	option tls_fragment '0'
-	option tls_record_fragment '0'
-	option desync_mark '0x40000000'
-	option log_level 'warn'
-	option dont_touch_dhcp '0'
-	option dns_hijack '1'
-	option enable_output_network_interface '0'
-	option proxy_router_traffic '0'
-	option ipv6_enabled '0'
-	option discord_voice '1'
-	option meta_force_cidr '1'
-	option exclude_bittorrent '1'
-	option exclude_ntp '1'
-	option singbox_logging '0'
-	option xray_logging '0'
-	option testing_url 'https://www.gstatic.com/generate_204'
-	option trusttunnel_logging '0'
-	option fakeip_query_type_filter '1'
-	option xray_path '/usr/bin/xray'
-	option trusttunnel_path '/usr/bin/trusttunnel_client'
-	option custom_config_dir '/etc/zeroblock/sing-box.d'
-	option dpi_check_timeout '15'
-	option adblock_convert_timeout '300'
-	option fallback_probe_timeout_default '3'
-	option singbox_startup_timeout '150'
-	option xray_startup_timeout '60'
-	option trusttunnel_startup_timeout '60'
-	option version_check_timeout '31'
-	option bootstrap_port_free_timeout '6'
-	option singbox_sighup_wait_timeout '16'
-	option subscription_timeout '60'
-	option subscription_max_proxies '100'
-	option subscription_user_agent 'Happ'
-	option subscription_tls_insecure '0'
-	option enable_yacd '0'
-	option naive_startup_timeout '8'
-	list source_network_interfaces 'br-lan'
-	option naive_logging '0'
-	option global_exclude_mode 'route'
-	option GOMEMLIMIT '0'
-	option xray_fragment '0'
-	option bootstrap_readiness_timeout '30'
-
-EOF
-
-	echo -e "✓ Конфиг zeroblock заменён"
-
-    /etc/init.d/zeroblock start 2>/dev/null
-	sleep 5
-	/etc/init.d/zeroblock enable 2>/dev/null
-	echo -e "✓ zeroblock запущен"
-    fi
-
-}
-
-# Ожидание завершения автонастройки zeroblock
-wait_zeroblock_ready() {
-    local timeout=180  # 3 минуты
-    local elapsed=0
-    
-    echo -n "→ Ожидание автонастройки zeroblock (макс. 3 минуты)"
-    
-    while [ $elapsed -lt $timeout ]; do
-        if uci show zeroblock 2>/dev/null | grep -q "zeroblock.awg10=section" && \
-           uci show zeroblock 2>/dev/null | grep -q "zeroblock.opera=section"; then
-            echo -e ""
-            echo -e "✓ Автонастройка завершена (через ${elapsed} сек)"
-			uci set zeroblock.auto_config.sections_auto_load='' 
-			uci commit zeroblock
-			uci commit luci
-            return 0
-        fi
-        
-        echo -n "."
-        sleep 2
-        elapsed=$((elapsed + 2))
-    done
-    
-    echo -e ""
-    echo -e "⚠ Таймаут: автонастройка не завершилась за 3 минуты"
-    return 1
-}
-
-# Управление DNS (аргумент = IP DNS сервера, или recovery = восстановление)
-dns_redirect() {
-	# если передан аргумент 'recovery' для восстановления DNS 
-    if [ "$1" = "recovery" ] && [ "$NOBACKUP" = "" ]; then
-        # Восстановление
-        if [ -f /tmp/dhcp.bak ]; then
-            cp /tmp/dhcp.bak /etc/config/dhcp
-            rm /tmp/dhcp.bak
-            /etc/init.d/dnsmasq restart >/dev/null 2>&1
-            echo -e "✓ DNS конфиг восстановлен"
-        fi
-		
-    elif echo -e "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
-        # Бэкап
-		retval="$(uci get dhcp.@dnsmasq[0].server 2>/dev/null | tr -d '[:space:]')"
-		if [ -n "$retval" ]; then
-		  cp /etc/config/dhcp /tmp/dhcp.bak 2>/dev/null
-		  NOBACKUP=""
-		 else
-		  echo -e "✗ Передан DNS ${1}. Архивация пропущена."
-		  NOBACKUP="1"
-		fi
-		
-		/etc/init.d/zeroblock stop >/dev/null 2>&1
-		sleep 3
-		
-		# Замена SNS
-		#uci set dhcp.@dnsmasq[0].server="$1"
-		uci set dhcp.@dnsmasq[0].noresolv="1"
-		uci -q del dhcp.@dnsmasq[0].server
-		uci add_list dhcp.@dnsmasq[0].server="$1"
-		sleep 1
-		uci commit dhcp
-		uci commit luci
-		sleep 1
-		/etc/init.d/dnsmasq restart >/dev/null 2>&1
-		if [ "$(uci get dhcp.@dnsmasq[0].server)" = "$1" ]; then 
-			echo -e "✓ DNS переключен на $1"
-		fi
-    fi
-}
-
-# Обновление меню LuCI после установки пакетов
-refresh_luci() {
-    echo -e "→ Обновление меню LuCI..."
-	
-	# Перезапуск rpcd (отвечает за API и меню)
-	/etc/init.d/rpcd reload
-
-	# Перезапуск uhttpd (веб-сервер)
-	/etc/init.d/uhttpd reload
-	
-    rm -rf /tmp/luci-modulecache/ 2>/dev/null
-    rm -f /tmp/luci-indexcache.json 2>/dev/null
-    /etc/init.d/rpcd reload >/dev/null 2>&1
-    /etc/init.d/uhttpd reload >/dev/null 2>&1
-    echo -e  "
-${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
-Если обновление не помогло - перелогиньтесь.
-Если и это не помогло ${GREEN}ОЧИСТИТЕ КЭШ БРАУЗЕРА
-${YELLOW}или откройте админку роутера в ${GREEN}инкогнито-окне браузера.
-${CLR_OFF}"
-}
-
-
-# --- МЕНЮ ---
-
-
-draw_main_menu() {
-    clear
-    echo -e "${CYAN}===================================${CLR_OFF}"
-    echo -e "${CYAN} ZEROBLOCK MANAGER ${VER}${CLR_OFF}"
-    echo -e "${CYAN}===================================${CLR_OFF}"
-    echo -e ""
-    echo -e "  ${GREEN}1${CLR_OFF} — Установить и настроить ZeroBlock"
-    
-    BACKUP_COUNT=$(ls "$BACKUP_DIR"/*.tar.gz 2>/dev/null | wc -l)
-    if [ "$BACKUP_COUNT" -gt 0 ]; then
-        echo -e "  ${GREEN}2${CLR_OFF} — Восстановить настройки из бэкапа"
-    else
-        echo -e "  ${YELLOW}2${CLR_OFF} — Восстановить настройки из бэкапа ${YELLOW}[бэкапы отсутствуют]${CLR_OFF}"
-    fi
-    
-    echo -e "  ${RED_BRIGHT}0${CLR_OFF} — Выход"
-    echo -e ""
-    echo -e -n "${CYAN}Введите номер пункта меню: ${CLR_OFF}"
-    
-    read input
-    case "$input" in
-        1)  echo -e ""
-            echo -e "${GREEN}→ Запуск установки и настройки...${CLR_OFF}"
-			# очищаем папку /etc/zeroblock от старых файлов
-			find /etc/zeroblock -maxdepth 1 -type f -exec rm -f -- {} +
-            break
-            ;;
-        2) if [ "$BACKUP_COUNT" -gt 0 ]; then
-                echo -e ""; echo -e "${GREEN}→ Запуск восстановления...${CLR_OFF}"; draw_restore_menu
-            else menu; fi; ;;
-        0) echo -e ""; echo -e "${GREEN}→ Выход${CLR_OFF}"; echo -e ""; exit 0; ;;
-        *) draw_main_menu; ;;
-    esac
-}
-
-draw_restore_menu() {
-    # Формируем список бэкапов в одну строку через |
-    BACKUP_LIST=""
-    TOTAL=0
-    for f in $(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r); do
-        [ -z "$BACKUP_LIST" ] && BACKUP_LIST="$f" || BACKUP_LIST="$BACKUP_LIST|$f"
-        TOTAL=$((TOTAL + 1))
-    done
-
-    while true; do
-        clear
-        printf "%b\n" "${CYAN}=================================${CLR_OFF}"
-        printf "%b\n" "${CYAN}       ВЫБОР БЭКАПА${CLR_OFF}"
-        printf "%b\n" "${CYAN}=================================${CLR_OFF}"
-		echo -e ""
-        echo -e "ВОССТАНОВЛЕНИЕ ИЗ БЭКАПА"
-		echo -e "ОТКАТИТ ВСЕ НАСТРОЙКИ РОУТЕРА"
-		echo -e "ДО СОСТОЯНИЯ НА ДАТУ БЭКАПА!!!"
-		echo -e ""
-        if [ $TOTAL -eq 0 ]; then
-            printf "%b\n" "  ${YELLOW}Нет доступных бэкапов${CLR_OFF}"
-            printf "%b\n" ""
-            printf "%b0%b — Возврат\n" "${GREEN}" "${CLR_OFF}"
-            printf "%b\n" ""
-            printf "%bВведите номер пункта меню: %b" "${CYAN}" "${CLR_OFF}"
-            read choice
-            [ "$choice" = "0" ] && menu
-            continue
-        fi
-
-        # Выводим список
-        NUM=1
-        SAVED_IFS="$IFS"
-        IFS='|'
-        for b in $BACKUP_LIST; do
-            NAME=$(basename "$b" .tar.gz)
-            printf "%b%s%b — %s\n" "${GREEN}" "$NUM" "${CLR_OFF}" "$NAME"
-            NUM=$((NUM + 1))
-        done
-        IFS="$SAVED_IFS"
-
-        printf "%b0%b — Возврат в главное меню\n" "${GREEN}" "${CLR_OFF}"
-
-        printf "%b\n" ""
-        printf "%b1111%b — Удалить все бэкапы, кроме первого и последнего " "${RED_BRIGHT}" "${CLR_OFF}"
-		printf "%b\n" "${YELLOW}(Последний вверху)${CLR_OFF}"
-        printf "%b\n" ""
-        printf "%bВведите номер пункта меню: %b" "${CYAN}" "${CLR_OFF}"
-        read choice
-
-        # Выход
-        [ "$choice" = "0" ] && draw_main_menu && return
-
-        # Удаление старых
-		if [ "$choice" = "1111" ]; then
-			printf "%b" "${RED_BRIGHT}ВЫ УВЕРЕНЫ? (y/n): ${CLR_OFF}"
-			read absolutly
-			if [ "$absolutly" != "y" ]; then 
-				draw_restore_menu
-			fi
-
-			if [ $TOTAL -gt 2 ]; then
-				TMP_DIR="/tmp/backup_tmp_$$"
-				mkdir -p "$TMP_DIR"
-				
-				NUM=1
-				SAVED_IFS="$IFS"
-				IFS='|'
-				for b in $BACKUP_LIST; do
-					if [ $NUM -eq 1 ] || [ $NUM -eq $TOTAL ]; then
-						cp "$b" "$TMP_DIR/"
-					fi
-					NUM=$((NUM + 1))
-				done
-				IFS="$SAVED_IFS"
-				
-				# Удаляем всё
-				rm -rf "$BACKUP_DIR"/*
-				
-				# Возвращаем два файла
-				cp "$TMP_DIR"/* "$BACKUP_DIR/"
-				rm -rf "$TMP_DIR"
-				
-				# Пересобираем BACKUP_LIST
-				BACKUP_LIST=""
-				TOTAL=0
-				for f in $(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r); do
-					[ -z "$BACKUP_LIST" ] && BACKUP_LIST="$f" || BACKUP_LIST="$BACKUP_LIST|$f"
-					TOTAL=$((TOTAL + 1))
-				done
-				
-				printf "%b✓ Оставлены первый и последний бэкап (%d шт)%b\n" "${GREEN}" "$TOTAL" "${CLR_OFF}"
-				sleep 1
+			# 3) Анализ лога на ошибки
+			if grep -qiE "failed|error|unable|not found|returned [1-9]|bad address|refused|timeout" "$UPDATE_LOG"; then
+				echo -e "  ${RED_BRIGHT}✗ Ошибки в попытке $i${CLR_OFF}"
+				[ $i -eq 4 ] && { echo -e "${RED_BRIGHT}✗ Не удалось обновить репозитории${CLR_OFF}"; return 1; }
+				sleep 3
 			else
-				printf "%b⚠ Нечего удалять (бэкапов 2 или меньше)%b\n" "${YELLOW}" "${CLR_OFF}"
-				sleep 1
+				echo -e "  ${GREEN}✓ Репозитории обновлены (попытка $i)${CLR_OFF}"; echo ""
+				break
 			fi
-			continue
+		done
+
+	}
+
+	install_zb_newest() {
+		no_zb_arch=0
+		ZB_ARCH_LINK="https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/zbautoconf/ZeroBlock_latest_$MOD.tar.gz"
+		
+		WORK_DIR="/tmp/zb_arch_work"
+		rm -rf "$WORK_DIR"
+		mkdir -p "$WORK_DIR"
+		cd "$WORK_DIR" || return 1
+		
+		printf "Скачивание свежего ZeroBlock\n"
+		sleep 5
+		
+		wget_attempt=1
+		max_attempts=4
+		while [ $wget_attempt -le $max_attempts ]; do
+			echo "Попытка скачивания $wget_attempt из $max_attempts..."
+			
+			if wget -O "archive.tar.gz" "$ZB_ARCH_LINK" --timeout=5; then
+				echo -e "${GREEN}Скачивание успешно${CLR_OFF}"; echo ""
+				break
+			else
+				echo -e "${RED_BRIGHT}Ошибка скачивания${CLR_OFF}"
+				wget_attempt=$((wget_attempt + 1))
+				
+				if [ $wget_attempt -gt $max_attempts ]; then
+					echo -e "${YELLOW}Не удалось скачать после $max_attempts попыток${CLR_OFF}"
+					no_zb_arch=1
+					return 1
+				fi
+				
+				sleep 2
+			fi
+		done
+		
+		echo -e "Распаковка..."
+		tar -xzf "archive.tar.gz" -C "$WORK_DIR" || {
+			echo -e "${RED_BRIGHT}Ошибка распаковки${CLR_OFF}"
+			no_zb_arch=1
+			return 1
+		}
+		
+		rm -f "archive.tar.gz"
+		
+		# Простой поиск самого большого файла для установки
+		LARGEST_FILE=""
+		LARGEST_SIZE=0
+		
+		for file in $(find "$WORK_DIR" -name "*.${MOD}" -type f 2>/dev/null); do
+			size=$(ls -la "$file" | awk '{print $5}')
+			if [ "$size" -gt "$LARGEST_SIZE" ]; then
+			echo "$file"
+				LARGEST_SIZE=$size
+				LARGEST_FILE=$file
+			fi
+		done
+		
+		if [ -z "$LARGEST_FILE" ]; then
+			echo -e "${RED_BRIGHT}Ошибка: нет .$MOD файлов${CLR_OFF}"
+			no_zb_arch=1
+			return 1
+		fi
+		
+		opkg_update
+		
+		echo -e "Установка: $(basename "$LARGEST_FILE")"
+		$opkg $install "$LARGEST_FILE" || {
+			echo -e "${RED_BRIGHT}Ошибка установки${CLR_OFF}"
+			no_zb_arch=1
+			return 1
+		}
+		
+		# Второй файл
+		for file in $(find "$WORK_DIR" -name "*.${MOD}" -type f 2>/dev/null | grep -v "$LARGEST_FILE"); do
+			echo -e "Установка: $(basename "$file")"
+			$opkg $install "$file" || echo -e "${YELLOW}Предупреждение: не установлен $file${CLR_OFF}"
+			break
+		done
+		
+		echo -e "${GREEN}ZeroBlock установлен. ${CLR_OFF}"
+		return 0
+	}
+
+	# Установка zeroblock с "защитой" от ТСПУ
+	install_zb_repo() {
+
+		[ "$no_zb_arch" != "1" ] && return 0
+		
+
+		rm -f /etc/config/zeroblock
+
+		# -1) Проверка, установлен ли zeroblock
+		if $opkg $list_installed 2>/dev/null | grep -q "^zeroblock -"; then
+			echo -e "✓ zeroblock уже установлен"
+			return 0
+		fi
+		
+		new_install=1
+		opkg_update
+
+		# 5) Установка zeroblock
+		echo -e "→ Установка zeroblock luci-app-zeroblock..."
+		$opkg $install zeroblock luci-app-zeroblock > /tmp/opkg_install.log 2>&1
+		
+		# 6) Проверка установки
+		if $opkg $list_installed 2>/dev/null | grep -q "^zeroblock -"; then
+			echo -e "✓ zeroblock успешно установлен"
+		else
+			echo -e "✗ Ошибка: zeroblock не установился"
+			cat /tmp/opkg_install.log
+			return 1
+		fi
+	}
+
+	# Функция создания директории
+	create_backup_dir() {
+		if [ ! -d "$BACKUP_DIR" ]; then
+			mkdir -p "$BACKUP_DIR"
+			if [ $? -eq 0 ]; then
+				echo -e "✓ Директория $BACKUP_DIR создана"
+			else
+				echo -e "✗ Ошибка: не могу создать $BACKUP_DIR"
+				exit 1
+			fi
+		fi
+	}
+
+	# Функция создания штатного бэкапа через sysupgrade -b
+	create_backup() {
+		DATE_TIME=$(date +%Y_%m_%d-%H_%M_%S)
+		BACKUP_FILE="$BACKUP_DIR/${DATE_TIME}.tar.gz"
+		
+		echo -e "→ Создание штатного бэкапа через sysupgrade -b"
+		echo -e "  Файл: ${YELLOW}$BACKUP_FILE${CLR_OFF}"
+		
+		# Штатная команда OpenWRT для бэкапа конфигов
+		printf "  "
+		sysupgrade -b "$BACKUP_FILE"
+		
+		if [ $? -eq 0 ] && [ -f "$BACKUP_FILE" ]; then
+			printf "%b" "  ${GREEN}✓ Бэкап успешно создан${CLR_OFF}"
+			echo -e "  Размер: $(ls -lh "$BACKUP_FILE" | awk '{print $5}')"
+		else
+			printf "%b" "  ${RED_BRIGHT}✗ Ошибка: бэкап не создан${CLR_OFF}"
+			exit 1
+		fi
+		echo -e ""
+	}
+
+	# Функция проверки штатного бэкапа 
+	verify_backup() {
+		BACKUP_FILE="$1"
+		
+		echo -e "→ Проверка бэкапа: ${YELLOW}$BACKUP_FILE${CLR_OFF}"
+		
+		# Проверка 1: существует ли файл
+		if [ ! -f "$BACKUP_FILE" ]; then
+			echo -e "✗ Ошибка: файл бэкапа не найден"
+			return 1
+		fi
+		echo -e "  ✓ Файл существует"
+		
+		# Проверка 2: не нулевой ли размер
+		if [ ! -s "$BACKUP_FILE" ]; then
+			echo -e "✗ Ошибка: файл бэкапа пустой"
+			return 1
+		fi
+		echo -e "  ✓ Размер не нулевой"
+		
+		# Проверка 3: валидный ли tar.gz
+		if tar -tzf "$BACKUP_FILE" > /dev/null 2>&1; then
+			echo -e "  ✓ Архив валидный (tar.gz)"
+		else
+			echo -e "✗ Ошибка: архив повреждён или не tar.gz"
+			return 1
+		fi
+		
+		# Проверка 4: количество файлов в архиве (для информации)
+		FILE_COUNT=$(tar -tzf "$BACKUP_FILE" 2>/dev/null | wc -l)
+		echo -e "  ✓ Архив содержит $FILE_COUNT файлов/директорий"
+		
+		# Проверка 5: наличие ключевых конфигов (контрольная)
+		if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q "etc/config/system"; then
+			echo -e "  ✓ Найдены ключевые конфиги (etc/config/)"
+		else
+			echo -e "  ⚠ Внимание: etc/config/ не обнаружен (возможно, так и задумано)"
+		fi
+		
+		echo -e  "  ${GREEN}✓ Бэкап прошёл проверку${CLR_OFF}"
+		echo -e ""
+		return 0
+	}
+
+	# Остановка, отключение и удаление мешающих сервисов
+	kill_annoying_services() {
+		echo -e "→ Останавливаем потенциально мешающие службы"
+		add_spaces="  "
+		printf "$add_spaces"
+		for service in $annoying_services; do
+			if [ -f "/etc/init.d/$service" ]; then
+				if echo -e "$service" | grep -q -i "zapret"; then printf "✓ "; fi
+				/etc/init.d/"$service" stop 2>/dev/null
+				/etc/init.d/"$service" disable 2>/dev/null
+				if echo -e "$service" | grep -q -i "zapret"; then printf "$add_spaces"; fi
+				echo -e "✓ $service остановлен и отключён"; printf "$add_spaces"
+			else
+				a=a
+				# echo -e "→ $service не найден, пропускаем"; printf "$add_spaces"
+			fi
+		done
+		echo -e ""
+	}
+
+	# Остановка zeroblock и удаление конфигов
+	stop_and_rplce_config_zeroblock() {
+		# Остановка, если есть
+		if [ -f /etc/init.d/zeroblock ]; then
+			/etc/init.d/zeroblock stop 2>/dev/null
+			/etc/init.d/zeroblock disable 2>/dev/null
+			echo -e "✓ zeroblock остановлен"
+
+	# Замена конфига zeroblock
+		rm -f /etc/config/zeroblock
+		cat > /etc/config/zeroblock << 'EOF'
+
+
+	config settings 'settings'
+		option log_level 'warn'
+		option show_trace_logs '0'
+		option health_enabled '1'
+		option health_interval '600'
+		option health_dns_check '1'
+		option health_clash_api_check '1'
+		option health_ping_ip '77.88.8.8 8.8.8.8'
+		option health_opera_host 'ya.ru google.com'
+		option update_interval '1d'
+		option timeout_dnsmasq_restart '150'
+		option timeout_xray_check '60'
+		option disable_startup_check '0'
+		option manage_xray '1'
+		option update_time '09:00'
+		option api 'v2'
+		option enable_bad_interface_monitoring '0'
+		option download_lists_via_proxy '0'
+		option auto_fallback_two_stage '1'
+		option whitelist_probe_max '100'
+		option lists_failure_mode 'degrade'
+		option timeout_singbox_check '60'
+		option timeout_singbox_kill '15'
+		option health_dns_server_check '0'
+		option health_dns_test_host 'ya.ru'
+		option dns_query_timeout '15'
+		option singbox_double_check '0'
+		option singbox_double_check_delay '15'
+		option lists_tls_insecure '0'
+		option opera_proxy_enabled '1'
+		option timeouts_forced_to_max_v4 '1'
+		option text_lists_migrated '1'
+		option sub_max_proxies_capped '1'
+		option schema_version '46'
+		option autoremove_static_lease_default_v1 '1'
+		option subscription_ua_migrated_v2 '1'
+		option subscription_update_interval 'off'
+		option whitelist_bootstrap_max_attempts '10'
+		option health_opera '1'
+		option whitelist_bootstrap_dns_server '77.88.8.8'
+		option whitelist_bootstrap_dns_via_whitelist '0'
+
+	config section 'MESSENGERS'
+		option connection_type 'vpn'
+		option force_disable_fakeip '0'
+		list server_community_lists 'geoblock'
+		list server_community_lists 'ai'
+		option disable_fakeip '1'
+		list community_lists 'messengers'
+		list community_lists 'meta'
+		option dscp_enabled '0'
+		option enable_mixed_proxy '1'
+		option per_section_tproxy '0'
+		option no_sniff '0'
+		option force_cidr_community '0'
+		option community_lists_invert '0'
+		option enable_user_lists '0'
+		option enable_exclusions '0'
+		option parental_control '0'
+		option failover_enabled '0'
+		option user_subnet_list_type 'text'
+		list user_subnets_text '# TELEGRAM #'
+		list user_subnets_text '############'
+		list user_subnets_text '# IPv4-подсети Telegram'
+		list user_subnets_text '91.105.192.0/23 91.108.4.0/22 91.108.8.0/21'
+		list user_subnets_text '91.108.16.0/21 91.108.56.0/22 149.154.160.0/20'
+		list user_subnets_text '185.76.151.0/24'
+		list user_subnets_text '#IPv6-подсети Telegram'
+		list user_subnets_text '2001:67c:4e8::/48 2001:b28:f23c::/48 2001:b28:f23d::/48'
+		list user_subnets_text '2001:b28:f23f::/48 2a0a:f280::/32'
+		option enabled '1'
+		option interface 'awg10'
+		option mixed_port '2080'
+
+	config section 'opera'
+		option enabled '1'
+		option connection_type 'proxy'
+		option proxy_config_type 'outbound'
+		option outbound_json '{"type":"http","server":"127.0.0.1","server_port":18080}'
+		option force_disable_fakeip '0'
+		list server_community_lists 'geoblock'
+		list server_community_lists 'ai'
+		option disable_fakeip '0'
+		list community_lists 'ai'
+		list community_lists 'art'
+		list community_lists 'geoblock'
+		list community_lists 'games'
+		list community_lists 'music'
+		list community_lists 'shop'
+		list community_lists 'tools'
+		list community_lists 'porn'
+		list community_lists 'socials'
+		list community_lists 'news'
+		list community_lists 'repo'
+
+	config section 'awg10'
+		option enabled '1'
+		option force_disable_fakeip '0'
+		option connection_type 'vpn'
+		option interface 'awg10'
+		list server_community_lists 'socials'
+		list server_community_lists 'block'
+		list server_community_lists 'porn'
+		list server_community_lists 'news'
+		list server_community_lists 'anime'
+		list server_community_lists 'youtube'
+		list server_community_lists 'discord'
+		list server_community_lists 'meta'
+		list server_community_lists 'video'
+		list server_community_lists 'messengers'
+		list server_community_lists 'googleplay'
+		option disable_fakeip '0'
+		option dscp_enabled '0'
+		option enable_mixed_proxy '0'
+		option per_section_tproxy '0'
+		option no_sniff '0'
+		list community_lists 'anime'
+		list community_lists 'block'
+		list community_lists 'discord'
+		list community_lists 'googleplay'
+		list community_lists 'torrent'
+		list community_lists 'video'
+		list community_lists 'youtube'
+		option force_cidr_community '0'
+		option community_lists_invert '0'
+		option enable_user_lists '0'
+		option enable_exclusions '0'
+		option parental_control '0'
+		option failover_enabled '0'
+
+	config auto_config 'auto_config'
+		option opera_auto_config '1'
+		option awg_auto_config '1'
+		option xray_auto_config '1'
+		option zapret2_auto_config '1'
+		option trusttunnel_auto_config '0'
+		option naive_auto_config '0'
+		option zapret2_auto_strategies '0'
+		option opera_ownership_repair_pending '0'
+		option xray_ownership_repair_pending '0'
+		option awg_ownership_repair_pending '0'
+		option sections_auto_load '0'
+
+	config dashboard 'dashboard'
+
+	config diagnostic 'diagnostic'
+
+	config engine 'engine'
+		option dns_type 'doh'
+		option dns_server 'xbox-dns.ru'
+		option bootstrap_dns_server '9.9.9.11'
+		option dns_rewrite_ttl '60'
+		option dns_strategy 'ipv4_only'
+		option autoremove_static_lease '1'
+		option clash_api_enabled '1'
+		option clash_api_port '9090'
+		option tproxy_mark '0x10000'
+		option direct_mark '0x20000'
+		option bt_mark '0x40000'
+		option ctmark_dns '0x10000'
+		option ctmark_bt '0x40000'
+		option disable_output_conntrack_rules '0'
+		option disable_quic '1'
+		option disable_quic_gso '0'
+		option MemoryMax '0'
+		option MemoryHigh '0'
+		option ulimit_v '0'
+		option tls_fragment '0'
+		option tls_record_fragment '0'
+		option desync_mark '0x40000000'
+		option log_level 'warn'
+		option dont_touch_dhcp '0'
+		option dns_hijack '1'
+		option enable_output_network_interface '0'
+		option proxy_router_traffic '0'
+		option ipv6_enabled '0'
+		option discord_voice '1'
+		option meta_force_cidr '1'
+		option exclude_bittorrent '1'
+		option exclude_ntp '1'
+		option singbox_logging '0'
+		option xray_logging '0'
+		option testing_url 'https://www.gstatic.com/generate_204'
+		option trusttunnel_logging '0'
+		option fakeip_query_type_filter '1'
+		option xray_path '/usr/bin/xray'
+		option trusttunnel_path '/usr/bin/trusttunnel_client'
+		option custom_config_dir '/etc/zeroblock/sing-box.d'
+		option dpi_check_timeout '15'
+		option adblock_convert_timeout '300'
+		option fallback_probe_timeout_default '3'
+		option singbox_startup_timeout '150'
+		option xray_startup_timeout '60'
+		option trusttunnel_startup_timeout '60'
+		option version_check_timeout '31'
+		option bootstrap_port_free_timeout '6'
+		option singbox_sighup_wait_timeout '16'
+		option subscription_timeout '60'
+		option subscription_max_proxies '100'
+		option subscription_user_agent 'Happ'
+		option subscription_tls_insecure '0'
+		option enable_yacd '0'
+		option naive_startup_timeout '8'
+		list source_network_interfaces 'br-lan'
+		option naive_logging '0'
+		option global_exclude_mode 'route'
+		option GOMEMLIMIT '0'
+		option xray_fragment '0'
+		option bootstrap_readiness_timeout '30'
+
+	EOF
+
+		echo -e "✓ Конфиг zeroblock заменён"
+
+		/etc/init.d/zeroblock start 2>/dev/null
+		sleep 5
+		/etc/init.d/zeroblock enable 2>/dev/null
+		echo -e "✓ zeroblock запущен"
 		fi
 
-        # Проверка, что введено число в диапазоне
-        if [ "$choice" -ge 1 ] 2>/dev/null && [ "$choice" -le $TOTAL ]; then
-            SELECTED=$(echo -e "$BACKUP_LIST" | cut -d'|' -f"$choice")
-            NAME=$(basename "$SELECTED" .tar.gz)
-            printf "%b\n"
-            printf "%bВосстановить из бэкапа %s? (y/n): %b" "${YELLOW}" "$NAME" "${CLR_OFF}"
-            read confirm
-            if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-                printf "%b\n→ Восстановление...%b\n" "${CYAN}" "${CLR_OFF}"
-                sysupgrade -r "$SELECTED"
-                if [ $? -eq 0 ]; then
-                    printf "%b✓ Бэкап восстановлен%b\n" "${GREEN}" "${CLR_OFF}"
-                    printf "%b⚠ Требуется перезагрузка роутера%b\n" "${YELLOW}" "${CLR_OFF}"
-                else
-                    printf "%b✗ Ошибка восстановления%b\n" "${RED_BRIGHT}" "${CLR_OFF}"
-                fi
-                printf "%b\nПерезагрузить роутер? (${RED_BRIGHT}y${CLR_OFF}/${GREEN}n${CLR_OFF}): %b" "${CYAN}" "${CLR_OFF}"
-                read reboot
-				[ "$reboot" = "y" ] || [ "$reboot" = "Y" ] && echo -e "РОУТЕР ПЕРЕЗАГРУЖАЕТСЯ" && reboot && exit
-                draw_restore_menu
-                return
-            fi
-        fi
-    done
-}
+	}
 
-# Дополнительные действия 
-on_the_end() {
+	# Ожидание завершения автонастройки zeroblock
+	wait_zeroblock_ready() {
+		local timeout=180  # 3 минуты
+		local elapsed=0
+		
+		echo -n "→ Ожидание автонастройки zeroblock (макс. 3 минуты)"
+		
+		while [ $elapsed -lt $timeout ]; do
+			if uci show zeroblock 2>/dev/null | grep -q "zeroblock.awg10=section" && \
+			   uci show zeroblock 2>/dev/null | grep -q "zeroblock.opera=section"; then
+				echo -e ""
+				echo -e "✓ Автонастройка завершена (через ${elapsed} сек)"
+				uci set zeroblock.auto_config.sections_auto_load='' 
+				uci commit zeroblock
+				uci commit luci
+				return 0
+			fi
+			
+			echo -n "."
+			sleep 2
+			elapsed=$((elapsed + 2))
+		done
+		
+		echo -e ""
+		echo -e "⚠ Таймаут: автонастройка не завершилась за 3 минуты"
+		return 1
+	}
 
-	#ubus call zeroblock flush_conntrack >/dev/null 2>&1
-	/etc/init.d/zeroblock stop >/dev/null 2>&1
-	
-	# "Улучшаем" списки собщества
-	uci delete zeroblock.awg10.community_lists
-	uci delete zeroblock.opera.community_lists
-	sleep 1
-	uci commit
+	# Управление DNS (аргумент = IP DNS сервера, или recovery = восстановление)
+	dns_redirect() {
+		# если передан аргумент 'recovery' для восстановления DNS 
+		if [ "$1" = "recovery" ] && [ "$NOBACKUP" = "" ]; then
+			# Восстановление
+			if [ -f /tmp/dhcp.bak ]; then
+				cp /tmp/dhcp.bak /etc/config/dhcp
+				rm /tmp/dhcp.bak
+				/etc/init.d/dnsmasq restart >/dev/null 2>&1
+				echo -e "✓ DNS конфиг восстановлен"
+			fi
+			
+		elif echo -e "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+			# Бэкап
+			retval="$(uci get dhcp.@dnsmasq[0].server 2>/dev/null | tr -d '[:space:]')"
+			if [ -n "$retval" ]; then
+			  cp /etc/config/dhcp /tmp/dhcp.bak 2>/dev/null
+			  NOBACKUP=""
+			 else
+			  echo -e "✗ Передан DNS ${1}. Архивация пропущена."
+			  NOBACKUP="1"
+			fi
+			
+			/etc/init.d/zeroblock stop >/dev/null 2>&1
+			sleep 3
+			
+			# Замена SNS
+			#uci set dhcp.@dnsmasq[0].server="$1"
+			uci set dhcp.@dnsmasq[0].noresolv="1"
+			uci -q del dhcp.@dnsmasq[0].server
+			uci add_list dhcp.@dnsmasq[0].server="$1"
+			sleep 1
+			uci commit dhcp
+			uci commit luci
+			sleep 1
+			/etc/init.d/dnsmasq restart >/dev/null 2>&1
+			if [ "$(uci get dhcp.@dnsmasq[0].server)" = "$1" ]; then 
+				echo -e "✓ DNS переключен на $1"
+			fi
+		fi
+	}
 
-	# awg10.community_lists
-	for item in $awg10_community_lists; do
-		uci add_list zeroblock.awg10.community_lists="$item"
-	done; sleep 1; uci commit
+	# Обновление меню LuCI после установки пакетов
+	refresh_luci() {
+		echo -e "→ Обновление меню LuCI..."
+		
+		# Перезапуск rpcd (отвечает за API и меню)
+		/etc/init.d/rpcd reload
 
-	# opera.community_lists
-	for item in $opera_community_lists; do
-		uci add_list zeroblock.opera.community_lists="$item"
-	done; sleep 1; uci commit; uci commit luci;	sleep 1
-
-	# Перезапускаем ZEROBLOCK
-	/etc/init.d/zeroblock start
-	sleep 5
-	/etc/init.d/zeroblock reload
-
-	# оживляем авг10
-	# echo -e "→ \"Оживляем\" авг10"
-	# printf "  "
-	# for i in $(seq 10 -1 1); do
-	# 	ping -I awg10 8.8.8.8 -c 1 >/dev/null 2>&1
-	# 	printf "$i "
-	# 	sleep 1
-	# done
-	# echo -e ""
-	# echo -e "→ Перезапускаем dnsmasq"
-	# /etc/init.d/dnsmasq restart
-	# echo -e ""
-}
-
-# ============================================
-# MAIN
-# ============================================
+		# Перезапуск uhttpd (веб-сервер)
+		/etc/init.d/uhttpd reload
+		
+		rm -rf /tmp/luci-modulecache/ 2>/dev/null
+		rm -f /tmp/luci-indexcache.json 2>/dev/null
+		/etc/init.d/rpcd reload >/dev/null 2>&1
+		/etc/init.d/uhttpd reload >/dev/null 2>&1
+		echo -e  "
+	${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
+	Если обновление не помогло - перелогиньтесь.
+	Если и это не помогло ${GREEN}ОЧИСТИТЕ КЭШ БРАУЗЕРА
+	${YELLOW}или откройте админку роутера в ${GREEN}инкогнито-окне браузера.
+	${CLR_OFF}"
+	}
 
 
-draw_main_menu
-create_backup_dir
-create_backup
-verify_backup "${BACKUP_FILE}"
-kill_annoying_services
-dns_redirect "${TEMP_DNS}"
-install_zb_newest; echo -e ""
-install_zb_repo # если новейший не установлен, устанавливаем из репы
-stop_and_rplce_config_zeroblock
-wait_zeroblock_ready
-dns_redirect "recovery"
-refresh_luci
-on_the_end
+	# --- МЕНЮ ---
 
-[ "$new_install" = "1" ] && echo -e  " ===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
-echo -e "=== КОНЕЦ ==="
-echo -e ""
+
+	draw_main_menu() {
+		clear
+		echo -e "${CYAN}===================================${CLR_OFF}"
+		echo -e "${CYAN} ZEROBLOCK MANAGER ${VER}${CLR_OFF}"
+		echo -e "${CYAN}===================================${CLR_OFF}"
+		echo -e ""
+		echo -e "  ${GREEN}1${CLR_OFF} — Установить и настроить ZeroBlock"
+		
+		BACKUP_COUNT=$(ls "$BACKUP_DIR"/*.tar.gz 2>/dev/null | wc -l)
+		if [ "$BACKUP_COUNT" -gt 0 ]; then
+			echo -e "  ${GREEN}2${CLR_OFF} — Восстановить настройки из бэкапа"
+		else
+			echo -e "  ${YELLOW}2${CLR_OFF} — Восстановить настройки из бэкапа ${YELLOW}[бэкапы отсутствуют]${CLR_OFF}"
+		fi
+		
+		echo -e "  ${RED_BRIGHT}0${CLR_OFF} — Выход"
+		echo -e ""
+		echo -e -n "${CYAN}Введите номер пункта меню: ${CLR_OFF}"
+		
+		read input
+		case "$input" in
+			1)  echo -e ""
+				echo -e "${GREEN}→ Запуск установки и настройки...${CLR_OFF}"
+				# очищаем папку /etc/zeroblock от старых файлов
+				find /etc/zeroblock -maxdepth 1 -type f -exec rm -f -- {} +
+				break
+				;;
+			2) if [ "$BACKUP_COUNT" -gt 0 ]; then
+					echo -e ""; echo -e "${GREEN}→ Запуск восстановления...${CLR_OFF}"; draw_restore_menu
+				else menu; fi; ;;
+			0) echo -e ""; echo -e "${GREEN}→ Выход${CLR_OFF}"; echo -e ""; exit 0; ;;
+			*) draw_main_menu; ;;
+		esac
+	}
+
+	draw_restore_menu() {
+		# Формируем список бэкапов в одну строку через |
+		BACKUP_LIST=""
+		TOTAL=0
+		for f in $(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r); do
+			[ -z "$BACKUP_LIST" ] && BACKUP_LIST="$f" || BACKUP_LIST="$BACKUP_LIST|$f"
+			TOTAL=$((TOTAL + 1))
+		done
+
+		while true; do
+			clear
+			printf "%b\n" "${CYAN}=================================${CLR_OFF}"
+			printf "%b\n" "${CYAN}       ВЫБОР БЭКАПА${CLR_OFF}"
+			printf "%b\n" "${CYAN}=================================${CLR_OFF}"
+			echo -e ""
+			echo -e "ВОССТАНОВЛЕНИЕ ИЗ БЭКАПА"
+			echo -e "ОТКАТИТ ВСЕ НАСТРОЙКИ РОУТЕРА"
+			echo -e "ДО СОСТОЯНИЯ НА ДАТУ БЭКАПА!!!"
+			echo -e ""
+			if [ $TOTAL -eq 0 ]; then
+				printf "%b\n" "  ${YELLOW}Нет доступных бэкапов${CLR_OFF}"
+				printf "%b\n" ""
+				printf "%b0%b — Возврат\n" "${GREEN}" "${CLR_OFF}"
+				printf "%b\n" ""
+				printf "%bВведите номер пункта меню: %b" "${CYAN}" "${CLR_OFF}"
+				read choice
+				[ "$choice" = "0" ] && menu
+				continue
+			fi
+
+			# Выводим список
+			NUM=1
+			SAVED_IFS="$IFS"
+			IFS='|'
+			for b in $BACKUP_LIST; do
+				NAME=$(basename "$b" .tar.gz)
+				printf "%b%s%b — %s\n" "${GREEN}" "$NUM" "${CLR_OFF}" "$NAME"
+				NUM=$((NUM + 1))
+			done
+			IFS="$SAVED_IFS"
+
+			printf "%b0%b — Возврат в главное меню\n" "${GREEN}" "${CLR_OFF}"
+
+			printf "%b\n" ""
+			printf "%b1111%b — Удалить все бэкапы, кроме первого и последнего " "${RED_BRIGHT}" "${CLR_OFF}"
+			printf "%b\n" "${YELLOW}(Последний вверху)${CLR_OFF}"
+			printf "%b\n" ""
+			printf "%bВведите номер пункта меню: %b" "${CYAN}" "${CLR_OFF}"
+			read choice
+
+			# Выход
+			[ "$choice" = "0" ] && draw_main_menu && return
+
+			# Удаление старых
+			if [ "$choice" = "1111" ]; then
+				printf "%b" "${RED_BRIGHT}ВЫ УВЕРЕНЫ? (y/n): ${CLR_OFF}"
+				read absolutly
+				if [ "$absolutly" != "y" ]; then 
+					draw_restore_menu
+				fi
+
+				if [ $TOTAL -gt 2 ]; then
+					TMP_DIR="/tmp/backup_tmp_$$"
+					mkdir -p "$TMP_DIR"
+					
+					NUM=1
+					SAVED_IFS="$IFS"
+					IFS='|'
+					for b in $BACKUP_LIST; do
+						if [ $NUM -eq 1 ] || [ $NUM -eq $TOTAL ]; then
+							cp "$b" "$TMP_DIR/"
+						fi
+						NUM=$((NUM + 1))
+					done
+					IFS="$SAVED_IFS"
+					
+					# Удаляем всё
+					rm -rf "$BACKUP_DIR"/*
+					
+					# Возвращаем два файла
+					cp "$TMP_DIR"/* "$BACKUP_DIR/"
+					rm -rf "$TMP_DIR"
+					
+					# Пересобираем BACKUP_LIST
+					BACKUP_LIST=""
+					TOTAL=0
+					for f in $(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r); do
+						[ -z "$BACKUP_LIST" ] && BACKUP_LIST="$f" || BACKUP_LIST="$BACKUP_LIST|$f"
+						TOTAL=$((TOTAL + 1))
+					done
+					
+					printf "%b✓ Оставлены первый и последний бэкап (%d шт)%b\n" "${GREEN}" "$TOTAL" "${CLR_OFF}"
+					sleep 1
+				else
+					printf "%b⚠ Нечего удалять (бэкапов 2 или меньше)%b\n" "${YELLOW}" "${CLR_OFF}"
+					sleep 1
+				fi
+				continue
+			fi
+
+			# Проверка, что введено число в диапазоне
+			if [ "$choice" -ge 1 ] 2>/dev/null && [ "$choice" -le $TOTAL ]; then
+				SELECTED=$(echo -e "$BACKUP_LIST" | cut -d'|' -f"$choice")
+				NAME=$(basename "$SELECTED" .tar.gz)
+				printf "%b\n"
+				printf "%bВосстановить из бэкапа %s? (y/n): %b" "${YELLOW}" "$NAME" "${CLR_OFF}"
+				read confirm
+				if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+					printf "%b\n→ Восстановление...%b\n" "${CYAN}" "${CLR_OFF}"
+					sysupgrade -r "$SELECTED"
+					if [ $? -eq 0 ]; then
+						printf "%b✓ Бэкап восстановлен%b\n" "${GREEN}" "${CLR_OFF}"
+						printf "%b⚠ Требуется перезагрузка роутера%b\n" "${YELLOW}" "${CLR_OFF}"
+					else
+						printf "%b✗ Ошибка восстановления%b\n" "${RED_BRIGHT}" "${CLR_OFF}"
+					fi
+					printf "%b\nПерезагрузить роутер? (${RED_BRIGHT}y${CLR_OFF}/${GREEN}n${CLR_OFF}): %b" "${CYAN}" "${CLR_OFF}"
+					read reboot
+					[ "$reboot" = "y" ] || [ "$reboot" = "Y" ] && echo -e "РОУТЕР ПЕРЕЗАГРУЖАЕТСЯ" && reboot && exit
+					draw_restore_menu
+					return
+				fi
+			fi
+		done
+	}
+
+	# Дополнительные действия 
+	on_the_end() {
+
+		#ubus call zeroblock flush_conntrack >/dev/null 2>&1
+		/etc/init.d/zeroblock stop >/dev/null 2>&1
+		
+		# "Улучшаем" списки собщества
+		uci delete zeroblock.awg10.community_lists
+		uci delete zeroblock.opera.community_lists
+		sleep 1
+		uci commit
+
+		# awg10.community_lists
+		for item in $awg10_community_lists; do
+			uci add_list zeroblock.awg10.community_lists="$item"
+		done; sleep 1; uci commit
+
+		# opera.community_lists
+		for item in $opera_community_lists; do
+			uci add_list zeroblock.opera.community_lists="$item"
+		done; sleep 1; uci commit; uci commit luci;	sleep 1
+
+		# Перезапускаем ZEROBLOCK
+		/etc/init.d/zeroblock start
+		sleep 5
+		/etc/init.d/zeroblock reload
+
+		# оживляем авг10
+		# echo -e "→ \"Оживляем\" авг10"
+		# printf "  "
+		# for i in $(seq 10 -1 1); do
+		# 	ping -I awg10 8.8.8.8 -c 1 >/dev/null 2>&1
+		# 	printf "$i "
+		# 	sleep 1
+		# done
+		# echo -e ""
+		# echo -e "→ Перезапускаем dnsmasq"
+		# /etc/init.d/dnsmasq restart
+		# echo -e ""
+	}
+
+	# ============================================
+	# MAIN
+	# ============================================
+
+
+	draw_main_menu
+	create_backup_dir
+	create_backup
+	verify_backup "${BACKUP_FILE}"
+	kill_annoying_services
+	dns_redirect "${TEMP_DNS}"
+	install_zb_newest; echo -e ""
+	install_zb_repo # если новейший не установлен, устанавливаем из репы
+	stop_and_rplce_config_zeroblock
+	wait_zeroblock_ready
+	dns_redirect "recovery"
+	refresh_luci
+	on_the_end
+
+	[ "$new_install" = "1" ] && echo -e  " ===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
+	echo -e "=== КОНЕЦ ==="
+	echo -e ""
+fi
