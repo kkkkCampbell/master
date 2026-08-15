@@ -492,7 +492,7 @@ if [ 1 -eq 1 ]; then
 		option xray_fragment '0'
 		option bootstrap_readiness_timeout '30'
 
-	EOF
+EOF
 
 		echo -e "✓ Конфиг zeroblock заменён"
 
