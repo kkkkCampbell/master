@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.6"
+VER="v0.1.7 (preAPK)"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
@@ -15,7 +15,21 @@ annoying_services="podkop podkop-plus forkop zapret zapret2 youtubeUnblock ruant
 awg10_community_lists="anime block discord googleplay torrent youtube"
 opera_community_lists="video art geoblock games music shop porn socials news repo"
 
+# проверяем версию OpenWRT
+if [ -f /usr/bin/apk ]; then
+	opkg="apk --allow-untrusted"
+	list_installed="--list-installed -q"
+	install="add"
+	MOD="apk"
+else
+	opkg="opkg"
+	list_installed="list-installed"
+	install="install"
+	MOD="ipk"
+fi
+
 clear
+
 
 # --- ЦВЕТА ---
 if [ -t 1 ]; then
@@ -25,10 +39,10 @@ fi
 opkg_update(){
 	# opkg update в цикле 4 раза
 	UPDATE_LOG="/tmp/opkg_update.log"
-    echo -e "→ opkg update (до 4 попыток)..."
+    echo -e "→ ${opkg} update (до 4 попыток)..."
     for i in 1 2 3 4; do
         echo "  Попытка $i/4...  "
-        opkg update > "$UPDATE_LOG" 2>&1
+        $opkg update > "$UPDATE_LOG" 2>&1
         
         # 3) Анализ лога на ошибки
         if grep -qiE "failed|error|unable|not found|returned [1-9]|bad address|refused|timeout" "$UPDATE_LOG"; then
@@ -45,7 +59,7 @@ opkg_update(){
 
 install_zb_newest() {
     no_zb_arch=0
-    ZB_ARCH_LINK="https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/zbautoconf/ZeroBlock_latest.tar.gz"
+    ZB_ARCH_LINK="https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/zbautoconf/ZeroBlock_latest_$MOD.tar.gz"
     
     WORK_DIR="/tmp/zb_arch_work"
     rm -rf "$WORK_DIR"
@@ -86,11 +100,11 @@ install_zb_newest() {
     
     rm -f "archive.tar.gz"
     
-    # Простой поиск самого большого .ipk файла
+    # Простой поиск самого большого файла для установки
     LARGEST_FILE=""
     LARGEST_SIZE=0
     
-    for file in $(find "$WORK_DIR" -name "*.ipk" -type f 2>/dev/null); do
+    for file in $(find "$WORK_DIR" -name "*.${MOD}" -type f 2>/dev/null); do
         size=$(ls -la "$file" | awk '{print $5}')
         if [ "$size" -gt "$LARGEST_SIZE" ]; then
             LARGEST_SIZE=$size
@@ -99,7 +113,7 @@ install_zb_newest() {
     done
     
     if [ -z "$LARGEST_FILE" ]; then
-        echo -e "${RED_BRIGHT}Ошибка: нет .ipk файлов${CLR_OFF}"
+        echo -e "${RED_BRIGHT}Ошибка: нет .$MOD файлов${CLR_OFF}"
         no_zb_arch=1
         return 1
     fi
@@ -107,7 +121,7 @@ install_zb_newest() {
 	opkg_update
 	
     echo -e "Установка: $(basename "$LARGEST_FILE")"
-    opkg install "$LARGEST_FILE" || {
+    $opkg $install "$LARGEST_FILE" || {
         echo -e "${RED_BRIGHT}Ошибка установки${CLR_OFF}"
         no_zb_arch=1
         return 1
@@ -116,7 +130,7 @@ install_zb_newest() {
     # Второй файл
     for file in $(find "$WORK_DIR" -name "*.ipk" -type f 2>/dev/null | grep -v "$LARGEST_FILE"); do
         echo -e "Установка: $(basename "$file")"
-        opkg install "$file" || echo -e "${YELLOW}Предупреждение: не установлен $file${CLR_OFF}"
+        $opkg $install "$file" || echo -e "${YELLOW}Предупреждение: не установлен $file${CLR_OFF}"
         break
     done
     
@@ -133,7 +147,7 @@ install_zb_repo() {
 	rm -f /etc/config/zeroblock
 
     # -1) Проверка, установлен ли zeroblock
-    if opkg list-installed 2>/dev/null | grep -q "^zeroblock -"; then
+    if $opkg $list_installed 2>/dev/null | grep -q "^zeroblock -"; then
         echo -e "✓ zeroblock уже установлен"
         return 0
     fi
@@ -143,10 +157,10 @@ install_zb_repo() {
 
     # 5) Установка zeroblock
     echo -e "→ Установка zeroblock luci-app-zeroblock..."
-    opkg install zeroblock luci-app-zeroblock > /tmp/opkg_install.log 2>&1
+    $opkg $install zeroblock luci-app-zeroblock > /tmp/opkg_install.log 2>&1
     
     # 6) Проверка установки
-    if opkg list-installed 2>/dev/null | grep -q "^zeroblock -"; then
+    if $opkg $list_installed 2>/dev/null | grep -q "^zeroblock -"; then
         echo -e "✓ zeroblock успешно установлен"
     else
         echo -e "✗ Ошибка: zeroblock не установился"
