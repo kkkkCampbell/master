@@ -602,9 +602,9 @@ EOF
 
 	draw_main_menu() {
 		clear
-		echo -e "${CYAN}===================================${CLR_OFF}"
+		echo -e "${CYAN}====================================${CLR_OFF}"
 		echo -e "${CYAN} ZEROBLOCK MANAGER ${VER}${CLR_OFF}"
-		echo -e "${CYAN}===================================${CLR_OFF}"
+		echo -e "${CYAN}====================================${CLR_OFF}"
 		echo -e ""
 		echo -e "  ${GREEN}1${CLR_OFF} — Установить и настроить ZeroBlock"
 		
