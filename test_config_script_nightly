@@ -3,12 +3,13 @@
 
 # --- ОПРЕДЕЛЕНИЕ МЕНЕДЖЕРА ПАКЕТОВ ДЛЯ OPENWRT 25+ ---
 if [ -x /usr/bin/apk ]; then
-    PKG_CMD="apk"
-    INSTALL_OPT="add"
-    UPDATE_OPT="update"
+	PKG_CMD="apk"
+	INSTALL_OPT="add"
+	UPDATE_OPT="update"
 	INFO_OPT="-e"
 	UNTRUSTED="--allow-untrusted"
-	GREP_OPKG=""
+	GREP_OPKG_ARGS=""
+	LIST_INSTALLED="list --installed -q"
 else
     PKG_CMD="opkg"
     INSTALL_OPT="install"
@@ -16,7 +17,7 @@ else
 	INFO_OPT=""
 	UNTRUSTED=""
 	GREP_OPKG_ARGS="-x -F"
-	LIST-INSTALLED="list-installed"
+	LIST_INSTALLED="list-installed"
 fi
 
 zapret_state="$1"
@@ -27,7 +28,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.19 (preAPK)"
+VER="0.2.20 (preAPK)"
 
 clear
 
@@ -169,29 +170,34 @@ if [ "$PKG_CMD" = "opkg" ]; then
 	echo "option http_timeout $_opkg_timeout" >> "$_tmp_conf"
 fi
 
+
+# --- ПРОВЕРКА НАЛИЧИЯ ПАКЕТА В СИСТЕМЕ (УСТАНОВЛЕННОГО) ---
+# $1 принимает имя пакета
+# возвращает "0" если пакет есть и "" если нет
+f_is_installed() {
+    local pkg="$1"
+    if [ "$PKG_CMD" = "apk" ]; then
+        # Alpine: проверяем через apk info -e (самый быстрый способ)
+        if apk info -e "$pkg" >/dev/null 2>&1; then
+            return 0
+        fi
+    else
+        # OpenWrt: смотрим список установленных пакетов
+        if opkg list-installed 2>/dev/null | awk '{print $1}' | grep -qx "$pkg"; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
 # --- УСТАНОВКА ---
 WGET_INSTALLED=0
 CURL_INSTALLED=0
 OPERA_INSTALLED=1
 
 # проверяем наличие wget и curl в системе
-$PKG_CMD info $INFO_OPT wget-ssl >/dev/null 2>&1 && WGET_INSTALLED=1
-$PKG_CMD info $INFO_OPT curl >/dev/null 2>&1 && CURL_INSTALLED=1
-
-
-# Получаем установленную версию opera-proxy (обрезаем суффикс типа -1, +build)
-# cver=$(opkg list-installed | awk '/^opera-proxy / {print $3}' | sed 's/[-+~].*//')
-
-# if [ "$ver" != "" ]; then 
-# 	# Проверяем, что версия меньше и при этом не равна
-# 	if opkg compare-versions "$ver" "<" "1.15.3" && ! opkg compare-versions "$ver" "=" "1.15.3"; then
-# # # # # 		OPERA_INSTALLED=0
-# # # # 	fi
-
-# # # else
-# # 	echo "Пакет \"opera-proxy\" не установлен. Пропускаем обновление пакета."
-# fi
-
+f_is_installed wget-ssl >/dev/null && WGET_INSTALLED=1
+f_is_installed curl >/dev/null && CURL_INSTALLED=1
 
 # Устанавливаем curl, wget и opera-proxy если их нет или версия OPERA устарела
 if [ $WGET_INSTALLED -eq 0 ] || [ $CURL_INSTALLED -eq 0 ] || [ $OPERA_INSTALLED -eq 0 ]; then
@@ -264,18 +270,17 @@ sleep 1
 # region FUNCTION
 if [ "$FUNCTIONS" = "$FUNCTIONS" ]; then
 # --- СПИСОК УСТАНОВЛЕННЫХ СЕРВИСОВ/ПРОГРАММ ---
-
 f_services_installed() {
     INSTALLED_SERVICES=""
     for pkg in $RAW_SERVICES; do
         local installed=false
         if [ "$PKG_CMD" = "apk" ]; then
-            if apk info -e "$pkg" >/dev/null 2>&1; then
+            if apk list --installed -q 2>/dev/null | grep -qx "$pkg"; then
                 installed=true
             fi
         else
             # opkg
-            if opkg list-installed | awk -v pkg="$pkg" '$1 == pkg {found=1} END {exit !found}'; then
+            if opkg list-installed 2>/dev/null | awk -v pkg="$pkg" '$1 == pkg {found=1} END {exit !found}'; then
                 installed=true
             fi
         fi
