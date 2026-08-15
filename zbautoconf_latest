@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.7 (preAPK)"
+VER="v0.1.8 (preAPK)"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
@@ -107,6 +107,7 @@ install_zb_newest() {
     for file in $(find "$WORK_DIR" -name "*.${MOD}" -type f 2>/dev/null); do
         size=$(ls -la "$file" | awk '{print $5}')
         if [ "$size" -gt "$LARGEST_SIZE" ]; then
+		echo "$file"
             LARGEST_SIZE=$size
             LARGEST_FILE=$file
         fi
@@ -128,7 +129,7 @@ install_zb_newest() {
     }
     
     # Второй файл
-    for file in $(find "$WORK_DIR" -name "*.ipk" -type f 2>/dev/null | grep -v "$LARGEST_FILE"); do
+    for file in $(find "$WORK_DIR" -name "*.${MOD}" -type f 2>/dev/null | grep -v "$LARGEST_FILE"); do
         echo -e "Установка: $(basename "$file")"
         $opkg $install "$file" || echo -e "${YELLOW}Предупреждение: не установлен $file${CLR_OFF}"
         break
