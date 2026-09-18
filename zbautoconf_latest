@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.11 (preAPK)"
+VER="v0.1.12 (preAPK)"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
@@ -282,7 +282,6 @@ stop_and_rplce_config_zeroblock() {
 	cat > /etc/config/zeroblock << 'EOF'
 
 
-
 config settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
@@ -316,7 +315,7 @@ config settings 'settings'
 	option timeouts_forced_to_max_v4 '1'
 	option text_lists_migrated '1'
 	option sub_max_proxies_capped '1'
-	option schema_version '48'
+	option schema_version '46'
 	option autoremove_static_lease_default_v1 '1'
 	option subscription_ua_migrated_v2 '1'
 	option subscription_update_interval 'off'
@@ -324,23 +323,6 @@ config settings 'settings'
 	option health_opera '1'
 	option whitelist_bootstrap_dns_server '77.88.8.8'
 	option whitelist_bootstrap_dns_via_whitelist '0'
-	option dns_recovery_enabled '1'
-	option dns_recovery_mode 'permanent'
-	option dns_recovery_main_candidates_enabled '0'
-	option dns_recovery_bootstrap_candidates_enabled '0'
-	option wait_for_default_route '0'
-	option health_clash_api_timeout '5'
-	option health_generate204_timeout '3'
-	option subscription_via_yandex_translate '0'
-	option auto_fallback_source 'url'
-	option whitelist_bootstrap_dns_type 'udp'
-	option timeout_dns_bootstrap_probe_start '3'
-	option timeout_dns_bootstrap_probe_stop '1'
-	option show_soft_matrix_editor '0'
-	option soft_decision_matrix_enabled '0'
-	option soft_routing_matrix_enabled '0'
-	option show_custom_config_editor '0'
-	option dns_benchmark_parallelism '8'
 
 config section 'MESSENGERS'
 	option connection_type 'vpn'
@@ -373,9 +355,6 @@ config section 'MESSENGERS'
 	option enabled '1'
 	option interface 'awg10'
 	option mixed_port '2080'
-	option catch_all '0'
-	option tls_spoof_method 'wrong-sequence'
-	option ipv6_enabled '0'
 
 config section 'opera'
 	option enabled '1'
@@ -386,31 +365,17 @@ config section 'opera'
 	list server_community_lists 'geoblock'
 	list server_community_lists 'ai'
 	option disable_fakeip '0'
-	option dscp_enabled '0'
-	option enable_udp_over_tcp '0'
-	option enable_mixed_proxy '0'
-	option per_section_tproxy '0'
-	option no_sniff '0'
 	list community_lists 'ai'
 	list community_lists 'art'
 	list community_lists 'geoblock'
 	list community_lists 'games'
 	list community_lists 'music'
-	list community_lists 'news'
-	list community_lists 'porn'
-	list community_lists 'repo'
 	list community_lists 'shop'
+	list community_lists 'tools'
+	list community_lists 'porn'
 	list community_lists 'socials'
-	list community_lists 'video'
-	option force_cidr_community '0'
-	option community_lists_invert '0'
-	option enable_user_lists '0'
-	option enable_exclusions '0'
-	option catch_all '0'
-	option parental_control '0'
-	option tls_spoof_method 'wrong-sequence'
-	option ipv6_enabled '0'
-	option failover_enabled '0'
+	list community_lists 'news'
+	list community_lists 'repo'
 
 config section 'awg10'
 	option enabled '1'
@@ -433,18 +398,19 @@ config section 'awg10'
 	option enable_mixed_proxy '0'
 	option per_section_tproxy '0'
 	option no_sniff '0'
+	list community_lists 'anime'
+	list community_lists 'block'
+	list community_lists 'discord'
+	list community_lists 'googleplay'
+	list community_lists 'torrent'
+	list community_lists 'video'
+	list community_lists 'youtube'
 	option force_cidr_community '0'
 	option community_lists_invert '0'
 	option enable_user_lists '0'
 	option enable_exclusions '0'
 	option parental_control '0'
 	option failover_enabled '0'
-	list community_lists 'anime'
-	list community_lists 'block'
-	list community_lists 'discord'
-	list community_lists 'googleplay'
-	list community_lists 'torrent'
-	list community_lists 'youtube'
 
 config auto_config 'auto_config'
 	option opera_auto_config '1'
@@ -457,9 +423,6 @@ config auto_config 'auto_config'
 	option opera_ownership_repair_pending '0'
 	option xray_ownership_repair_pending '0'
 	option awg_ownership_repair_pending '0'
-	option amnezia_premium_importer_auto_config '0'
-	option fptn_auto_config '0'
-	option happwner_bridge_auto_config '0'
 	option sections_auto_load '0'
 
 config dashboard 'dashboard'
@@ -528,26 +491,6 @@ config engine 'engine'
 	option GOMEMLIMIT '0'
 	option xray_fragment '0'
 	option bootstrap_readiness_timeout '30'
-	option dns_runtime_fallback_enabled '0'
-	option bootstrap_dns_type 'udp'
-	option use_zeroblock_dns_directly '0'
-	option dns_optimistic_cache '0'
-	option block_dot_doq '0'
-	option exclude_ipsec '0'
-	option fptn_logging '0'
-	option nofile_limit '65535'
-	option udp_mapping 'endpoint_independent'
-	option udp_filtering 'endpoint_independent'
-	option udp_nat_max '0'
-	option startup_direct_probe_timeout '3'
-	option foreign_singbox_stop_timeout '5'
-	option singbox_version_timeout '10'
-	option xray_version_timeout '10'
-	option trusttunnel_version_timeout '10'
-	option naive_version_timeout '10'
-	option naive_hash_timeout '10'
-	option singbox_transport_check_timeout '10'
-	option fptn_status_secret 'f9ecbb531301894dbf510a874d1ff900'
 
 EOF
 
@@ -825,20 +768,20 @@ on_the_end() {
 	/etc/init.d/zeroblock stop >/dev/null 2>&1
 	
 	# "Улучшаем" списки собщества
-	uci delete zeroblock.awg10.community_lists
-	uci delete zeroblock.opera.community_lists
-	sleep 1
-	uci commit
+	# uci delete zeroblock.awg10.community_lists
+	# uci delete zeroblock.opera.community_lists
+	# sleep 1
+	# uci commit
 
 	# awg10.community_lists
-	for item in $awg10_community_lists; do
-		uci add_list zeroblock.awg10.community_lists="$item"
-	done; sleep 1; uci commit
+	# for item in $awg10_community_lists; do
+	#	uci add_list zeroblock.awg10.community_lists="$item"
+	# done; sleep 1; uci commit
 
 	# opera.community_lists
-	for item in $opera_community_lists; do
-		uci add_list zeroblock.opera.community_lists="$item"
-	done; sleep 1; uci commit; uci commit luci;	sleep 1
+	# for item in $opera_community_lists; do
+	#	uci add_list zeroblock.opera.community_lists="$item"
+	# done; sleep 1; uci commit; uci commit luci;	sleep 1
 
 	# Перезапускаем ZEROBLOCK
 	/usr/bin/zeroblock daemon &
