@@ -13,4 +13,7 @@ EOF
 chmod +x /root/malw_parser/malw_parser.sh
 /root/malw_parser/malw_parser.sh
 
-  
+grep -qF '/root/malw_parser/malw_parser.sh' /etc/crontabs/root 2>/dev/null || \
+    echo '0 4 * * * /root/malw_parser/malw_parser.sh' >> /etc/crontabs/root
+
+/etc/init.d/cron restart
