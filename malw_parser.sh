@@ -1,10 +1,6 @@
 mkdir -p /root/malw_parser && tee /root/malw_parser/malw_parser.sh > /dev/null <<'EOF'
 #!/bin/sh
 
-if [ ! -d /root/malw_parser ]; then
-    mkdir -p /root/malw_parser
-fi
-
 # Скачиваем hosts-файл и извлекаем только домены
 wget -qO- "https://raw.githubusercontent.com/ImMALWARE/dns.malw.link/master/hosts" \
   | awk '!/^#/ && NF >= 2 { for (i = 2; i <= NF; i++) if ($i ~ /[a-zA-Z]/) print $i }' \
@@ -17,3 +13,5 @@ grep -qF '/root/malw_parser/malw_parser.sh' /etc/crontabs/root 2>/dev/null || \
     echo '0 4 * * * /root/malw_parser/malw_parser.sh' >> /etc/crontabs/root
 
 /etc/init.d/cron restart
+echo "DONE!"
+echo ""
