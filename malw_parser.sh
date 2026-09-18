@@ -1,3 +1,7 @@
+clear
+echo "Устанавливается парсер hosts-файла dns.malw.link"
+echo ""
+
 mkdir -p /root/malw_parser && tee /root/malw_parser/malw_parser.sh > /dev/null <<'EOF'
 #!/bin/sh
 
