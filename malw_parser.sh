@@ -10,9 +10,12 @@ HOSTSFILE="/root/malw_parser/malwhosts.txt"
 
 # Скачиваем hosts-файл и извлекаем только домены
 wget -qO- "https://raw.githubusercontent.com/ImMALWARE/dns.malw.link/master/hosts" \
-  | awk '!/^#/ && NF >= 2 { for (i = 2; i <= NF; i++) if ($i ~ /[a-zA-Z]/) print $i }' \
-  > ${HOSTSFILE}
-
+  | awk '!/^#/ && !/^0\.0\.0\.0[[:space:]]/ && NF >= 2 {
+        for (i = 2; i <= NF; i++)
+            if ($i ~ /[a-zA-Z]/) print $i
+    }' \
+  > "$HOSTSFILE"
+  
 if [ -t 1 ]; then
     printf 'Файл с доменами расположен в \033[33m%s\033[0m\n' "$HOSTSFILE"
 else
