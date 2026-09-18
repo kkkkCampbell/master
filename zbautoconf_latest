@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.11 (preAPK)"
+VER="v0.1.10.4 (preAPK)"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
