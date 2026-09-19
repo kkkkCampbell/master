@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.11 (preAPK)"
+VER="v0.1.10.12 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -378,16 +378,14 @@ config section 'AI'
 	option failover_enabled '0'
 	option enabled '1'
 
-config section 'MESSENGERS'
+config section 'MESSENGERS_port_2080'
 	option connection_type 'vpn'
 	option force_disable_fakeip '0'
 	list server_community_lists 'geoblock'
 	list server_community_lists 'ai'
-	option disable_fakeip '0'
-	list community_lists 'messengers'
-	list community_lists 'meta'
+	option disable_fakeip '1'
 	option dscp_enabled '0'
-	option enable_mixed_proxy '0'
+	option enable_mixed_proxy '1'
 	option per_section_tproxy '0'
 	option no_sniff '0'
 	option force_cidr_community '0'
@@ -422,8 +420,11 @@ config section 'MESSENGERS'
 	list user_subnets_text '2001:b28:f23d::/48'
 	list user_subnets_text '2001:b28:f23f::/48'
 	list user_subnets_text '2a0a:f280::/32'
+	option mixed_port '2080'
+	list community_lists 'messengers'
+	list community_lists 'meta'
 
-config section 'opera_port_2080'
+config section 'opera_port_3080'
 	option enabled '1'
 	option connection_type 'proxy'
 	option proxy_config_type 'outbound'
@@ -457,9 +458,9 @@ config section 'opera_port_2080'
 	list community_lists 'socials'
 	list community_lists 'video'
 	list community_lists 'cdn_github'
-	option mixed_port '2080'
+	option mixed_port '3080'
 
-config section 'awg10_port_3080'
+config section 'awg10_port_4080'
 	option enabled '1'
 	option force_disable_fakeip '0'
 	option connection_type 'vpn'
@@ -492,10 +493,10 @@ config section 'awg10_port_3080'
 	list community_lists 'googleplay'
 	list community_lists 'torrent'
 	list community_lists 'youtube'
-	option mixed_port '3080'
 	option catch_all '0'
 	option tls_spoof_method 'wrong-sequence'
 	option ipv6_enabled '0'
+	option mixed_port '4080'
 
 config auto_config 'auto_config'
 	option opera_auto_config '1'
@@ -511,9 +512,9 @@ config auto_config 'auto_config'
 	option amnezia_premium_importer_auto_config '0'
 	option fptn_auto_config '0'
 	option happwner_bridge_auto_config '0'
-	option sections_auto_load '0'
 	option opera_suppressed '1'
 	option awg10_suppressed '1'
+	option sections_auto_load '0'
 
 config dashboard 'dashboard'
 
