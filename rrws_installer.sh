@@ -2,7 +2,8 @@
 # Установщик последнего релиза luci-app-rrws из GitHub
 # Репозиторий: dedikar/RR-WARP-Scanner
 
-clear
+if [ "$1" != "noclear" ]; then clear; fi
+
 REPO="dedikar/RR-WARP-Scanner"
 API_URL="https://api.github.com/repos/$REPO/releases/latest"
 TMP_DIR="/tmp"
