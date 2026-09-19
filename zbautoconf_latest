@@ -292,6 +292,7 @@ stop_and_rplce_config_zeroblock() {
 	rm -f /etc/config/zeroblock
 	cat > /etc/config/zeroblock << 'EOF'
 
+
 config settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
@@ -514,7 +515,6 @@ config auto_config 'auto_config'
 	option happwner_bridge_auto_config '0'
 	option opera_suppressed '1'
 	option awg10_suppressed '1'
-	option sections_auto_load '0'
 
 config dashboard 'dashboard'
 
@@ -602,6 +602,10 @@ config engine 'engine'
 	option naive_hash_timeout '10'
 	option singbox_transport_check_timeout '10'
 	option fptn_status_secret 'f9ecbb531301894dbf510a874d1ff900'
+	option dns_runtime_fallback_strategy 'sequential'
+	option dns_runtime_fallback_timeout '3'
+	option dns_runtime_fallback_candidates_enabled '0'
+	option clash_ui_panel 'yacd'
 
 
 EOF
