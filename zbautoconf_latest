@@ -899,7 +899,7 @@ on_the_end() {
    
     # Устанавливаем RRWS
     echo ""
-    sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh)
+    sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh) noclear
 
 	# оживляем авг10
 	# echo -e "→ \"Оживляем\" авг10"
