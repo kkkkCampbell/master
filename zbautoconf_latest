@@ -281,6 +281,7 @@ stop_and_rplce_config_zeroblock() {
 	rm -f /etc/config/zeroblock
 	cat > /etc/config/zeroblock << 'EOF'
 
+
 config settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
@@ -446,6 +447,7 @@ config section 'opera'
 	list community_lists 'shop'
 	list community_lists 'socials'
 	list community_lists 'video'
+	list community_lists 'cdn_github'
 
 config section 'awg10'
 	option enabled '1'
@@ -484,7 +486,7 @@ config section 'awg10'
 config auto_config 'auto_config'
 	option opera_auto_config '1'
 	option awg_auto_config '1'
-	option xray_auto_config '1'
+	option xray_auto_config '0'
 	option zapret2_auto_config '1'
 	option trusttunnel_auto_config '0'
 	option naive_auto_config '0'
