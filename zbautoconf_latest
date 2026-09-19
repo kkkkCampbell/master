@@ -9,6 +9,12 @@
 
 VER="v0.1.10.10 (preAPK)"
 
+LOG_DIR="/root/zeroblock_autosetup"
+LOG_FILE="$LOG_DIR/install.log"
+mkdir -p "$LOG_DIR"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
 annoying_services="podkop podkop-plus forkop zapret zapret2 youtubeUnblock ruantiblock"
@@ -900,6 +906,8 @@ on_the_end() {
     # Устанавливаем RRWS
     echo ""
     sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh) noclear
+    echo ""
+    printf "Лог установки сохранён в \033[33m%s\033[0m\n" "$LOG_FILE"
 
 	# оживляем авг10
 	# echo -e "→ \"Оживляем\" авг10"
