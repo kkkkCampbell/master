@@ -623,8 +623,8 @@ wait_zeroblock_ready() {
 	echo -n "→ Ожидание автонастройки zeroblock (макс. 1 минута)"
 	
 	while [ $elapsed -lt $timeout ]; do
-		if uci show zeroblock 2>/dev/null | grep -q "zeroblock.awg10=section" && \
-		   uci show zeroblock 2>/dev/null | grep -q "zeroblock.opera=section"; then
+		if uci show zeroblock 2>/dev/null | grep -q "zeroblock.AI=section" && \
+		   uci show zeroblock 2>/dev/null | grep -q "zeroblock.AI=section"; then
 			echo -e ""
 			echo -e "✓ Автонастройка завершена (через ${elapsed} сек)"
 			uci set zeroblock.auto_config.sections_auto_load='' 
@@ -639,7 +639,7 @@ wait_zeroblock_ready() {
 	done
 	
 	echo -e ""
-	#echo -e "⚠ Таймаут: автонастройка не завершилась за 3 минуты"
+	echo -e "⚠ Таймаут: автонастройка не завершилась за 1 минуту"
 	return 1
 }
 
