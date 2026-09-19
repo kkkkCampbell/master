@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.12 (preAPK)"
+VER="v0.1.10.14 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -625,7 +625,7 @@ wait_zeroblock_ready() {
 	
 	while [ $elapsed -lt $timeout ]; do
 		if uci show zeroblock 2>/dev/null | grep -q "zeroblock.AI=section" && \
-		   uci show zeroblock 2>/dev/null | grep -q "zeroblock.MESSENGERS=section"; then
+		   uci show zeroblock 2>/dev/null | grep -q "zeroblock.MESSENGERS_port_2080=section"; then
 			echo -e ""
 			echo -e "✓ Автонастройка завершена (через ${elapsed} сек)"
 			uci set zeroblock.auto_config.sections_auto_load='' 
