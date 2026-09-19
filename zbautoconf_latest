@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.5 (preAPK)"
+VER="v0.1.10.6 (preAPK)"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
@@ -875,6 +875,14 @@ on_the_end() {
 	# for item in $opera_community_lists; do
 	#	uci add_list zeroblock.opera.community_lists="$item"
 	# done; sleep 1; uci commit; uci commit luci;	sleep 1
+
+	# Устанавливаем в секцию AI WAN-интерфейс
+	WAN_IF=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device')
+	[ -z "$WAN_IF" ] && WAN_IF=$(uci -q get network.wan.device || uci -q get network.wan.ifname)
+	echo "WAN interface: $WAN_IF"
+	uci set zeroblock.AI.interface="${WAN_IF}"
+	uci commit zeroblock
+	sleep 2
 
 	# Перезапускаем ZEROBLOCK
 	/usr/bin/zeroblock daemon &
