@@ -624,7 +624,7 @@ wait_zeroblock_ready() {
 	
 	while [ $elapsed -lt $timeout ]; do
 		if uci show zeroblock 2>/dev/null | grep -q "zeroblock.AI=section" && \
-		   uci show zeroblock 2>/dev/null | grep -q "zeroblock.AI=section"; then
+		   uci show zeroblock 2>/dev/null | grep -q "zeroblock.MESSENGERS=section"; then
 			echo -e ""
 			echo -e "✓ Автонастройка завершена (через ${elapsed} сек)"
 			uci set zeroblock.auto_config.sections_auto_load='' 
