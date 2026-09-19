@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.9 (preAPK)"
+VER="v0.1.10.10 (preAPK)"
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
 TEMP_DNS="9.9.9.11"
@@ -606,10 +606,10 @@ EOF
 
 # Ожидание завершения автонастройки zeroblock
 wait_zeroblock_ready() {
-	local timeout=180  # 3 минуты
+	local timeout=60  # 1 минута
 	local elapsed=0
 	
-	echo -n "→ Ожидание автонастройки zeroblock (макс. 3 минуты)"
+	echo -n "→ Ожидание автонастройки zeroblock (макс. 1 минута)"
 	
 	while [ $elapsed -lt $timeout ]; do
 		if uci show zeroblock 2>/dev/null | grep -q "zeroblock.awg10=section" && \
@@ -890,16 +890,16 @@ on_the_end() {
 	uci set zeroblock.AI.interface="${WAN_IF}"
 	uci commit zeroblock
 
-   # Устанавливаем RRWS
-   echo ""
-   sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh)
-
 	# Перезапускаем ZEROBLOCK
 	/usr/bin/zeroblock daemon &
 	sleep 3
 	/etc/init.d/zeroblock start
 	sleep 3
 	# /etc/init.d/zeroblock reload
+   
+    # Устанавливаем RRWS
+    echo ""
+    sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh)
 
 	# оживляем авг10
 	# echo -e "→ \"Оживляем\" авг10"
