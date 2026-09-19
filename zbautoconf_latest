@@ -908,7 +908,8 @@ on_the_end() {
 	/etc/init.d/zeroblock start
 	sleep 3
 	# /etc/init.d/zeroblock reload
-   
+
+    sleep 30
     # Устанавливаем RRWS
     echo ""
     sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh) noclear
