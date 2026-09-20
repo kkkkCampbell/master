@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.17 (preAPK)"
+VER="v0.1.10.18 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -72,6 +72,12 @@ opkg_update(){
 install_rrws() {
     # Устанавливаем RRWS
     sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh) noclear
+    echo ""
+}
+
+install_malwdns() {
+    # Устанавливаем MALWDNS_PARSER
+	sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/malw_parser/malw_parser.sh) noclear
     echo ""
 }
 
@@ -299,7 +305,6 @@ stop_and_rplce_config_zeroblock() {
 # Замена конфига zeroblock
 	rm -f /etc/config/zeroblock
 	cat > /etc/config/zeroblock << 'EOF'
-
 config settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
@@ -358,11 +363,16 @@ config settings 'settings'
 	option soft_routing_matrix_enabled '0'
 	option show_custom_config_editor '0'
 	option dns_benchmark_parallelism '8'
+	option log_config_proxies '1'
+	option log_disable_fakeip '1'
+	option log_proxy_orchestrator '1'
+	option log_subscription_parser '1'
+	option log_xray_generator '1'
 
-config section 'AI'
+config section 'AI_GEOHIDE'
 	option connection_type 'vpn'
 	option dscp_enabled '0'
-	option interface 'pppoe-wan'
+	option interface 'awg10'
 	option enable_mixed_proxy '0'
 	option dns_type 'doh'
 	option dns_server 'geohide.ru'
@@ -376,7 +386,7 @@ config section 'AI'
 	option no_sniff '0'
 	option force_cidr_community '0'
 	option community_lists_invert '0'
-	option enable_user_lists '0'
+	option enable_user_lists '1'
 	option enable_exclusions '0'
 	option catch_all '0'
 	option parental_control '0'
@@ -385,6 +395,34 @@ config section 'AI'
 	option failover_enabled '0'
 	option enabled '1'
 	list community_lists 'ai'
+	list user_lists 'https://geohide.ru/ru/domains.txt'
+
+config section 'MALW_DNS'
+	option connection_type 'vpn'
+	option dscp_enabled '0'
+	option interface 'awg10'
+	option enable_mixed_proxy '0'
+	option dns_type 'doh'
+	option dns_server 'dns.malw.link'
+	option dns_via_outbound '0'
+	option dns_runtime_fallback_enabled '0'
+	option bootstrap_dns_type 'doh'
+	option bootstrap_dns_server '9.9.9.9'
+	option bootstrap_via_outbound '0'
+	option disable_fakeip '0'
+	option per_section_tproxy '0'
+	option no_sniff '0'
+	option force_cidr_community '0'
+	option community_lists_invert '0'
+	option enable_user_lists '1'
+	option enable_exclusions '0'
+	option catch_all '0'
+	option parental_control '0'
+	option tls_spoof_method 'wrong-sequence'
+	option ipv6_enabled '0'
+	option failover_enabled '0'
+	option enabled '1'
+	list user_lists '/root/malw_parser/malwhosts.txt'
 
 config section 'MESSENGERS'
 	option connection_type 'vpn'
@@ -521,7 +559,6 @@ config auto_config 'auto_config'
 	option happwner_bridge_auto_config '0'
 	option opera_suppressed '1'
 	option sections_auto_load '0'
-	option awg10_suppressed '1'
 
 config dashboard 'dashboard'
 
@@ -609,7 +646,6 @@ config engine 'engine'
 	option naive_hash_timeout '10'
 	option singbox_transport_check_timeout '10'
 	option fptn_status_secret 'f9ecbb531301894dbf510a874d1ff900'
-
 
 EOF
 
@@ -898,11 +934,12 @@ on_the_end() {
 	#	uci add_list zeroblock.opera.community_lists="$item"
 	# done; sleep 1; uci commit; uci commit luci;	sleep 1
 
-	# Устанавливаем в секцию AI WAN-интерфейс
+	# Устанавливаем в секции AI_GEOHIDE, MALW_DNS WAN-интерфейс
 	WAN_IF=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device')
 	[ -z "$WAN_IF" ] && WAN_IF=$(uci -q get network.wan.device || uci -q get network.wan.ifname)
 	echo "WAN interface: $WAN_IF"
-	uci set zeroblock.AI.interface="${WAN_IF}"
+	uci set zeroblock.AI_GEOHIDE.interface="${WAN_IF}"
+	uci set zeroblock.MALW_DNS.interface="${WAN_IF}"
 	uci commit
 	sleep 2
 	/etc/init.d/zeroblock reload
@@ -931,6 +968,7 @@ kill_annoying_services
 dns_redirect "${TEMP_DNS}"
 sleep 5
 install_rrws
+install_malwdns
 install_zb_newest; echo -e ""
 install_zb_repo # если новейший не установлен, устанавливаем из репы
 stop_and_rplce_config_zeroblock
