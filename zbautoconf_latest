@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.14 (preAPK)"
+VER="v0.1.10.15 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -18,6 +18,7 @@ fi
 LOG_DIR="/root/zeroblock_autosetup"
 LOG_FILE="$LOG_DIR/install.log"
 mkdir -p "$LOG_DIR"
+rm "$LOG_FILE"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
@@ -67,6 +68,13 @@ opkg_update(){
 	done
 
 }
+
+install_rrws() {
+    # Устанавливаем RRWS
+    sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh) noclear
+    echo ""
+}
+
 
 install_zb_newest() {
 	no_zb_arch=0
@@ -292,7 +300,6 @@ stop_and_rplce_config_zeroblock() {
 	rm -f /etc/config/zeroblock
 	cat > /etc/config/zeroblock << 'EOF'
 
-
 config settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
@@ -306,7 +313,7 @@ config settings 'settings'
 	option timeout_dnsmasq_restart '150'
 	option timeout_xray_check '60'
 	option disable_startup_check '0'
-	option manage_xray '1'
+	option manage_xray '0'
 	option update_time '09:00'
 	option api 'v2'
 	option enable_bad_interface_monitoring '0'
@@ -367,7 +374,6 @@ config section 'AI'
 	option disable_fakeip '0'
 	option per_section_tproxy '0'
 	option no_sniff '0'
-	list community_lists 'ai'
 	option force_cidr_community '0'
 	option community_lists_invert '0'
 	option enable_user_lists '0'
@@ -378,15 +384,16 @@ config section 'AI'
 	option ipv6_enabled '0'
 	option failover_enabled '0'
 	option enabled '1'
+	list community_lists 'ai'
 
-config section 'MESSENGERS_port_2080'
+config section 'MESSENGERS'
 	option connection_type 'vpn'
 	option force_disable_fakeip '0'
 	list server_community_lists 'geoblock'
 	list server_community_lists 'ai'
 	option disable_fakeip '1'
 	option dscp_enabled '0'
-	option enable_mixed_proxy '1'
+	option enable_mixed_proxy '0'
 	option per_section_tproxy '0'
 	option no_sniff '0'
 	option force_cidr_community '0'
@@ -421,11 +428,10 @@ config section 'MESSENGERS_port_2080'
 	list user_subnets_text '2001:b28:f23d::/48'
 	list user_subnets_text '2001:b28:f23f::/48'
 	list user_subnets_text '2a0a:f280::/32'
-	option mixed_port '2080'
 	list community_lists 'messengers'
 	list community_lists 'meta'
 
-config section 'opera_port_3080'
+config section 'opera'
 	option enabled '1'
 	option connection_type 'proxy'
 	option proxy_config_type 'outbound'
@@ -436,7 +442,7 @@ config section 'opera_port_3080'
 	option disable_fakeip '0'
 	option dscp_enabled '0'
 	option enable_udp_over_tcp '0'
-	option enable_mixed_proxy '1'
+	option enable_mixed_proxy '0'
 	option per_section_tproxy '0'
 	option no_sniff '0'
 	option force_cidr_community '0'
@@ -459,9 +465,8 @@ config section 'opera_port_3080'
 	list community_lists 'socials'
 	list community_lists 'video'
 	list community_lists 'cdn_github'
-	option mixed_port '3080'
 
-config section 'awg10_port_4080'
+config section 'awg10'
 	option enabled '1'
 	option force_disable_fakeip '0'
 	option connection_type 'vpn'
@@ -479,7 +484,7 @@ config section 'awg10_port_4080'
 	list server_community_lists 'googleplay'
 	option disable_fakeip '0'
 	option dscp_enabled '0'
-	option enable_mixed_proxy '1'
+	option enable_mixed_proxy '0'
 	option per_section_tproxy '0'
 	option no_sniff '0'
 	option force_cidr_community '0'
@@ -497,12 +502,11 @@ config section 'awg10_port_4080'
 	option catch_all '0'
 	option tls_spoof_method 'wrong-sequence'
 	option ipv6_enabled '0'
-	option mixed_port '4080'
 
 config auto_config 'auto_config'
 	option opera_auto_config '1'
 	option awg_auto_config '1'
-	option xray_auto_config '1'
+	option xray_auto_config '0'
 	option zapret2_auto_config '1'
 	option trusttunnel_auto_config '0'
 	option naive_auto_config '0'
@@ -514,6 +518,7 @@ config auto_config 'auto_config'
 	option fptn_auto_config '0'
 	option happwner_bridge_auto_config '0'
 	option opera_suppressed '1'
+	option sections_auto_load '0'
 	option awg10_suppressed '1'
 
 config dashboard 'dashboard'
@@ -602,18 +607,12 @@ config engine 'engine'
 	option naive_hash_timeout '10'
 	option singbox_transport_check_timeout '10'
 	option fptn_status_secret 'f9ecbb531301894dbf510a874d1ff900'
-	option dns_runtime_fallback_strategy 'sequential'
-	option dns_runtime_fallback_timeout '3'
-	option dns_runtime_fallback_candidates_enabled '0'
-	option clash_ui_panel 'yacd'
-
 
 EOF
 
 	echo -e "✓ Конфиг zeroblock заменён"
 
 	/etc/init.d/zeroblock start 2>/dev/null
-	sleep 5
 	/etc/init.d/zeroblock enable 2>/dev/null
 	echo -e "✓ zeroblock запущен"
 	fi
@@ -622,17 +621,19 @@ EOF
 
 # Ожидание завершения автонастройки zeroblock
 wait_zeroblock_ready() {
+	/etc/init.d/zeroblock start
 	local timeout=60  # 1 минута
 	local elapsed=0
 	
 	echo -n "→ Ожидание автонастройки zeroblock (макс. 1 минута)"
+
 	
 	while [ $elapsed -lt $timeout ]; do
-		if uci show zeroblock 2>/dev/null | grep -q "zeroblock.AI=section" && \
-		   uci show zeroblock 2>/dev/null | grep -q "zeroblock.MESSENGERS_port_2080=section"; then
+		if uci show zeroblock 2>/dev/null | grep -q "zeroblock.AI1=section" && \
+		   uci show zeroblock 2>/dev/null | grep -q "zeroblock.MESSENGERS1=section"; then
 			echo -e ""
 			echo -e "✓ Автонастройка завершена (через ${elapsed} сек)"
-			uci set zeroblock.auto_config.sections_auto_load='' 
+			uci set zeroblock.auto_config.sections_auto_load='0' 
 			uci commit zeroblock
 			uci commit luci
 			return 0
@@ -644,7 +645,7 @@ wait_zeroblock_ready() {
 	done
 	
 	echo -e ""
-	echo -e "⚠ Таймаут: автонастройка не завершилась за 1 минуту"
+	#echo -e "⚠ Таймаут: автонастройка не завершилась за 1 минуту"
 	return 1
 }
 
@@ -704,12 +705,6 @@ refresh_luci() {
 	rm -f /tmp/luci-indexcache.json 2>/dev/null
 	/etc/init.d/rpcd reload >/dev/null 2>&1
 	/etc/init.d/uhttpd reload >/dev/null 2>&1
-	echo -e  "
-${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
-Если обновление не помогло - перелогиньтесь.
-Если и это не помогло ${GREEN}ОЧИСТИТЕ КЭШ БРАУЗЕРА
-${YELLOW}или откройте админку роутера в ${GREEN}инкогнито-окне браузера.
-${CLR_OFF}"
 }
 
 
@@ -741,7 +736,7 @@ draw_main_menu() {
 			echo -e "${GREEN}→ Запуск установки и настройки...${CLR_OFF}"
 			# очищаем папку /etc/zeroblock от старых файлов
 			find /etc/zeroblock -maxdepth 1 -type f -exec rm -f -- {} +
-			break
+			return 0
 			;;
 		2) if [ "$BACKUP_COUNT" -gt 0 ]; then
 				echo -e ""; echo -e "${GREEN}→ Запуск восстановления...${CLR_OFF}"; draw_restore_menu
@@ -881,7 +876,7 @@ draw_restore_menu() {
 on_the_end() {
 
 	#ubus call zeroblock flush_conntrack >/dev/null 2>&1
-	/etc/init.d/zeroblock stop >/dev/null 2>&1
+	# /etc/init.d/zeroblock stop >/dev/null 2>&1
 	
 	# "Улучшаем" списки собщества
 	# uci delete zeroblock.awg10.community_lists
@@ -904,35 +899,19 @@ on_the_end() {
 	[ -z "$WAN_IF" ] && WAN_IF=$(uci -q get network.wan.device || uci -q get network.wan.ifname)
 	echo "WAN interface: $WAN_IF"
 	uci set zeroblock.AI.interface="${WAN_IF}"
-	uci commit zeroblock
-
-	# Перезапускаем ZEROBLOCK
-	/usr/bin/zeroblock daemon &
-	sleep 3
-	/etc/init.d/zeroblock start
-	sleep 3
-	# /etc/init.d/zeroblock reload
-
+	uci commit
+	sleep 2
+	/etc/init.d/zeroblock reload
     
-    # Устанавливаем RRWS
-    sleep 30
-    echo ""
-    sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh) noclear
-    echo ""
-    #printf "Лог установки сохранён в \033[33m%s\033[0m\n" "$LOG_FILE"
+echo -e "
+${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
+Если обновление не помогло - перелогиньтесь.
+Если и это не помогло ${GREEN}ОЧИСТИТЕ КЭШ БРАУЗЕРА
+${YELLOW}или откройте админку роутера в ${GREEN}инкогнито-окне браузера.
+${CLR_OFF}"
 
-	# оживляем авг10
-	# echo -e "→ \"Оживляем\" авг10"
-	# printf "  "
-	# for i in $(seq 10 -1 1); do
-	# 	ping -I awg10 8.8.8.8 -c 1 >/dev/null 2>&1
-	# 	printf "$i "
-	# 	sleep 1
-	# done
-	# echo -e ""
-	# echo -e "→ Перезапускаем dnsmasq"
-	# /etc/init.d/dnsmasq restart
-	# echo -e ""
+	printf "Лог установки сохранён в \033[33m%s\033[0m\n" "$LOG_FILE"
+	echo ""
 }
 
 # ============================================
@@ -946,6 +925,8 @@ create_backup
 verify_backup "${BACKUP_FILE}"
 kill_annoying_services
 dns_redirect "${TEMP_DNS}"
+sleep 5
+install_rrws
 install_zb_newest; echo -e ""
 install_zb_repo # если новейший не установлен, устанавливаем из репы
 stop_and_rplce_config_zeroblock
@@ -954,6 +935,11 @@ dns_redirect "recovery"
 refresh_luci
 on_the_end
 
-[ "$new_install" = "1" ] && echo -e  " ===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
 echo -e "=== КОНЕЦ ==="
 echo -e ""
+# ЧИСТИМ ЛОГФАЙЛ
+sed -i 's/\x1b\[[0-9;]*m//g' "$LOG_FILE"
+new_install=0
+[ "$new_install" = "1" ] && echo -e  "===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
+
+exit 0
