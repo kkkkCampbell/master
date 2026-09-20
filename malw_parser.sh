@@ -1,4 +1,4 @@
-clear
+if [ "$1" != "noclear" ]; then clear; fi
 echo ""
 echo "Устанавливается парсер hosts-файла dns.malw.link"
 echo ""
