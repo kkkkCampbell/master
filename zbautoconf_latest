@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.18 (preAPK)"
+VER="v0.1.10.19 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -305,6 +305,7 @@ stop_and_rplce_config_zeroblock() {
 # Замена конфига zeroblock
 	rm -f /etc/config/zeroblock
 	cat > /etc/config/zeroblock << 'EOF'
+
 config settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
@@ -547,7 +548,7 @@ config auto_config 'auto_config'
 	option opera_auto_config '1'
 	option awg_auto_config '1'
 	option xray_auto_config '0'
-	option zapret2_auto_config '1'
+	option zapret2_auto_config '0'
 	option trusttunnel_auto_config '0'
 	option naive_auto_config '0'
 	option zapret2_auto_strategies '0'
@@ -646,7 +647,6 @@ config engine 'engine'
 	option naive_hash_timeout '10'
 	option singbox_transport_check_timeout '10'
 	option fptn_status_secret 'f9ecbb531301894dbf510a874d1ff900'
-
 EOF
 
 	echo -e "✓ Конфиг zeroblock заменён"
