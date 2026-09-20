@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.15 (preAPK)"
+VER="v0.1.10.16 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -713,9 +713,9 @@ refresh_luci() {
 
 draw_main_menu() {
 	clear
-	echo -e "${CYAN}======================================${CLR_OFF}"
+	echo -e "${CYAN}=======================================${CLR_OFF}"
 	echo -e "${CYAN} ZEROBLOCK MANAGER ${VER}${CLR_OFF}"
-	echo -e "${CYAN}======================================${CLR_OFF}"
+	echo -e "${CYAN}=======================================${CLR_OFF}"
 	echo -e ""
 	echo -e "  ${GREEN}1${CLR_OFF} — Установить и настроить ZeroBlock"
 	
@@ -939,7 +939,7 @@ on_the_end
 echo -e "=== КОНЕЦ ==="
 echo -e ""
 # ЧИСТИМ ЛОГФАЙЛ
-sed -i 's/\x1b\[[0-9;]*m//g' "$LOG_FILE"
+sed -i -E 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"
 uci commit
 new_install=0
 [ "$new_install" = "1" ] && echo -e  "===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
