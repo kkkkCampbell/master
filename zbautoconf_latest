@@ -937,7 +937,7 @@ on_the_end() {
 	# Устанавливаем в секции AI_GEOHIDE, MALW_DNS WAN-интерфейс
 	WAN_IF=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device')
 	[ -z "$WAN_IF" ] && WAN_IF=$(uci -q get network.wan.device || uci -q get network.wan.ifname)
-	echo "WAN interface: $WAN_IF"
+	echo "→ WAN interface: $WAN_IF"
 	uci set zeroblock.AI_GEOHIDE.interface="${WAN_IF}"
 	uci set zeroblock.MALW_DNS.interface="${WAN_IF}"
 	uci commit
