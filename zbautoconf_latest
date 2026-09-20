@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.16 (preAPK)"
+VER="v0.1.10.17 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -464,6 +464,8 @@ config section 'opera'
 	list community_lists 'shop'
 	list community_lists 'socials'
 	list community_lists 'video'
+	list community_lists 'cdn_aws'
+	list community_lists 'cdn_cloudflare'
 	list community_lists 'cdn_github'
 
 config section 'awg10'
@@ -607,6 +609,7 @@ config engine 'engine'
 	option naive_hash_timeout '10'
 	option singbox_transport_check_timeout '10'
 	option fptn_status_secret 'f9ecbb531301894dbf510a874d1ff900'
+
 
 EOF
 
