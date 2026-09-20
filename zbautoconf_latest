@@ -857,6 +857,7 @@ draw_restore_menu() {
 				printf "%b\n→ Восстановление...%b\n" "${CYAN}" "${CLR_OFF}"
 				sysupgrade -r "$SELECTED"
 				if [ $? -eq 0 ]; then
+					uci commit
 					printf "%b✓ Бэкап восстановлен%b\n" "${GREEN}" "${CLR_OFF}"
 					printf "%b⚠ Требуется перезагрузка роутера%b\n" "${YELLOW}" "${CLR_OFF}"
 				else
@@ -939,6 +940,7 @@ echo -e "=== КОНЕЦ ==="
 echo -e ""
 # ЧИСТИМ ЛОГФАЙЛ
 sed -i 's/\x1b\[[0-9;]*m//g' "$LOG_FILE"
+uci commit
 new_install=0
 [ "$new_install" = "1" ] && echo -e  "===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
 
