@@ -4,6 +4,17 @@
 
 if [ "$1" != "noclear" ]; then clear; fi
 
+# Проверка версии OpenWRT
+opkg="opkg"
+install="install"
+args=""
+if [ -f "/usr/bin/apk" ]; then
+  opkg="apk"
+  install="add"
+  args="--allow-untrusted"
+fi 
+
+
 echo ""
 echo "=== Устанавливаем RR WARP Scanner ==="
 echo ""
@@ -38,9 +49,9 @@ if [ $? -ne 0 ] || [ ! -f "$FILE_PATH" ]; then
     exit 1
 fi
 
-echo "==> Установка через opkg..."
+echo "==> Установка через ${opkg}..."
 # --force-reinstall позволяет переустановить пакет, если он уже установлен
-opkg install --force-reinstall "$FILE_PATH"
+$opkg $install $args --force-reinstall "$FILE_PATH"
 INSTALL_STATUS=$?
 
 if [ $INSTALL_STATUS -eq 0 ]; then
@@ -48,8 +59,8 @@ if [ $INSTALL_STATUS -eq 0 ]; then
     echo "Проверьте веб-интерфейс LuCI: раздел «Службы» → «RR WARP Scanner»."
     rm -f "$FILE_PATH"  # удаляем временный файл
 else
-    echo "ОШИБКА: opkg завершился с кодом $INSTALL_STATUS."
-    echo "Попробуйте установить вручную: opkg install $FILE_PATH"
+    echo "ОШИБКА: ${opkg} завершился с кодом $INSTALL_STATUS."
+    echo "Попробуйте установить вручную: ${opkg} ${install} $FILE_PATH"
     echo "Если проблема с зависимостями, установите их отдельно (например, kmod-amneziawg)."
     exit 1
 fi
