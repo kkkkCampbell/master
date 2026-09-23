@@ -23,7 +23,7 @@ echo "=== Устанавливаем RR WARP Scanner ==="
 echo ""
 REPO="dedikar/RR-WARP-Scanner"
 # https://api.github.com/repos/dedikar/RR-WARP-Scanner/releases/latest
-echo "https://api.github.com/repos/$REPO/releases/latest"
+# echo "https://api.github.com/repos/$REPO/releases/latest"
 API_URL="https://api.github.com/repos/$REPO/releases/latest"
 TMP_DIR="/tmp"
 PKG_NAME="luci-app-rrws"
