@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.19 (preAPK)"
+VER="v0.1.10.20 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -370,10 +370,40 @@ config settings 'settings'
 	option log_subscription_parser '1'
 	option log_xray_generator '1'
 
-config section 'AI_GEOHIDE'
+config section 'RUSSIA'
 	option connection_type 'vpn'
 	option dscp_enabled '0'
 	option interface 'awg10'
+	option enable_mixed_proxy '0'
+	option dns_type 'udp'
+	option dns_server '77.88.8.8'
+	option dns_via_outbound '0'
+	option dns_runtime_fallback_enabled '0'
+	option disable_fakeip '0'
+	option per_section_tproxy '0'
+	option no_sniff '0'
+	option force_cidr_community '0'
+	option community_lists_invert '0'
+	option user_domain_list_type 'text'
+	list user_domains_text '.ru'
+	list user_domains_text '.su'
+	list user_domains_text '.рф'
+	list user_domains_text 'keyword:yandex'
+	list user_domains_text 'keyword:.ya.'
+	list user_domains_text 'keyword:icq.'
+	option enable_user_lists '0'
+	option enable_exclusions '0'
+	option catch_all '0'
+	option parental_control '0'
+	option tls_spoof_method 'wrong-sequence'
+	option ipv6_enabled '0'
+	option failover_enabled '0'
+	option enabled '1'
+
+config section 'AI_GEOHIDE'
+	option connection_type 'vpn'
+	option dscp_enabled '0'
+	option interface 'pppoe-wan'
 	option enable_mixed_proxy '0'
 	option dns_type 'doh'
 	option dns_server 'geohide.ru'
@@ -401,7 +431,7 @@ config section 'AI_GEOHIDE'
 config section 'MALW_DNS'
 	option connection_type 'vpn'
 	option dscp_enabled '0'
-	option interface 'awg10'
+	option interface 'pppoe-wan'
 	option enable_mixed_proxy '0'
 	option dns_type 'doh'
 	option dns_server 'dns.malw.link'
@@ -560,6 +590,7 @@ config auto_config 'auto_config'
 	option happwner_bridge_auto_config '0'
 	option opera_suppressed '1'
 	option sections_auto_load '0'
+	option openflux_auto_config '0'
 
 config dashboard 'dashboard'
 
@@ -568,7 +599,7 @@ config diagnostic 'diagnostic'
 config engine 'engine'
 	option dns_type 'doh'
 	option dns_server 'dns.quad9.net'
-	option bootstrap_dns_server '9.9.9.11'
+	option bootstrap_dns_server '8.8.8.8'
 	option dns_rewrite_ttl '60'
 	option dns_strategy 'ipv4_only'
 	option autoremove_static_lease '1'
@@ -647,6 +678,9 @@ config engine 'engine'
 	option naive_hash_timeout '10'
 	option singbox_transport_check_timeout '10'
 	option fptn_status_secret 'f9ecbb531301894dbf510a874d1ff900'
+	option openflux_logging '0'
+	option openflux_path '/usr/bin/universal-bypass-tool'
+	option openflux_startup_timeout '8'
 EOF
 
 	echo -e "✓ Конфиг zeroblock заменён"
@@ -934,10 +968,11 @@ on_the_end() {
 	#	uci add_list zeroblock.opera.community_lists="$item"
 	# done; sleep 1; uci commit; uci commit luci;	sleep 1
 
-	# Устанавливаем в секции AI_GEOHIDE, MALW_DNS WAN-интерфейс
+	# Устанавливаем в секции AI_GEOHIDE, MALW_DNS. RUSSIA WAN-интерфейс
 	WAN_IF=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device')
 	[ -z "$WAN_IF" ] && WAN_IF=$(uci -q get network.wan.device || uci -q get network.wan.ifname)
 	echo "→ WAN interface: $WAN_IF"
+	uci set zeroblock.RUSSIA.interface="${WAN_IF}"
 	uci set zeroblock.AI_GEOHIDE.interface="${WAN_IF}"
 	uci set zeroblock.MALW_DNS.interface="${WAN_IF}"
 	uci commit
