@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.27 (preAPK)"
+VER="v0.1.10.29 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -81,8 +81,8 @@ install_malwdns() {
     echo ""
 }
 
-install_ZB_prereq(){
-$opkg $install opera-proxy
+install_prereq(){
+$opkg $install wget-ssl
 }
 
 
@@ -148,8 +148,7 @@ install_zb_newest() {
 		return 1
 	fi
 	
-	opkg_update
-	
+
 	echo -e "Установка: $(basename "$LARGEST_FILE")"
 	$opkg $install "$LARGEST_FILE" || {
 		echo -e "${RED_BRIGHT}Ошибка установки${CLR_OFF}"
@@ -183,7 +182,7 @@ install_zb_repo() {
 	fi
 	
 	new_install=1
-	opkg_update
+	# opkg_update
 
 	# 5) Установка zeroblock
 	echo -e "→ Установка zeroblock luci-app-zeroblock..."
@@ -309,6 +308,7 @@ stop_and_rplce_config_zeroblock() {
 # Замена конфига zeroblock
 	rm -f /etc/config/zeroblock
 	cat > /etc/config/zeroblock << 'EOF'
+
 config settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
@@ -603,7 +603,7 @@ config diagnostic 'diagnostic'
 config engine 'engine'
 	option dns_type 'doh'
 	option dns_server 'dns.quad9.net'
-	option bootstrap_dns_server '8.8.8.8'
+	option bootstrap_dns_server '1.1.1.1'
 	option dns_rewrite_ttl '60'
 	option dns_strategy 'ipv4_only'
 	option autoremove_static_lease '1'
@@ -989,6 +989,7 @@ on_the_end() {
 	uci set zeroblock.RUSSIA.interface="${WAN_IF}"
 	uci set zeroblock.AI_GEOHIDE.interface="${WAN_IF}"
 	uci set zeroblock.MALW_DNS.interface="${WAN_IF}"
+	uci set zeroblock.XBOX_DNS.interface="${WAN_IF}"
 	uci commit
 	sleep 2
 	/etc/init.d/zeroblock reload
@@ -1016,17 +1017,19 @@ verify_backup "${BACKUP_FILE}"
 kill_annoying_services
 dns_redirect "${TEMP_DNS}"
 sleep 5
+opkg_update
+install_prereq
 install_rrws
 install_malwdns
 install_zb_newest; echo -e ""
 install_zb_repo # если новейший не установлен, устанавливаем из репы
-install_ZB_prereq
 stop_and_rplce_config_zeroblock
 wait_zeroblock_ready
 dns_redirect "recovery"
 refresh_luci
 on_the_end
 
+echo "→ Перезапуск сети"
 service network restart
 echo -e "=== КОНЕЦ ==="
 echo -e ""
