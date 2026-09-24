@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.22 (preAPK)"
+VER="v0.1.10.23 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -971,8 +971,12 @@ on_the_end() {
 	#	uci add_list zeroblock.opera.community_lists="$item"
 	# done; sleep 1; uci commit; uci commit luci;	sleep 1
     
-    # Изменяем MTU awg10
+    # Изменяем параметры awg10
     uci set network.awg10.mtu='1280'
+	uci set network.awg10.addresses='172.16.0.2'
+	uci set network.awg10.dns='1.1.1.1' '1.0.0.1'
+	uci set network.awg10.nohostroute='1'
+	uci set network.@amneziawg_awg10[0].persistent_keepalive='25'
     uci commit network
 	
 
