@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.24 (preAPK)"
+VER="v0.1.10.25 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -976,7 +976,6 @@ on_the_end() {
 	uci set network.awg10.addresses='172.16.0.2'
 	uci set network.awg10.dns='1.1.1.1' '1.0.0.1'
 	uci set network.awg10.nohostroute='1'
-	uci set network.@amneziawg_awg10[0].persistent_keepalive='25'
     uci commit network
 	
 
