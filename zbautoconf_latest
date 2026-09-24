@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.21 (preAPK)"
+VER="v0.1.10.22 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -79,6 +79,10 @@ install_malwdns() {
     # Устанавливаем MALWDNS_PARSER
 	sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/malw_parser/malw_parser.sh) noclear
     echo ""
+}
+
+install_ZB_prereq(){
+$opkg $install opera-proxy
 }
 
 
@@ -969,7 +973,8 @@ on_the_end() {
     
     # Изменяем MTU awg10
     uci set network.awg10.mtu='1280'
-    uci commit network 
+    uci commit network
+	
 
 	# Устанавливаем в секции AI_GEOHIDE, MALW_DNS. RUSSIA WAN-интерфейс
 	WAN_IF=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device')
@@ -1009,6 +1014,7 @@ install_rrws
 install_malwdns
 install_zb_newest; echo -e ""
 install_zb_repo # если новейший не установлен, устанавливаем из репы
+install ZB_prereq
 stop_and_rplce_config_zeroblock
 wait_zeroblock_ready
 dns_redirect "recovery"
