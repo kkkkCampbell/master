@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.25 (preAPK)"
+VER="v0.1.10.27 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -972,12 +972,15 @@ on_the_end() {
 	# done; sleep 1; uci commit; uci commit luci;	sleep 1
     
     # Изменяем параметры awg10
+	echo "→ Изменяем параметры awg10"
     uci set network.awg10.mtu='1280'
 	uci set network.awg10.addresses='172.16.0.2'
-	uci set network.awg10.dns='1.1.1.1' '1.0.0.1'
+	uci delete network.awg10.dns
+	uci add_list network.awg10.dns='1.1.1.1'
+	uci add_list network.awg10.dns='1.0.0.1'
 	uci set network.awg10.nohostroute='1'
     uci commit network
-	
+	echo "✓ Параметры awg10 успешно изменены"
 
 	# Устанавливаем в секции AI_GEOHIDE, MALW_DNS. RUSSIA WAN-интерфейс
 	WAN_IF=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device')
