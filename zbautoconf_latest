@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.23 (preAPK)"
+VER="v0.1.10.24 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -1018,7 +1018,7 @@ install_rrws
 install_malwdns
 install_zb_newest; echo -e ""
 install_zb_repo # если новейший не установлен, устанавливаем из репы
-install ZB_prereq
+install_ZB_prereq
 stop_and_rplce_config_zeroblock
 wait_zeroblock_ready
 dns_redirect "recovery"
