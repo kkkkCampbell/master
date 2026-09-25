@@ -1,7 +1,9 @@
 #!/bin/sh
 # rrws_installer.sh — установщик LuCI-приложения RR-WARP-Scanner
 # Репозиторий: https://github.com/dedikar/RR-WARP-Scanner
-echo "ver_0004"
+# Запуск: sh rrws_installer.sh [noclear]
+
+echo "ver_0005"
 sleep 2
 
 if [ "$1" != "noclear" ]; then clear; fi
@@ -35,10 +37,8 @@ detect_pkg_ext() {
 ensure_wget_ssl() {
     local pkg_mgr="$1"
 
-    # Уже установлен?
     if [ "$pkg_mgr" = "apk" ]; then
-        # apk list -I показывает ТОЛЬКО установленные пакеты
-        if apk list -I wget-ssl 2>/dev/null | grep -q '^wget-ssl'; then
+        if apk info -e wget-ssl >/dev/null 2>&1; then
             log "wget-ssl уже установлен (apk)."
             return 0
         fi
@@ -51,9 +51,8 @@ ensure_wget_ssl() {
 
     log "wget-ssl не найден. Устанавливаю..."
 
-    # Убираем конфликтующий wget-nossl, если он есть
     if [ "$pkg_mgr" = "apk" ]; then
-        if apk list -I wget-nossl 2>/dev/null | grep -q '^wget-nossl'; then
+        if apk info -e wget-nossl >/dev/null 2>&1; then
             warn "удаляю конфликтующий wget-nossl..."
             apk del wget-nossl >/dev/null 2>&1 || true
         fi
@@ -71,20 +70,35 @@ ensure_wget_ssl() {
     log "wget-ssl установлен."
 }
 
+# --- 0b. Проверяем наличие jq -------------------------------------------
+detect_jq() {
+    if command -v jq >/dev/null 2>&1; then
+        HAS_JQ=1
+        log "jq найден — JSON разбираю через jq."
+    else
+        HAS_JQ=0
+        log "jq не найден — JSON разбираю через grep/sed."
+    fi
+}
+
 # --- 1. Скачиваем JSON релиза с внятной диагностикой ---------------------
 fetch_release_json() {
-    local http_code
+    local http_code=""
 
+    : > "$TMP_ERR"
+
+    # stderr (в т.ч. -S заголовки) — в файл. Показываем только при ошибке.
     if [ -n "$GITHUB_TOKEN" ]; then
-        http_code=$(wget -S -O "$TMP_JSON" \
+        wget -S -O "$TMP_JSON" \
             --header="Authorization: token ${GITHUB_TOKEN}" \
-            "$GITHUB_API" 2>"$TMP_ERR" \
-            | awk '/HTTP\// {code=$2} END {print code}')
+            "$GITHUB_API" 2>"$TMP_ERR" || true
     else
-        http_code=$(wget -S -O "$TMP_JSON" \
-            "$GITHUB_API" 2>"$TMP_ERR" \
-            | awk '/HTTP\// {code=$2} END {print code}')
+        wget -S -O "$TMP_JSON" \
+            "$GITHUB_API" 2>"$TMP_ERR" || true
     fi
+
+    # Вытаскиваем последний HTTP-код из stderr
+    http_code=$(awk '/HTTP\// {code=$2} END {print code}' "$TMP_ERR")
 
     if [ ! -s "$TMP_JSON" ]; then
         warn "wget не вернул данных. Трассировка:"
@@ -102,7 +116,11 @@ fetch_release_json() {
 
     if [ -n "$http_code" ] && [ "$http_code" != "200" ]; then
         local msg
-        msg=$(grep -o '"message": *"[^"]*"' "$TMP_JSON" | head -1 | cut -d'"' -f4)
+        if [ "$HAS_JQ" = "1" ]; then
+            msg=$(jq -r '.message // empty' "$TMP_JSON" 2>/dev/null || true)
+        else
+            msg=$(grep -o '"message": *"[^"]*"' "$TMP_JSON" | head -1 | cut -d'"' -f4)
+        fi
         die "GitHub API вернул HTTP ${http_code}${msg:+ — $msg}."
     fi
 
@@ -113,29 +131,49 @@ fetch_release_json() {
 # --- 2. Достаём URL ассета по расширению ---------------------------------
 get_asset_url() {
     local ext="$1"
-    sed 's/,/\n/g' "$TMP_JSON" \
-        | grep -o '"browser_download_url": *"[^"]*"' \
-        | sed 's/.*"\(https[^"]*\)"/\1/' \
-        | grep -E "\\${ext}\$" \
-        | head -n1
+    if [ "$HAS_JQ" = "1" ]; then
+        jq -r --arg ext "$ext" \
+            '.assets[] | select(.name | endswith($ext)) | .browser_download_url' \
+            "$TMP_JSON" 2>/dev/null | head -n1
+    else
+        sed 's/,/\n/g' "$TMP_JSON" \
+            | grep -o '"browser_download_url": *"[^"]*"' \
+            | sed 's/.*"\(https[^"]*\)"/\1/' \
+            | grep -E "\\${ext}\$" \
+            | head -n1
+    fi
 }
 
 get_tag() {
-    grep -o '"tag_name": *"[^"]*"' "$TMP_JSON" \
-        | head -1 | cut -d'"' -f4
+    if [ "$HAS_JQ" = "1" ]; then
+        jq -r '.tag_name // empty' "$TMP_JSON" 2>/dev/null
+    else
+        grep -o '"tag_name": *"[^"]*"' "$TMP_JSON" \
+            | head -1 | cut -d'"' -f4
+    fi
+}
+
+list_asset_names() {
+    if [ "$HAS_JQ" = "1" ]; then
+        jq -r '.assets[].name' "$TMP_JSON" 2>/dev/null
+    else
+        sed 's/,/\n/g' "$TMP_JSON" \
+            | grep -o '"name": *"[^"]*"' \
+            | cut -d'"' -f4
+    fi
 }
 
 # --- 3. Основной сценарий ------------------------------------------------
 PKG_EXT="$(detect_pkg_ext)"
 log "Формат пакета: ${PKG_EXT}"
 
-# Определяем пакетный менеджер по расширению
 if [ "$PKG_EXT" = ".apk" ]; then
     PKG_MGR="apk"
 else
     PKG_MGR="opkg"
 fi
 
+detect_jq
 ensure_wget_ssl "$PKG_MGR"
 
 log "Запрашиваю последний релиз ${REPO}..."
@@ -149,10 +187,7 @@ URL="$(get_asset_url "$PKG_EXT")"
 if [ -z "$URL" ]; then
     warn "в релизе ${TAG:-<без тега>} нет файла с расширением ${PKG_EXT}."
     log  "Доступные ассеты:"
-    sed 's/,/\n/g' "$TMP_JSON" \
-        | grep -o '"name": *"[^"]*"' \
-        | cut -d'"' -f4 \
-        | sed 's/^/    /'
+    list_asset_names | sed 's/^/    /'
     die "установка невозможна."
 fi
 
