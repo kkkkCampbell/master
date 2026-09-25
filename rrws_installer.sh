@@ -1,8 +1,8 @@
 #!/bin/sh
 # rrws_installer.sh — установщик LuCI-приложения RR-WARP-Scanner
 # Репозиторий: https://github.com/dedikar/RR-WARP-Scanner
-echo "ver_00001"
-sleep 2
+echo "ver_0003"
+sleep2
 set -e
 
 REPO="dedikar/RR-WARP-Scanner"
@@ -18,7 +18,7 @@ log()  { printf '%s\n' "$*"; }
 warn() { printf '[!] %s\n' "$*" >&2; }
 die()  { printf 'ОШИБКА: %s\n' "$*" >&2; exit 1; }
 
-# --- 1. Определяем формат пакета по системе -------------------------------
+# --- 0. Определяем пакетный менеджер и формат пакета ----------------------
 detect_pkg_ext() {
     if command -v apk >/dev/null 2>&1; then
         echo ".apk"
@@ -29,7 +29,47 @@ detect_pkg_ext() {
     fi
 }
 
-# --- 2. Скачиваем JSON релиза с внятной диагностикой ---------------------
+# --- 0a. Проверяем и при необходимости ставим wget-ssl -------------------
+ensure_wget_ssl() {
+    local pkg_mgr="$1"
+
+    # Уже установлен?
+    if [ "$pkg_mgr" = "apk" ]; then
+        # apk list -I показывает ТОЛЬКО установленные пакеты
+        if apk list -I wget-ssl 2>/dev/null | grep -q '^wget-ssl'; then
+            log "wget-ssl уже установлен (apk)."
+            return 0
+        fi
+    else
+        if opkg list-installed 2>/dev/null | grep -q '^wget-ssl '; then
+            log "wget-ssl уже установлен (opkg)."
+            return 0
+        fi
+    fi
+
+    log "wget-ssl не найден. Устанавливаю..."
+
+    # Убираем конфликтующий wget-nossl, если он есть
+    if [ "$pkg_mgr" = "apk" ]; then
+        if apk list -I wget-nossl 2>/dev/null | grep -q '^wget-nossl'; then
+            warn "удаляю конфликтующий wget-nossl..."
+            apk del wget-nossl >/dev/null 2>&1 || true
+        fi
+        apk update >/dev/null 2>&1 || true
+        apk add wget-ssl ca-certificates || die "не удалось установить wget-ssl через apk."
+    else
+        if opkg list-installed 2>/dev/null | grep -q '^wget-nossl '; then
+            warn "удаляю конфликтующий wget-nossl..."
+            opkg remove wget-nossl >/dev/null 2>&1 || true
+        fi
+        opkg update >/dev/null 2>&1 || true
+        opkg install wget-ssl ca-certificates || die "не удалось установить wget-ssl через opkg."
+    fi
+
+    log "wget-ssl установлен."
+}
+
+# --- 1. Скачиваем JSON релиза с внятной диагностикой ---------------------
 fetch_release_json() {
     local http_code
 
@@ -68,7 +108,7 @@ fetch_release_json() {
         || die "в ответе GitHub нет поля assets (релиз пустой?)."
 }
 
-# --- 3. Достаём URL ассета по расширению ---------------------------------
+# --- 2. Достаём URL ассета по расширению ---------------------------------
 get_asset_url() {
     local ext="$1"
     sed 's/,/\n/g' "$TMP_JSON" \
@@ -83,9 +123,18 @@ get_tag() {
         | head -1 | cut -d'"' -f4
 }
 
-# --- 4. Основной сценарий ------------------------------------------------
+# --- 3. Основной сценарий ------------------------------------------------
 PKG_EXT="$(detect_pkg_ext)"
 log "Формат пакета: ${PKG_EXT}"
+
+# Определяем пакетный менеджер по расширению
+if [ "$PKG_EXT" = ".apk" ]; then
+    PKG_MGR="apk"
+else
+    PKG_MGR="opkg"
+fi
+
+ensure_wget_ssl "$PKG_MGR"
 
 log "Запрашиваю последний релиз ${REPO}..."
 fetch_release_json
