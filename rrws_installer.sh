@@ -3,7 +3,7 @@
 # Репозиторий: https://github.com/dedikar/RR-WARP-Scanner
 echo "ver_0003"
 sleep2
-if ["$1" != "noclear"]; then clear; fi 
+if [ "$1" != "noclear" ]; then clear; fi 
 set -e
 
 REPO="dedikar/RR-WARP-Scanner"
