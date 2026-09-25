@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.30 (preAPK)"
+VER="v0.1.10.31 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -1020,7 +1020,8 @@ on_the_end() {
 	uci set zeroblock.XBOX_DNS.interface="${WAN_IF}"
 	uci commit
 	sleep 2
-	/etc/init.d/zeroblock reload
+	echo "→ Перезапускаем ZeroBlock"
+	ubus call zeroblock reload '{"scope":"full"}'
     
 echo -e "
 ${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
@@ -1043,6 +1044,11 @@ create_backup_dir
 create_backup
 verify_backup "${BACKUP_FILE}"
 kill_annoying_services
+
+# Сбрасываем Зероблок
+echo "→ Сбрасываем настройки ZeroBlock"
+ubus call zeroblock restore_to_default
+
 dns_redirect "${TEMP_DNS}"
 sleep 5
 opkg_update
@@ -1057,14 +1063,14 @@ dns_redirect "recovery"
 refresh_luci
 on_the_end
 
-echo "→ Перезапуск сети"
-service network restart
+#echo "→ Перезапуск сети"
+#service network restart
 echo -e "=== КОНЕЦ ==="
 echo -e ""
 # ЧИСТИМ ЛОГФАЙЛ
 sed -i -E 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"
 uci commit
-new_install=0
+new_install=1
 [ "$new_install" = "1" ] && echo -e  "===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== " && sleep 10 && reboot && exit
 
 exit 0
