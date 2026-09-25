@@ -1,9 +1,10 @@
 #!/bin/sh
 # rrws_installer.sh — установщик LuCI-приложения RR-WARP-Scanner
 # Репозиторий: https://github.com/dedikar/RR-WARP-Scanner
-echo "ver_0003"
-sleep2
-if [ "$1" != "noclear" ]; then clear; fi 
+echo "ver_0004"
+sleep 2
+
+if [ "$1" != "noclear" ]; then clear; fi
 set -e
 
 REPO="dedikar/RR-WARP-Scanner"
