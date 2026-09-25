@@ -2,6 +2,8 @@
 # Установщик последнего релиза luci-app-rrws из GitHub
 # Репозиторий: dedikar/RR-WARP-Scanner
 
+echo "ver_0000"
+sleep 2
 if [ "$1" != "noclear" ]; then clear; fi
 
 # Определяем менеджер пакетов и формат пакета
@@ -36,12 +38,12 @@ if [ -z "$RELEASE_JSON" ]; then
 fi
 
 # Ищем asset с нужным расширением (.ipk или .apk)
-DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jsonfilter -e "@.assets[?(@.name =~ /.*\\${PKG_EXT}\$/i)].browser_download_url" 2>/dev/null)
+DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r --arg ext "$PKG_EXT" '.assets[] | select(.name | endswith($ext)) | .browser_download_url' | head -1)
 
 # Если jsonfilter не сработал, пробуем простой парсинг
 if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
     # Простой парсинг для поиска URL с нужным расширением
-    DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep -o '"browser_download_url": "[^"]*'"$PKG_EXT"'"' | head -1 | cut -d'"' -f4)
+	DOWNLOAD_URL=$(echo "$RELEASE_JSON"	| grep -o '"browser_download_url": "[^"]*\.ipk"' | head -1 | cut -d'"' -f4)
 fi
 
 if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
