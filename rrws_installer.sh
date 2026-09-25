@@ -1,85 +1,120 @@
 #!/bin/sh
-# Установщик последнего релиза luci-app-rrws из GitHub
-# Репозиторий: dedikar/RR-WARP-Scanner
-
-echo "ver_0000"
+# rrws_installer.sh — установщик LuCI-приложения RR-WARP-Scanner
+# Репозиторий: https://github.com/dedikar/RR-WARP-Scanner
+echo "ver_00001"
 sleep 2
-if [ "$1" != "noclear" ]; then clear; fi
+set -e
 
-# Определяем менеджер пакетов и формат пакета
-PKG_MANAGER="opkg"
-INSTALL_CMD="install"
-PKG_EXT=".ipk"
-EXTRA_ARGS=""
-
-# Проверяем, используется ли apk (современные версии OpenWrt)
-if [ -f "/usr/bin/apk" ]; then
-  PKG_MANAGER="apk"
-  INSTALL_CMD="add"
-  PKG_EXT=".apk"
-  EXTRA_ARGS="--allow-untrusted"
-fi 
-
-echo ""
-echo "=== Устанавливаем RR WARP Scanner ==="
-echo ""
 REPO="dedikar/RR-WARP-Scanner"
-# https://api.github.com/repos/dedikar/RR-WARP-Scanner/releases/latest
-# echo "https://api.github.com/repos/$REPO/releases/latest"
-API_URL="https://api.github.com/repos/$REPO/releases/latest"
-TMP_DIR="/tmp"
-PKG_NAME="luci-app-rrws"
+GITHUB_API="https://api.github.com/repos/${REPO}/releases/latest"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
-echo "==> Получение информации о последнем релизе..."
-RELEASE_JSON=$(wget -qO- --no-check-certificate "$API_URL" 2>/dev/null)
-if [ -z "$RELEASE_JSON" ]; then
-    echo "ОШИБКА: Не удалось получить данные от GitHub API. Проверьте интернет-соединение."
-    exit 1
+TMP_JSON="$(mktemp)"
+TMP_ERR="$(mktemp)"
+TMP_PKG="$(mktemp)"
+trap 'rm -f "$TMP_JSON" "$TMP_ERR" "$TMP_PKG"' EXIT
+
+log()  { printf '%s\n' "$*"; }
+warn() { printf '[!] %s\n' "$*" >&2; }
+die()  { printf 'ОШИБКА: %s\n' "$*" >&2; exit 1; }
+
+# --- 1. Определяем формат пакета по системе -------------------------------
+detect_pkg_ext() {
+    if command -v apk >/dev/null 2>&1; then
+        echo ".apk"
+    elif command -v opkg >/dev/null 2>&1; then
+        echo ".ipk"
+    else
+        die "не найден ни apk, ни opkg — не понимаю, чем ставить пакет."
+    fi
+}
+
+# --- 2. Скачиваем JSON релиза с внятной диагностикой ---------------------
+fetch_release_json() {
+    local http_code
+
+    if [ -n "$GITHUB_TOKEN" ]; then
+        http_code=$(wget -S -O "$TMP_JSON" \
+            --header="Authorization: token ${GITHUB_TOKEN}" \
+            "$GITHUB_API" 2>"$TMP_ERR" \
+            | awk '/HTTP\// {code=$2} END {print code}')
+    else
+        http_code=$(wget -S -O "$TMP_JSON" \
+            "$GITHUB_API" 2>"$TMP_ERR" \
+            | awk '/HTTP\// {code=$2} END {print code}')
+    fi
+
+    if [ ! -s "$TMP_JSON" ]; then
+        warn "wget не вернул данных. Трассировка:"
+        sed 's/^/    /' "$TMP_ERR" >&2
+        die "не удалось получить ответ от GitHub API."
+    fi
+
+    if grep -q '"message": *"API rate limit exceeded' "$TMP_JSON" \
+       || { [ "$http_code" = "403" ] && grep -q 'rate limit' "$TMP_JSON"; }; then
+        die "исчерпан лимит GitHub API (60 запросов/час на IP).
+      Подождите ~час или задайте токен:
+        export GITHUB_TOKEN=<ваш_токен>
+      и запустите скрипт снова."
+    fi
+
+    if [ -n "$http_code" ] && [ "$http_code" != "200" ]; then
+        local msg
+        msg=$(grep -o '"message": *"[^"]*"' "$TMP_JSON" | head -1 | cut -d'"' -f4)
+        die "GitHub API вернул HTTP ${http_code}${msg:+ — $msg}."
+    fi
+
+    grep -q '"assets"' "$TMP_JSON" \
+        || die "в ответе GitHub нет поля assets (релиз пустой?)."
+}
+
+# --- 3. Достаём URL ассета по расширению ---------------------------------
+get_asset_url() {
+    local ext="$1"
+    sed 's/,/\n/g' "$TMP_JSON" \
+        | grep -o '"browser_download_url": *"[^"]*"' \
+        | sed 's/.*"\(https[^"]*\)"/\1/' \
+        | grep -E "\\${ext}\$" \
+        | head -n1
+}
+
+get_tag() {
+    grep -o '"tag_name": *"[^"]*"' "$TMP_JSON" \
+        | head -1 | cut -d'"' -f4
+}
+
+# --- 4. Основной сценарий ------------------------------------------------
+PKG_EXT="$(detect_pkg_ext)"
+log "Формат пакета: ${PKG_EXT}"
+
+log "Запрашиваю последний релиз ${REPO}..."
+fetch_release_json
+
+TAG="$(get_tag)"
+[ -n "$TAG" ] && log "Последний релиз: ${TAG}"
+
+URL="$(get_asset_url "$PKG_EXT")"
+
+if [ -z "$URL" ]; then
+    warn "в релизе ${TAG:-<без тега>} нет файла с расширением ${PKG_EXT}."
+    log  "Доступные ассеты:"
+    sed 's/,/\n/g' "$TMP_JSON" \
+        | grep -o '"name": *"[^"]*"' \
+        | cut -d'"' -f4 \
+        | sed 's/^/    /'
+    die "установка невозможна."
 fi
 
-# Ищем asset с нужным расширением (.ipk или .apk)
-DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r --arg ext "$PKG_EXT" '.assets[] | select(.name | endswith($ext)) | .browser_download_url' | head -1)
-
-# Если jsonfilter не сработал, пробуем простой парсинг
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-    # Простой парсинг для поиска URL с нужным расширением
-	DOWNLOAD_URL=$(echo "$RELEASE_JSON"	| grep -o '"browser_download_url": "[^"]*\.ipk"' | head -1 | cut -d'"' -f4)
+log "Скачиваю: $URL"
+if ! wget -O "$TMP_PKG" "$URL"; then
+    die "не удалось скачать пакет с ${URL}"
 fi
 
-if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-    echo "ОШИБКА: В последнем релизе не найден файл пакета ($PKG_EXT)."
-    echo "Проверьте страницу: https://github.com/$REPO/releases"
-    exit 1
-fi
-
-FILENAME=$(basename "$DOWNLOAD_URL")
-FILE_PATH="$TMP_DIR/$FILENAME"
-
-echo "==> Найден пакет: $FILENAME"
-echo "==> Скачивание во временный каталог..."
-wget -q --no-check-certificate -O "$FILE_PATH" "$DOWNLOAD_URL"
-if [ $? -ne 0 ] || [ ! -f "$FILE_PATH" ]; then
-    echo "ОШИБКА: Не удалось скачать файл."
-    exit 1
-fi
-
-echo "==> Установка через ${PKG_MANAGER}..."
-if [ "$PKG_MANAGER" = "apk" ]; then
-    # Для apk используем --force-overwrite вместо --force-reinstall
-    $PKG_MANAGER $INSTALL_CMD $EXTRA_ARGS --force-overwrite "$FILE_PATH"
+log "Устанавливаю ${PKG_EXT}-пакет..."
+if [ "$PKG_EXT" = ".apk" ]; then
+    apk add --allow-untrusted "$TMP_PKG"
 else
-    # Для opkg используем --force-reinstall
-    $PKG_MANAGER $INSTALL_CMD $EXTRA_ARGS --force-reinstall "$FILE_PATH"
+    opkg install --force-reinstall "$TMP_PKG"
 fi
-INSTALL_STATUS=$?
 
-if [ $INSTALL_STATUS -eq 0 ]; then
-    echo "==> Установка завершена успешно!"
-    echo "Проверьте веб-интерфейс LuCI: раздел «Службы» → «RR WARP Scanner»."
-    rm -f "$FILE_PATH"
-else
-    echo "ОШИБКА: ${PKG_MANAGER} завершился с кодом $INSTALL_STATUS."
-    echo "Попробуйте установить вручную: ${PKG_MANAGER} ${INSTALL_CMD} $FILE_PATH"
-    echo "Если проблема с зависимостями, установите их отдельно (например, kmod-amneziawg)."
-    exit 1
-fi
+log "Готово. Установлен ${TAG:-пакет}."
