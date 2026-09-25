@@ -3,7 +3,7 @@
 # Репозиторий: https://github.com/dedikar/RR-WARP-Scanner
 # Запуск: sh rrws_installer.sh [noclear]
 
-echo "ver_0005"
+echo "ver_0006"
 sleep 2
 
 if [ "$1" != "noclear" ]; then clear; fi
@@ -13,10 +13,11 @@ REPO="dedikar/RR-WARP-Scanner"
 GITHUB_API="https://api.github.com/repos/${REPO}/releases/latest"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
-TMP_JSON="$(mktemp)"
-TMP_ERR="$(mktemp)"
-TMP_PKG="$(mktemp)"
-trap 'rm -f "$TMP_JSON" "$TMP_ERR" "$TMP_PKG"' EXIT
+TMP_DIR="$(mktemp -d)"
+TMP_JSON="${TMP_DIR}/release.json"
+TMP_ERR="${TMP_DIR}/wget.err"
+TMP_PKG=""   # выставим после определения расширения
+trap 'rm -rf "$TMP_DIR"' EXIT
 
 log()  { printf '%s\n' "$*"; }
 warn() { printf '[!] %s\n' "$*" >&2; }
@@ -87,7 +88,6 @@ fetch_release_json() {
 
     : > "$TMP_ERR"
 
-    # stderr (в т.ч. -S заголовки) — в файл. Показываем только при ошибке.
     if [ -n "$GITHUB_TOKEN" ]; then
         wget -S -O "$TMP_JSON" \
             --header="Authorization: token ${GITHUB_TOKEN}" \
@@ -97,7 +97,6 @@ fetch_release_json() {
             "$GITHUB_API" 2>"$TMP_ERR" || true
     fi
 
-    # Вытаскиваем последний HTTP-код из stderr
     http_code=$(awk '/HTTP\// {code=$2} END {print code}' "$TMP_ERR")
 
     if [ ! -s "$TMP_JSON" ]; then
@@ -167,6 +166,10 @@ list_asset_names() {
 PKG_EXT="$(detect_pkg_ext)"
 log "Формат пакета: ${PKG_EXT}"
 
+# Имя файла пакета ДОЛЖНО оканчиваться на .ipk / .apk,
+# иначе opkg/apk не распознают формат.
+TMP_PKG="${TMP_DIR}/package${PKG_EXT}"
+
 if [ "$PKG_EXT" = ".apk" ]; then
     PKG_MGR="apk"
 else
@@ -192,8 +195,13 @@ if [ -z "$URL" ]; then
 fi
 
 log "Скачиваю: $URL"
-if ! wget -O "$TMP_PKG" "$URL"; then
+# -q: без вываливания редиректов с JWT в консоль
+if ! wget -q -O "$TMP_PKG" "$URL"; then
     die "не удалось скачать пакет с ${URL}"
+fi
+
+if [ ! -s "$TMP_PKG" ]; then
+    die "скачанный файл пуст: ${TMP_PKG}"
 fi
 
 log "Устанавливаю ${PKG_EXT}-пакет..."
