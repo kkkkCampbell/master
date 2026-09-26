@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.32 (preAPK)"
+VER="v0.1.10.33 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -382,7 +382,7 @@ config section 'RUSSIA'
 	option dns_server '77.88.8.8'
 	option dns_via_outbound '0'
 	option dns_runtime_fallback_enabled '0'
-	option disable_fakeip '0'
+	option disable_fakeip '1'
 	option per_section_tproxy '0'
 	option no_sniff '0'
 	option force_cidr_community '0'
@@ -710,7 +710,6 @@ config engine 'engine'
 	option openflux_logging '0'
 	option openflux_path '/usr/bin/universal-bypass-tool'
 	option openflux_startup_timeout '8'
-
 
 EOF
 
