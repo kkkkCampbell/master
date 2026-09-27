@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.33 (preAPK)"
+VER="v0.1.10.36 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -47,6 +47,35 @@ clear
 if [ "$IS_TTY" = 1 ]; then
 	CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; BLUE="\033[0;34m"; CYAN="\033[0;36m"; BLACK="\033[30m"
 fi
+
+del_awg10() {
+	IFACE="awg10"
+	# Проверяем, существует ли интерфейс (в UCI или в ядре)
+	if uci -q get network."${IFACE}" >/dev/null && ip link show "${IFACE}" >/dev/null 2>&1; then
+		echo "→ Удаляем интерфейс ${IFACE}..."
+
+		# 1. Останавливаем интерфейс (если он активен)
+		ifdown "${IFACE}" 2>/dev/null >/dev/null 2>&1
+		ip link del dev "${IFACE}" 2>/dev/null >/dev/null 2>&1
+
+		# 2. Удаляем секцию из UCI и связанные peer-секции
+		uci -q delete network."${IFACE}" >/dev/null 2>&1
+		while uci -q delete network."@amneziawg_${IFACE}"[0] >/dev/null 2>&1; do :; done
+
+		# 3. Применяем изменения
+		uci commit network >/dev/null 2>&1
+		uci commit firewall >/dev/null 2>&1
+		/etc/init.d/network restart >/dev/null 2>&1
+		/etc/init.d/firewall restart >/dev/null 2>&1
+
+		# 4. Чистим временные файлы
+		rm -f "/tmp/run/wgserver/${IFACE}.key" 2>/dev/null
+		rm -f "/var/run/amneziawg/${IFACE}.sock" 2>/dev/null
+
+		echo "✓ Интерфейс ${IFACE} успешно удалён."
+	fi
+}
+
 
 opkg_update(){
 	# opkg update в цикле 4 раза
@@ -300,10 +329,10 @@ kill_annoying_services() {
 # Остановка zeroblock и удаление конфигов
 stop_and_rplce_config_zeroblock() {
 	# Остановка, если есть
-	if [ -f /etc/init.d/zeroblock ]; then
-		/etc/init.d/zeroblock stop 2>/dev/null
-		/etc/init.d/zeroblock disable 2>/dev/null
-		echo -e "✓ zeroblock остановлен"
+	# if [ -f /etc/init.d/zeroblock ]; then
+	#	/etc/init.d/zeroblock stop 2>/dev/null
+	#	/etc/init.d/zeroblock disable 2>/dev/null
+	echo -e "✓ zeroblock остановлен"
 
 # Замена конфига zeroblock
 	rm -f /etc/config/zeroblock
@@ -404,11 +433,11 @@ config section 'RUSSIA'
 	option enabled '1'
 
 config section 'MESSENGERS'
-	option connection_type 'vpn'
+	option connection_type 'proxy'
 	option force_disable_fakeip '0'
 	list server_community_lists 'geoblock'
 	list server_community_lists 'ai'
-	option disable_fakeip '1'
+	option disable_fakeip '0'
 	option dscp_enabled '0'
 	option enable_mixed_proxy '0'
 	option per_section_tproxy '0'
@@ -424,7 +453,6 @@ config section 'MESSENGERS'
 	option catch_all '0'
 	option tls_spoof_method 'wrong-sequence'
 	option ipv6_enabled '0'
-	option interface 'awg10'
 	list user_subnets_text '# TELEGRAM #'
 	list user_subnets_text '############'
 	list user_subnets_text '# IPv4-подсети Telegram'
@@ -447,6 +475,9 @@ config section 'MESSENGERS'
 	list user_subnets_text '2a0a:f280::/32'
 	list community_lists 'messengers'
 	list community_lists 'meta'
+	option proxy_config_type 'outbound'
+	option outbound_json '{"type":"http","server":"127.0.0.1","server_port":18080}'
+	option enable_udp_over_tcp '0'
 
 config section 'opera'
 	option enabled '1'
@@ -710,25 +741,24 @@ config engine 'engine'
 	option openflux_logging '0'
 	option openflux_path '/usr/bin/universal-bypass-tool'
 	option openflux_startup_timeout '8'
-
 EOF
 
 	echo -e "✓ Конфиг zeroblock заменён"
 
-	/etc/init.d/zeroblock start 2>/dev/null
-	/etc/init.d/zeroblock enable 2>/dev/null
+	# /etc/init.d/zeroblock start 2>/dev/null
+	# /etc/init.d/zeroblock enable 2>/dev/null
 	echo -e "✓ zeroblock запущен"
-	fi
+	# fi
 
 }
 
 # Ожидание завершения автонастройки zeroblock
 wait_zeroblock_ready() {
 	/etc/init.d/zeroblock start
-	local timeout=60  # 1 минута
+	local timeout=120  # 2 минуты
 	local elapsed=0
 	
-	echo -n "→ Ожидание автонастройки zeroblock (макс. 1 минута)"
+	echo -n "→ Ожидание автонастройки zeroblock (макс. 2 минуты)"
 
 	
 	while [ $elapsed -lt $timeout ]; do
@@ -1020,7 +1050,7 @@ on_the_end() {
 	uci commit
 	sleep 2
 	echo "→ Перезапускаем ZeroBlock"
-	ubus call zeroblock reload '{"scope":"full"}'
+	# ubus call zeroblock reload '{"scope":"full"}'
     
 echo -e "
 ${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
@@ -1037,17 +1067,15 @@ ${CLR_OFF}"
 # MAIN
 # ============================================
 
-
 draw_main_menu
 create_backup_dir
 create_backup
 verify_backup "${BACKUP_FILE}"
 kill_annoying_services
-
 # Сбрасываем Зероблок
 echo "→ Сбрасываем настройки ZeroBlock"
-ubus call zeroblock restore_to_default
-
+ubus call zeroblock restore_to_default >/dev/null 2>&1
+del_awg10
 dns_redirect "${TEMP_DNS}"
 sleep 5
 opkg_update
