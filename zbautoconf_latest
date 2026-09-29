@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.36 (preAPK)"
+VER="v0.1.10.37 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -65,8 +65,8 @@ del_awg10() {
 		# 3. Применяем изменения
 		uci commit network >/dev/null 2>&1
 		uci commit firewall >/dev/null 2>&1
-		/etc/init.d/network restart >/dev/null 2>&1
-		/etc/init.d/firewall restart >/dev/null 2>&1
+		# /etc/init.d/network restart >/dev/null 2>&1
+		# /etc/init.d/firewall restart >/dev/null 2>&1
 
 		# 4. Чистим временные файлы
 		rm -f "/tmp/run/wgserver/${IFACE}.key" 2>/dev/null
