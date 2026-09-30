@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.37 (preAPK)"
+VER="v0.1.10.38 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -1039,12 +1039,12 @@ on_the_end() {
     uci commit network
 	echo "✓ Параметры awg10 успешно изменены"
 
-	# Устанавливаем в секции AI_GEOHIDE, MALW_DNS. RUSSIA WAN-интерфейс
+	# Устанавливаем в секции GEOHIDE_DNS, MALW_DNS. RUSSIA WAN-интерфейс
 	WAN_IF=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device')
 	[ -z "$WAN_IF" ] && WAN_IF=$(uci -q get network.wan.device || uci -q get network.wan.ifname)
 	echo "→ WAN interface: $WAN_IF"
 	uci set zeroblock.RUSSIA.interface="${WAN_IF}"
-	uci set zeroblock.AI_GEOHIDE.interface="${WAN_IF}"
+	uci set zeroblock.GEOHIDE_DNS.interface="${WAN_IF}"
 	uci set zeroblock.MALW_DNS.interface="${WAN_IF}"
 	uci set zeroblock.XBOX_DNS.interface="${WAN_IF}"
 	uci commit
