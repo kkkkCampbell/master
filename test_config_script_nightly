@@ -28,7 +28,7 @@ export TERM=xterm-256color
 . /etc/os-release
 IFACE="awg10"
 FIRST_IN="0"
-VER="0.2.20 (preAPK)"
+VER="0.2.21 (preAPK)"
 
 clear
 
@@ -82,7 +82,7 @@ elif [ "$PK_ACTIVE" = "1" ]; then
 fi
 
 echo "Перезапускаем интерфейсы и ожидаем их старта"
-for i in $(seq $start -1 1); do
+for i in $(seq $start -1 20); do
     printf "%s%d " "$z" "$i"
     if [ $((i % 10)) -eq 1 ] && [ $i -gt 10 ]; then echo; fi
     [ $i = 10 ] && z="0"; sleep 1
