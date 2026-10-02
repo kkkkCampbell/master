@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.38 (preAPK)"
+VER="v0.1.10.39 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -417,9 +417,6 @@ config section 'RUSSIA'
 	option force_cidr_community '0'
 	option community_lists_invert '0'
 	option user_domain_list_type 'text'
-	list user_domains_text '.ru'
-	list user_domains_text '.su'
-	list user_domains_text '.рф'
 	list user_domains_text 'keyword:yandex'
 	list user_domains_text 'keyword:.ya.'
 	list user_domains_text 'keyword:icq.'
