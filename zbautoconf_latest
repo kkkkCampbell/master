@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.39 (preAPK)"
+VER="v0.1.10.40 (preAPK)"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -431,7 +431,7 @@ config section 'RUSSIA'
 
 config section 'MESSENGERS'
 	option connection_type 'proxy'
-	option force_disable_fakeip '0'
+	option force_disable_fakeip '1'
 	list server_community_lists 'geoblock'
 	list server_community_lists 'ai'
 	option disable_fakeip '0'
