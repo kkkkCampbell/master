@@ -20,7 +20,7 @@ else
 fi
 
 # Удаляем /overlay/upper/opt если это файл, а не каталог
-rm -f /overlay/upper/opt
+rm -f /overlay/upper/opt 2>/dev/null
  
 # Проверяем, установлен ли ksmbd
 if ! $ipkg_bin $list_installed | grep -q '^ksmbd-server'; then
