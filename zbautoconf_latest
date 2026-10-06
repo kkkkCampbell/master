@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.41 (preAPK)"
+VER="v0.1.10.42"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -337,7 +337,6 @@ stop_and_rplce_config_zeroblock() {
 # Замена конфига zeroblock
 	rm -f /etc/config/zeroblock
 	cat > /etc/config/zeroblock << 'EOF'
-
 config settings 'settings'
 	option log_level 'warn'
 	option show_trace_logs '0'
@@ -463,6 +462,20 @@ config section 'AI'
 	option bootstrap_dns_type 'dot'
 	option bootstrap_dns_server '1.1.1.1'
 	option bootstrap_via_outbound '1'
+	option user_domain_list_type 'text'
+	list user_domains_text '.microsoft'
+	list user_domains_text 'microsoft.com'
+	list user_domains_text 'copilot.microsoft.com'
+	list user_domains_text 'admin.microsoft.com'
+	list user_domains_text 'arc.msn.com'
+	list user_domains_text 'browser.events.data.microsoft.com'
+	list user_domains_text 'browser.pipe.aria.microsoft.com'
+	list user_domains_text 'graph.microsoft.com'
+	list user_domains_text 'login.live.com'
+	list user_domains_text 'login.microsoftonline.com'
+	list user_domains_text 'res.cdn.office.net'
+	list user_domains_text 'res.public.onecdn.static.microsoft'
+	list user_domains_text 'substrate.office.com'
 
 config section 'MESSENGERS'
 	option connection_type 'vpn'
@@ -738,7 +751,7 @@ config engine 'engine'
 	option subscription_max_proxies '100'
 	option subscription_user_agent 'Happ'
 	option subscription_tls_insecure '0'
-	option enable_yacd '0'
+	option enable_yacd '1'
 	option naive_startup_timeout '8'
 	list source_network_interfaces 'br-lan'
 	option naive_logging '0'
@@ -773,6 +786,7 @@ config engine 'engine'
 	option tailscale_rescue_enabled '0'
 	option clash_ui_download_url 'https://files.routerich.ru/zb/yacd.zip'
 	option clash_ui_download_url_locked '0'
+	option yacd_secret_key '5f8698fe21cf5de75817cb904ace3d7d'
 EOF
 
 	echo -e "✓ Конфиг zeroblock заменён"
