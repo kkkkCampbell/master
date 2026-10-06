@@ -3,7 +3,7 @@
 # OPENWRT_FULL_BACKUP
 
 clear
-echo "(v0.4.4)"
+echo "(v0.4.5)"
 sleep 2
 clear
 ksmbd_otkaz=0
@@ -19,9 +19,8 @@ else
 		install="install"
 fi
 
-# Удаляем /overlay/upper/opt если это файл, а не каталог
-rm -f /overlay/upper/opt 2>/dev/null
-rm -f /overlay/upper/opt/zapret2/lua
+# Удаляем whiteouts
+find /overlay/upper -type c -delete
 
 # Проверяем, установлен ли ksmbd
 if ! $ipkg_bin $list_installed | grep -q '^ksmbd-server'; then
