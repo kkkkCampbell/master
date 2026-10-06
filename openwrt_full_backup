@@ -20,7 +20,7 @@ else
 fi
 
 # Удаляем whiteouts
-find /overlay/upper -type c -delete
+find /overlay/upper -type c -exec rm -f {} +
 
 # Проверяем, установлен ли ksmbd
 if ! $ipkg_bin $list_installed | grep -q '^ksmbd-server'; then
