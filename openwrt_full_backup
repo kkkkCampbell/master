@@ -3,7 +3,7 @@
 # OPENWRT_FULL_BACKUP
 
 clear
-echo "(v0.4.3)"
+echo "(v0.4.4)"
 sleep 2
 clear
 ksmbd_otkaz=0
@@ -20,10 +20,7 @@ else
 fi
 
 # Удаляем /overlay/upper/opt если это файл, а не каталог
-if [ ! -d /overlay/upper/opt ]; then
-    rm -f /overlay/upper/opt
-    mkdir -p /overlay/upper/opt
-fi
+rm -f /overlay/upper/opt
  
 # Проверяем, установлен ли ksmbd
 if ! $ipkg_bin $list_installed | grep -q '^ksmbd-server'; then
