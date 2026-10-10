@@ -206,7 +206,7 @@ chmod +x /etc/init.d/backup-watcher
 tee /usr/share/luci/menu.d/luci-app-backup.json > /dev/null << 'MENU_EOF'
 {
   "admin/services/backup-create": {
-    "title": "Резервная копия",
+    "title": "Openwrt Full Backup 2",
     "order": 90,
     "action": {
       "type": "view",
