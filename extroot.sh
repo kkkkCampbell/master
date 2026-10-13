@@ -1,11 +1,19 @@
 #!/bin/sh
 # ============================================================
-#  usb-extroot.sh v0.0.1
+#  usb-extroot.sh  v0.0.2
 #  Перенос overlay OpenWrt на USB-накопитель (extroot)
 #  Лог: /root/usb-extroot.log
 #  Бэкап: /tmp/.usb-extroot-x7k2m9q4p1w8/ (tmpfs, RAM)
 # ============================================================
-ver="v0.0.1"
+
+ver="v0.0.2"
+
+# ANSI цвета
+CLR_RESET="\033[0m"
+CLR_GREEN="\033[32m"
+CLR_ORANGE="\033[38;5;208m"
+CLR_YELLOW="\033[33m"
+
 LOG=/root/usb-extroot.log
 if [ -z "$_LOGGED" ]; then
     export _LOGGED=1
@@ -58,13 +66,13 @@ pkg_repair_finish() {
 die() {
     pkg_repair_finish
     echo
-    echo "############################################################"
-    echo "#  ОШИБКА: $1"
-    echo "############################################################"
+    echo -e "${CLR_ORANGE}############################################################${CLR_RESET}"
+    echo -e "${CLR_ORANGE}#  ОШИБКА: $1${CLR_RESET}"
+    echo -e "${CLR_ORANGE}############################################################${CLR_RESET}"
     echo
     echo "$2"
     echo
-    echo "############################################################"
+    echo -e "${CLR_ORANGE}############################################################${CLR_RESET}"
     echo
     exit 1
 }
@@ -73,9 +81,9 @@ fatal() {
     pkg_repair_finish
     FATAL_STAGE="$1"
     echo
-    echo "############################################################"
-    echo "#  СТОП: $1"
-    echo "############################################################"
+    echo -e "${CLR_ORANGE}############################################################${CLR_RESET}"
+    echo -e "${CLR_ORANGE}#  СТОП: $1${CLR_RESET}"
+    echo -e "${CLR_ORANGE}############################################################${CLR_RESET}"
     echo
     echo "$2"
     echo
@@ -174,7 +182,7 @@ describe() {
     local model=$(cat /sys/block/$b/device/model  2>/dev/null | tr -d '\n')
     local blocks=$(cat /sys/block/$b/size 2>/dev/null)
     local size=$(awk -v x="$blocks" 'BEGIN{printf "%.1fG", x*512/1024/1024/1024}')
-    local name=$(echo "${vendor} ${model}" | sed 's/  */ /g; s/^ //; s/ $//')
+    local name=$(echo "${vendor} ${model}" | sed 's/  *//g; s/^ //; s/ $//')
     echo "$dev $size $name"
 }
 
@@ -191,23 +199,49 @@ get_router_ip() {
 
 shout_fatal() {
     local rip=$(get_router_ip)
-    echo "------------------------------------------------------------"
-    echo " Этап: ${FATAL_STAGE:-<неизвестен>}"
+
+    grep -q "^12345:" /etc/passwd || echo "12345:x:1000:1000:12345:/var:/bin/false" >> /etc/passwd
+    if have ksmbd.useradmin; then
+        printf "12345\n12345\n" | ksmbd.useradmin -a 12345 >/dev/null 2>&1
+    fi
+
+    if [ -x /etc/init.d/ksmbd ]; then
+        uci -q set ksmbd.global=ksmbd
+        uci -q set ksmbd.global.interface='br-lan'
+        uci -q set ksmbd.global.workgroup='WORKGROUP'
+        uci -q set ksmbd.global.allow_guest_ipc='1'
+
+        uci -q delete ksmbd.overlaybackup
+        uci -q set ksmbd.overlaybackup=share
+        uci -q set ksmbd.overlaybackup.name='overlaybackup'
+        uci -q set ksmbd.overlaybackup.path="${BACKUP_DIR:-/tmp/.usb-extroot-x7k2m9q4p1w8}"
+        uci -q set ksmbd.overlaybackup.comment='Extroot Emergency Backup'
+        uci -q set ksmbd.overlaybackup.browseable='yes'
+        uci -q set ksmbd.overlaybackup.read_only='no'
+        uci -q set ksmbd.overlaybackup.guest_ok='yes'
+        uci -q set ksmbd.overlaybackup.users='12345'
+        uci -q commit ksmbd
+
+        /etc/init.d/ksmbd restart >/dev/null 2>&1
+    fi
+
+    echo -e "${CLR_ORANGE}------------------------------------------------------------${CLR_RESET}"
+    echo -e "${CLR_ORANGE} Этап: ${FATAL_STAGE:-<неизвестен>}${CLR_RESET}"
     echo
-    echo " Бэкап overlay (если создан):"
-    echo "   ${BACKUP_DIR:-/tmp/.usb-extroot-x7k2m9q4p1w8}/"
-    echo "   (в ОЗУ — исчезнет при ребуте, скопируй сейчас, если нужен)"
+    echo -e "${CLR_YELLOW} Бэкап overlay (если создан):${CLR_RESET}"
+    echo "    ${BACKUP_DIR:-/tmp/.usb-extroot-x7k2m9q4p1w8}/"
+    echo "    (в ОЗУ — исчезнет при ребуте, скопируй сейчас, если нужен)"
     echo
-    echo " НЕ ПЕРЕЗАГРУЖАЙ РОУТЕР, пока не убедишься, что:"
-    echo "   - /overlay смонтирован и доступен"
-    echo "   - fstab.rwm указывает на ${ORIG_DEV:-<внутренний overlay>}"
-    echo "   - из бэкапа можно вернуть данные"
+    echo -e "${CLR_YELLOW} НЕ ПЕРЕЗАГРУЖАЙ РОУТЕР, пока не убедишься, что:${CLR_RESET}"
+    echo "    - /overlay смонтирован и доступен"
+    echo "    - fstab.rwm указывает на ${ORIG_DEV:-<внутренний overlay>}"
+    echo "    - из бэкапа можно вернуть данные"
     echo
-    echo " Шара для доступа с другой машины:"
-    echo "   \\\\$rip\\overlaybackup"
-    echo "   пользователь: 12345"
-    echo "   пароль:       12345"
-    echo "------------------------------------------------------------"
+    echo -e "${CLR_YELLOW} Шара для доступа с другой машины:${CLR_RESET}"
+    echo "    \\\\$rip\\overlaybackup"
+    echo "    пользователь: 12345"
+    echo "    пароль:       12345"
+    echo -e "${CLR_ORANGE}------------------------------------------------------------${CLR_RESET}"
     echo
 }
 
@@ -292,10 +326,9 @@ pkg_repair_start() {
 }
 
 clear
-echo
-echo "============================================================"
-echo " usb-extroot.sh $ver"
 cat <<'BANNER'
+============================================================
+ usb-extroot.sh  v2.22
  Перенос overlay OpenWrt на USB-накопитель (extroot)
 ------------------------------------------------------------
  До ввода YES — только чтение.
@@ -303,6 +336,41 @@ cat <<'BANNER'
  Лог: /root/usb-extroot.log
 ============================================================
 BANNER
+
+# ============================================================
+#  ФИКС U-Boot env
+# ============================================================
+echo
+echo "=== проверка U-Boot env ==="
+if have fw_printenv && have fw_setenv; then
+
+    # owrt_country — обязателен (без него 5 ГГц = OpenWrt)
+    if fw_printenv 2>/dev/null | grep -q '^owrt_country='; then
+        echo "      owrt_country: есть"
+    else
+        echo "      owrt_country: НЕТ — устанавливаю RU"
+        fw_setenv owrt_country RU
+        echo "      owrt_country: RU установлен"
+    fi
+
+    # owrt_ssid / owrt_wifi_key — ODM-переменные, ломают дефолт, удалить
+    if fw_printenv 2>/dev/null | grep -q '^owrt_ssid='; then
+        echo "      owrt_ssid: есть — удаляю"
+        fw_setenv owrt_ssid
+    else
+        echo "      owrt_ssid: нет"
+    fi
+
+    if fw_printenv 2>/dev/null | grep -q '^owrt_wifi_key='; then
+        echo "      owrt_wifi_key: есть — удаляю"
+        fw_setenv owrt_wifi_key
+    else
+        echo "      owrt_wifi_key: нет"
+    fi
+
+else
+    echo "      fw_printenv/fw_setenv: не найдены — пропускаю"
+fi
 
 # ============================================================
 #  ШАГ 0. Зависимости
@@ -342,7 +410,7 @@ MISSING_PKGS=$(echo "$MISSING_PKGS" | tr ' ' '\n' | sort -u | tr '\n' ' ')
 MISSING_PKGS=$(echo "$MISSING_PKGS" | sed 's/^ *//; s/ *$//')
 
 if [ -n "$MISSING_PKGS" ]; then
-    echo "      не хватает пакетов: $MISSING_PKGS"
+    echo -e "      ${CLR_ORANGE}не хватает пакетов: $MISSING_PKGS${CLR_RESET}"
 
     if [ "$PM" = "none" ]; then
         die "$STAGE0" "Нет ни apk, ни opkg — установить зависимости нельзя.
@@ -368,7 +436,7 @@ if [ -n "$MISSING_PKGS" ]; then
     echo "      восстанавливаю сеть..."
     pkg_repair_finish
 else
-    echo "      все пакеты на месте"
+    echo -e "${CLR_GREEN}      все пакеты на месте${CLR_RESET}"
 fi
 
 echo
@@ -385,21 +453,21 @@ if [ -z "$TARBIN" ]; then
     die "$STAGE0" "GNU tar не найден и не установился.
 
   command -v tar  -> $(command -v tar 2>/dev/null || echo 'нет')
-  tar --version   -> $(tar --version 2>&1 | head -1)
+  tar --version    -> $(tar --version 2>&1 | head -1)
   ls -la /usr/bin/tar /usr/libexec/tar-gnu /bin/tar
 $(ls -la /usr/bin/tar /usr/libexec/tar-gnu /bin/tar 2>&1)
 
 Проверь PATH: echo \$PATH
 Поставь GNU tar вручную и запусти скрипт заново."
 fi
-echo "      GNU tar: $TARBIN"
+echo -e "      GNU tar: ${CLR_GREEN}$TARBIN${CLR_RESET}"
 
 for cmd in awk sed grep mount umount df du basename dirname readlink block mkfs.ext4 uci; do
     if ! have "$cmd"; then
         die "$STAGE0" "После установки нет команды: $cmd"
     fi
 done
-echo "      все обязательные команды на месте"
+echo -e "${CLR_GREEN}      все обязательные команды на месте${CLR_RESET}"
 
 # ============================================================
 #  ШАГ 1. Текущий overlay
@@ -407,17 +475,26 @@ echo "      все обязательные команды на месте"
 echo
 STAGE1="[1/9] текущий overlay"
 echo "$STAGE1 ..."
-CUR_OVERLAY_MP=$(awk '/ \/overlay /{print $2; exit}' /proc/mounts)
-[ -z "$CUR_OVERLAY_MP" ] && CUR_OVERLAY_MP=/overlay
+
+CUR_OVERLAY_MP=$(awk '$2=="/overlay" {print $2; exit}' /proc/mounts)
+if [ -z "$CUR_OVERLAY_MP" ]; then
+    if [ -d /rom/overlay/upper ]; then
+        CUR_OVERLAY_MP=/rom/overlay
+    else
+        CUR_OVERLAY_MP=/overlay
+    fi
+fi
+echo "      overlay: $CUR_OVERLAY_MP"
+
 CUR_OVERLAY_DEV=$(awk -v m="$CUR_OVERLAY_MP" '$2==m {print $1; exit}' /proc/mounts)
 if [ -z "$CUR_OVERLAY_DEV" ]; then
-    die "$STAGE1" "Не нашёл устройство /overlay.
+    die "$STAGE1" "Не нашёл устройство $CUR_OVERLAY_MP.
 
 Проверь вручную:
   mount | grep overlay
   cat /proc/mounts | grep overlay"
 fi
-echo "      /overlay: $CUR_OVERLAY_DEV на $CUR_OVERLAY_MP"
+echo "      устройство: $CUR_OVERLAY_DEV"
 
 RWM_DEV=$(uci -q get fstab.rwm.device)
 
@@ -446,13 +523,6 @@ if is_usb "$CUR_OVERLAY_DEV"; then
     echo "  нижний слой (fstab.rwm): $RWM_DEV"
     echo "  новый перенос перезапишет fstab.extroot."
     echo
-    printf "  Введи YES для продолжения: "
-    read A
-    if [ "$A" != "YES" ]; then
-        echo "Отменено."
-        exit 0
-    fi
-
     ORIG_DEV="$RWM_DEV"
 else
     REINSTALL=0
@@ -461,9 +531,9 @@ else
 Скрипт работает только с внутренним overlay (ubi/mtdblock/root)."
     fi
     ORIG_DEV="$CUR_OVERLAY_DEV"
-    echo "      ок, внутренний: $ORIG_DEV"
+    echo "  ок, внутренний: $ORIG_DEV"
 fi
-echo "      нижний слой для fstab.rwm: $ORIG_DEV"
+echo "  нижний слой для fstab.rwm: $ORIG_DEV"
 
 # ============================================================
 #  ШАГ 2. Поиск USB
@@ -526,7 +596,7 @@ $(for d in $DISKS; do echo "  $d"; done)"
 fi
 
 DESC=$(describe "$TARGET")
-echo "      найден: $DESC"
+echo -e "      найден: ${CLR_YELLOW}$DESC${CLR_RESET}"
 
 PARTS=""
 for p in ${TARGET}*; do
@@ -544,7 +614,7 @@ block info "$PART" >/dev/null 2>&1
 FS=$(block info "$PART" 2>/dev/null | grep -o 'TYPE="[^"]*"' | cut -d'"' -f2)
 
 echo
-echo "ЦЕЛЬ: $DESC"
+echo -e "${CLR_YELLOW}ЦЕЛЬ: $DESC${CLR_RESET}"
 for p in $PARTS; do
     f=$(block info "$p" 2>/dev/null | grep -o 'TYPE="[^"]*"' | cut -d'"' -f2)
     m=$(block info "$p" 2>/dev/null | grep -o 'MOUNT="[^"]*"' | cut -d'"' -f2)
@@ -573,14 +643,23 @@ overlay: ${SRC_SIZE_KB:-?}K
   df -h /tmp"
 fi
 
-NEED_TMP_KB=$(( SRC_SIZE_KB + SRC_SIZE_KB / 10 ))
+NEED_TMP_KB=$(( SRC_SIZE_KB * 2 + SRC_SIZE_KB / 10 ))
 if [ "$TMP_AVAIL_KB" -lt "$NEED_TMP_KB" ]; then
-    die "$STAGE3" "Мало места в /tmp для бэкапа.
+    die "$STAGE3" "Мало места в /tmp для staging + архив.
 Нужно: ${NEED_TMP_KB}K, свободно: ${TMP_AVAIL_KB}K.
 
 Освободи ОЗУ или перезагрузись."
 fi
-echo "      ок, в /tmp места хватает"
+echo -e "${CLR_GREEN}      ок, в /tmp места хватает${CLR_RESET}"
+
+if [ ! -d "$CUR_OVERLAY_MP/upper/etc/config" ]; then
+    die "$STAGE3" "В overlay нет upper/etc/config.
+Overlay неполный или нестандартный.
+
+Проверь вручную:
+  ls -la $CUR_OVERLAY_MP/upper/"
+fi
+echo -e "${CLR_GREEN}      структура overlay корректна${CLR_RESET}"
 
 SRC_PARENT=$(parent_dev "$CUR_OVERLAY_DEV")
 DST_PARENT=$(parent_dev "$PART")
@@ -608,7 +687,7 @@ fi
 # ============================================================
 echo
 STAGE4="[4/9] меню"
-echo "Действие:"
+echo -e "${CLR_YELLOW}Действие:${CLR_RESET}"
 echo "  1) форматировать и перенести overlay на USB-носитель"
 if [ "$FS" = "ext4" ]; then
     echo "  2) перенести без форматирования (очистить ФС и развернуть overlay)"
@@ -638,14 +717,14 @@ esac
 
 echo
 if [ "$MODE" = format ]; then
-    echo "Все данные на $DESC будут уничтожены (mkfs.ext4 $PART)."
+    echo -e "${CLR_ORANGE}Все данные на $DESC будут уничтожены (mkfs.ext4 $PART).${CLR_RESET}"
 else
-    echo "Содержимое $PART будет ОЧИЩЕНО, затем развёрнут overlay."
+    echo -e "${CLR_YELLOW}Содержимое $PART будет ОЧИЩЕНО, затем развёрнут overlay.${CLR_RESET}"
 fi
 
 if [ "$SAME_DISK" = "1" ]; then
     echo
-    echo "  !!! ТА ЖЕ ФЛЕШКА !!!"
+    echo -e "${CLR_ORANGE}  !!! ТА ЖЕ ФЛЕШКА !!!${CLR_RESET}"
     echo "  overlay сейчас на $CUR_OVERLAY_DEV ($SRC_PARENT)."
     if [ "$MODE" = format ]; then
         echo "  Будет: umount -l + mkfs.ext4 -F $PART."
@@ -654,8 +733,9 @@ if [ "$SAME_DISK" = "1" ]; then
         echo "  Будет: umount -l + очистка содержимого $PART."
         CONFIRM_WORD=CLEAN
     fi
-    echo "  До ребута система будет НЕРАБОТОСПОСОБНА."
+    echo -e "${CLR_ORANGE}  До ребута система будет НЕРАБОТОСПОСОБНА.${CLR_RESET}"
     echo "  Бэкап в /tmp (ОЗУ) — при сбое пропадёт."
+    echo "  СКОПИРУЙТЕ ДО ПЕРЕЗАГРУЗКИ РОУТЕРА!!!"
     echo
     printf "Для подтверждения введите %s: " "$CONFIRM_WORD"
     read A
@@ -671,7 +751,7 @@ else
         exit 0
     fi
 fi
-echo "Подтверждено: $TARGET ($MODE)."
+echo -e "Подтверждено: ${CLR_YELLOW}$TARGET ($MODE)${CLR_RESET}."
 
 # ============================================================
 #  ШАГ 5. Пакеты
@@ -681,10 +761,10 @@ STAGE5="[5/9] пакеты"
 echo "$STAGE5 ..."
 for pkg in block-mount kmod-fs-ext4 e2fsprogs; do
     if pkg_present "$pkg" "$PM"; then
-        echo "      $pkg: есть"
+        echo -e "      $pkg: ${CLR_GREEN}есть${CLR_RESET}"
     else
         echo
-        echo "      $pkg: нет — ставлю..."
+        echo -e "      $pkg: ${CLR_ORANGE}нет — ставлю...${CLR_RESET}"
         if ! pkg_install "$pkg" "$PM"; then
             pkg_fail "$STAGE5" "$pkg" "$PM"
         fi
@@ -692,55 +772,42 @@ for pkg in block-mount kmod-fs-ext4 e2fsprogs; do
 done
 
 # ============================================================
-#  ШАГ 6. Бэкап
+#  ШАГ 6. Staging: копия overlay в /tmp
 # ============================================================
 echo
-STAGE6="[6/9] бэкап overlay"
-BACKUP_DIR="/tmp/.usb-extroot-x7k2m9q4p1w8"
-echo "$STAGE6 в $BACKUP_DIR ..."
+STAGE6="[6/9] staging overlay"
+STAGE_DIR=/tmp/overlay_stage
+echo "$STAGE6 в $STAGE_DIR ..."
 
-rm -rf "$BACKUP_DIR"
-mkdir -p "$BACKUP_DIR"
+rm -rf "$STAGE_DIR"
+mkdir -p "$STAGE_DIR/overlay/upper"
 
-TS=$(date +%Y-%m-%d_%H-%M-%S)
-BACKUP_ARCHIVE="$BACKUP_DIR/overlay_backup_${TS}.tar.gz"
-
-echo "      источник: $CUR_OVERLAY_MP"
-echo "      архив:    $BACKUP_ARCHIVE"
-
-echo
-if ! $TARBIN -C "$CUR_OVERLAY_MP" --one-file-system -czf "$BACKUP_ARCHIVE" . 2>/tmp/tar_read.err; then
-    echo "      tar errors:"
-    head -20 /tmp/tar_read.err
-    die "$STAGE6" "Не смог создать архив overlay.
+echo "      копирую upper/ из $CUR_OVERLAY_MP (без work/, .fs_state) ..."
+if ! cp -a "$CUR_OVERLAY_MP/upper/." "$STAGE_DIR/overlay/upper/" 2>/tmp/cp.err; then
+    echo "      cp errors:"
+    head -20 /tmp/cp.err
+    die "$STAGE6" "Не смог скопировать upper/ в staging.
 Ничего не тронуто, overlay цел.
 
 Проверь вручную:
-  ls -la $CUR_OVERLAY_MP
-  cat /tmp/tar_read.err"
+  ls -la $CUR_OVERLAY_MP/upper/
+  cat /tmp/cp.err"
 fi
 
-if ! $TARBIN -tzf "$BACKUP_ARCHIVE" >/dev/null 2>&1; then
-    die "$STAGE6" "Архив повреждён: $BACKUP_ARCHIVE
-Ничего не тронуто, overlay цел.
+rm -rf "$STAGE_DIR/overlay/upper/work" 2>/dev/null || true
+rm -f "$STAGE_DIR/overlay/upper/.fs_state" 2>/dev/null || true
 
-Проверь вручную:
-  ls -la $BACKUP_ARCHIVE"
+STAGE_SIZE_KB=$(du -sk "$STAGE_DIR" 2>/dev/null | awk '{print $1}')
+echo "      staging размер: ${STAGE_SIZE_KB}K"
+
+if [ ! -d "$STAGE_DIR/overlay/upper/etc/config" ]; then
+    die "$STAGE6" "Staging неполный — нет overlay/upper/etc/config.
+Ничего не тронуто, overlay цел."
 fi
-
-ARCHIVE_SIZE_KB=$(du -k "$BACKUP_ARCHIVE" 2>/dev/null | awk '{print $1}')
-echo "      архив: ${ARCHIVE_SIZE_KB}K"
-if [ -z "$ARCHIVE_SIZE_KB" ] || [ "$ARCHIVE_SIZE_KB" -lt 1 ]; then
-    die "$STAGE6" "Архив пустой.
-Ничего не тронуто, overlay цел.
-
-Проверь вручную:
-  ls -la $BACKUP_ARCHIVE"
-fi
-echo "      ок: $BACKUP_ARCHIVE"
+echo -e "${CLR_GREEN}      staging корректный${CLR_RESET}"
 
 # ============================================================
-#  ШАГ 7. Формат / очистка
+#  ШАГ 7. Формат / очистка + копирование staging на USB
 # ============================================================
 echo
 STAGE7="[7/9] подготовка $PART"
@@ -748,35 +815,172 @@ MNT=/mnt/extroot_tmp
 mkdir -p "$MNT"
 
 echo "$STAGE7 ..."
-for m in $(awk -v p="$PART" '$1==p {print $2}' /proc/mounts); do
-    echo
-    echo "      umount $m"
-    umount "$m" 2>/dev/null || umount -l "$m" 2>/dev/null || true
+
+sync
+if [ -x /etc/init.d/fstab ]; then
+    /etc/init.d/fstab stop >/dev/null 2>&1 || true
+fi
+
+if have fuser; then
+    fuser -k -m "$CUR_OVERLAY_MP" "$MNT" "$PART" 2>/dev/null || true
+fi
+
+for target_mpt in "$CUR_OVERLAY_MP" "$MNT" "$PART" "$TARGET"; do
+    umount "$target_mpt" 2>/dev/null || true
+    umount -l "$target_mpt" 2>/dev/null || true
+    umount -f "$target_mpt" 2>/dev/null || true
 done
-umount "$PART" 2>/dev/null || umount -l "$PART" 2>/dev/null || true
-umount "$TARGET" 2>/dev/null || umount -l "$TARGET" 2>/dev/null || true
-umount "$MNT" 2>/dev/null || umount -l "$MNT" 2>/dev/null || true
+
+sleep 2
 
 if [ "$SAME_DISK" = "1" ]; then
     echo "      umount -l $CUR_OVERLAY_MP (тот же диск)"
     umount -l "$CUR_OVERLAY_MP" 2>/dev/null || true
     umount -l "$CUR_OVERLAY_DEV" 2>/dev/null || true
+    sleep 1
 fi
 
 if [ "$MODE" = format ]; then
-    if [ "$TEST_MODE" = "1" ]; then
-        echo
-        echo "      [TEST] имитирую падение mkfs"
-        false
-        mkfs.ext4 -F -L extroot "$PART"
-    else
-        echo
-        if ! mkfs.ext4 -F -L extroot "$PART"; then
-            fatal "$STAGE7" "mkfs.ext4 на $PART упал.
-Бэкап цел: $BACKUP_ARCHIVE"
-        fi
+    echo
+    echo "      освобождаю $PART..."
+
+    if have block; then
+        block umount "$PART" 2>/dev/null || true
     fi
-    echo "      отформатировано: $PART (ext4, label=extroot)"
+    if have fuser; then
+        fuser -k -m "$PART" 2>/dev/null || true
+    fi
+    for m in $(awk -v p="$PART" '$1==p {print $2}' /proc/mounts); do
+        umount "$m" 2>/dev/null || umount -l "$m" 2>/dev/null || true
+    done
+    umount "$PART" 2>/dev/null || umount -l "$PART" 2>/dev/null || true
+    sync
+    sleep 2
+
+    if mount | grep -q "$PART "; then
+        echo "      держатели $PART:"
+        mount | grep "$PART "
+        fatal "$STAGE7" "Раздел $PART всё ещё занят, mkfs невозможен.
+Staging цел: $STAGE_DIR"
+    fi
+    echo -e "${CLR_GREEN}      $PART свободен${CLR_RESET}"
+fi
+
+if [ "$MODE" = format ]; then
+    echo
+    echo "      форматирование $PART в ext4..."
+
+    uci -q delete fstab.extroot
+    uci -q delete fstab.rwm
+    uci commit fstab
+    sync
+    sleep 1
+    echo "      fstab очищен перед mkfs"
+
+    b=$(basename "$TARGET")
+    VENDOR=$(cat /sys/block/$b/device/vendor 2>/dev/null | tr -d '\n ' | sed 's/^ *//;s/ *$//')
+    MODEL=$(cat /sys/block/$b/device/model 2>/dev/null | tr -d '\n ' | sed 's/^ *//;s/ *$//')
+    REAL=$(readlink -f /sys/block/$b/device 2>/dev/null)
+    USB_PORT=$(echo "$REAL" | sed -n 's|.*/usb[0-9]*/\([0-9]*-[0-9.]*\)/.*|\1|p')
+
+    echo "      USB-порт: '${USB_PORT:-<не найден>}'"
+    echo "      vendor='$VENDOR' model='$MODEL'"
+
+    if [ -n "$USB_PORT" ] && [ -d /sys/bus/usb/devices/$USB_PORT ]; then
+        echo "      пересоздаю USB-порт $USB_PORT..."
+
+        umount "$PART" 2>/dev/null || umount -l "$PART" 2>/dev/null || true
+        block umount "$PART" 2>/dev/null || true
+        sync
+        sleep 1
+
+        echo 0 > /sys/bus/usb/devices/$USB_PORT/authorized
+        sleep 3
+        echo 1 > /sys/bus/usb/devices/$USB_PORT/authorized
+
+        i=0
+        FOUND=""
+        while [ $i -lt 20 ]; do
+            sleep 1
+            for d in /dev/sd?; do
+                [ -b "$d" ] || continue
+                db=$(basename "$d")
+                v=$(cat /sys/block/$db/device/vendor 2>/dev/null | tr -d '\n ' | sed 's/^ *//;s/ *$//')
+                m=$(cat /sys/block/$db/device/model 2>/dev/null | tr -d '\n ' | sed 's/^ *//;s/ *$//')
+                if [ "$v" = "$VENDOR" ] && [ "$m" = "$MODEL" ]; then
+                    FOUND="$d"
+                    break
+                fi
+            done
+            [ -n "$FOUND" ] && break
+            i=$((i + 1))
+        done
+
+        if [ -z "$FOUND" ]; then
+            fatal "$STAGE7" "USB-диск не переподключился за 20 сек.
+Проверь вручную:
+  ls -la /dev/sd*
+  dmesg | tail -20
+Staging цел: $STAGE_DIR"
+        fi
+
+        echo "      диск найден заново: $FOUND"
+
+        TARGET="$FOUND"
+        PART=""
+        for p in ${TARGET}*; do
+            [ -b "$p" ] || continue
+            case "$(basename $p)" in
+                $(basename $TARGET)) continue ;;
+            esac
+            PART="$p"
+            break
+        done
+        [ -z "$PART" ] && PART="$TARGET"
+        echo "      раздел: $PART"
+
+        sleep 1
+        if [ ! -b "$PART" ]; then
+            fatal "$STAGE7" "Раздел $PART не появился после пересоздания.
+Проверь вручную:
+  cat /proc/partitions
+Staging цел: $STAGE_DIR"
+        fi
+
+        umount "$PART" 2>/dev/null || umount -l "$PART" 2>/dev/null || true
+        block umount "$PART" 2>/dev/null || true
+        sync
+        sleep 1
+
+        if mount | grep -q "$PART "; then
+            fatal "$STAGE7" "Раздел $PART снова занят после пересоздания USB.
+Держатели:
+$(mount | grep "$PART ")
+Staging цел: $STAGE_DIR"
+        fi
+        echo -e "${CLR_GREEN}      $PART свободен после пересоздания${CLR_RESET}"
+    else
+        echo "      USB-порт не найден — пересоздание пропущено"
+    fi
+
+    mkfs_success=0
+    i=1
+    while [ $i -le 3 ]; do
+        if mkfs.ext4 -F -L extroot "$PART" >/dev/null 2>&1; then
+            mkfs_success=1
+            break
+        fi
+        sleep 2
+        i=$((i + 1))
+    done
+
+    if [ "$mkfs_success" != "1" ]; then
+        mkfs.ext4 -F -L extroot "$PART"
+        fatal "$STAGE7" "mkfs.ext4 на $PART упал.
+Staging цел: $STAGE_DIR"
+    fi
+
+    echo -e "${CLR_GREEN}      отформатировано: $PART (ext4, label=extroot)${CLR_RESET}"
 fi
 
 echo
@@ -784,7 +988,7 @@ echo "      монтирую $PART -> $MNT"
 mount "$PART" "$MNT"
 if [ $? -ne 0 ]; then
     fatal "$STAGE7" "Не смог смонтировать $PART в $MNT.
-Бэкап цел: $BACKUP_ARCHIVE"
+Staging цел: $STAGE_DIR"
 fi
 
 if [ "$MODE" = noformat ]; then
@@ -799,60 +1003,86 @@ if [ "$MODE" = noformat ]; then
         if ! rm -rf "$entry"; then
             umount "$MNT" 2>/dev/null || true
             fatal "$STAGE7" "Не смог удалить $entry.
-Бэкап цел: $BACKUP_ARCHIVE"
+Staging цел: $STAGE_DIR"
         fi
     done
     sync
     echo "      очищено"
 fi
 
-# ============================================================
-#  ШАГ 8. Распаковка
-# ============================================================
+# ---------- Копирование staging -> USB ----------
 echo
-STAGE8="[8/9] распаковка на USB"
-echo "$STAGE8 ..."
+echo "      копирую staging на USB..."
 AVAIL_DST_KB=$(df -k "$MNT" 2>/dev/null | awk 'NR==2 {print $4}')
-echo "      свободно: ${AVAIL_DST_KB}K, нужно ~${SRC_SIZE_KB}K"
+echo "      свободно: ${AVAIL_DST_KB}K, нужно ~${STAGE_SIZE_KB}K"
 
 if [ -z "$AVAIL_DST_KB" ]; then
     umount "$MNT" 2>/dev/null || true
-    fatal "$STAGE8" "Не смог определить свободное место на $PART.
-Бэкап цел: $BACKUP_ARCHIVE"
+    fatal "$STAGE7" "Не смог определить свободное место на $PART.
+Staging цел: $STAGE_DIR"
 fi
-if [ "$AVAIL_DST_KB" -lt $((SRC_SIZE_KB + SRC_SIZE_KB / 10)) ]; then
+if [ "$AVAIL_DST_KB" -lt $((STAGE_SIZE_KB + STAGE_SIZE_KB / 10)) ]; then
     umount "$MNT" 2>/dev/null || true
-    fatal "$STAGE8" "Мало места на $PART (${AVAIL_DST_KB}K < ${SRC_SIZE_KB}K).
-Бэкап цел: $BACKUP_ARCHIVE"
+    fatal "$STAGE7" "Мало места на $PART (${AVAIL_DST_KB}K < ${STAGE_SIZE_KB}K).
+Staging цел: $STAGE_DIR"
 fi
 
-echo
-if ! $TARBIN -C "$MNT" -xzf "$BACKUP_ARCHIVE" 2>/tmp/tar_write.err; then
-    echo "      tar errors:"
-    head -20 /tmp/tar_write.err
+mkdir -p "$MNT/upper"
+if ! cp -a "$STAGE_DIR/overlay/upper/." "$MNT/upper/" 2>/tmp/cp2.err; then
+    echo "      cp errors:"
+    head -20 /tmp/cp2.err
     umount "$MNT" 2>/dev/null || true
-    fatal "$STAGE8" "Распаковка на USB упала.
-Бэкап цел: $BACKUP_ARCHIVE"
+    fatal "$STAGE7" "Не смог скопировать upper/ на USB.
+Staging цел: $STAGE_DIR"
 fi
+
+mkdir -p "$MNT/work"
 sync
 
 USB_SIZE_KB=$(du -sk "$MNT" 2>/dev/null | awk '{print $1}')
 echo "      на USB: ${USB_SIZE_KB}K"
-if [ -z "$USB_SIZE_KB" ] || [ "$USB_SIZE_KB" -lt $((SRC_SIZE_KB / 2)) ]; then
-    umount "$MNT" 2>/dev/null || true
-    fatal "$STAGE8" "На USB мало (${USB_SIZE_KB}K vs ${SRC_SIZE_KB}K).
-Бэкап цел: $BACKUP_ARCHIVE"
-fi
 
 CFG="$MNT/upper/etc/config"
 if [ ! -d "$CFG" ]; then
     umount "$MNT" 2>/dev/null || true
-    fatal "$STAGE8" "Распакованный overlay неполный — нет $CFG.
-Бэкап цел: $BACKUP_ARCHIVE
-
-Проверь архив вручную:
-  tar -tzf $BACKUP_ARCHIVE | grep upper/etc/config"
+    fatal "$STAGE7" "На USB нет upper/etc/config.
+Staging цел: $STAGE_DIR"
 fi
+echo -e "${CLR_GREEN}      копирование на USB завершено${CLR_RESET}"
+
+# ============================================================
+#  ШАГ 8. Архив из staging (без whiteouts)
+# ============================================================
+echo
+STAGE8="[8/9] архив"
+BACKUP_DIR=/tmp/.usb-extroot-x7k2m9q4p1w8
+echo "$STAGE8 в $BACKUP_DIR ..."
+
+mkdir -p "$BACKUP_DIR"
+TS=$(date +%Y-%m-%d_%H-%M-%S)
+BACKUP_ARCHIVE="$BACKUP_DIR/overlay_backup_${TS}.tar.gz"
+
+echo "      удаляю whiteouts из staging..."
+find "$STAGE_DIR/overlay/upper" -name '.wh.*' -delete 2>/dev/null || true
+find "$STAGE_DIR/overlay/upper" -type d -empty -delete 2>/dev/null || true
+
+echo "      создаю архив $BACKUP_ARCHIVE ..."
+if ! $TARBIN -C "$STAGE_DIR" -czf "$BACKUP_ARCHIVE" overlay 2>/tmp/tar_read.err; then
+    echo "      tar errors:"
+    head -20 /tmp/tar_read.err
+    umount "$MNT" 2>/dev/null || true
+    fatal "$STAGE8" "Не смог создать архив.
+Staging цел: $STAGE_DIR"
+fi
+
+if ! $TARBIN -tzf "$BACKUP_ARCHIVE" >/dev/null 2>&1; then
+    umount "$MNT" 2>/dev/null || true
+    fatal "$STAGE8" "Архив повреждён: $BACKUP_ARCHIVE"
+fi
+
+ARCHIVE_SIZE_KB=$(du -k "$BACKUP_ARCHIVE" 2>/dev/null | awk '{print $1}')
+echo "      архив: ${ARCHIVE_SIZE_KB}K"
+echo -e "${CLR_GREEN}      архив создан${CLR_RESET}"
 
 # ============================================================
 #  ШАГ 9. fstab — в живой + в USB
@@ -866,13 +1096,13 @@ UUID=$(block info "$PART" | grep -o 'UUID="[^"]*"' | cut -d'"' -f2)
 if [ -z "$UUID" ]; then
     umount "$MNT" 2>/dev/null || true
     fatal "$STAGE9" "Не получил UUID для $PART.
+Staging цел: $STAGE_DIR
 Бэкап цел: $BACKUP_ARCHIVE
 
 Проверь вручную:
   block info $PART"
 fi
 
-# ---------- живой fstab (ubi0_2) ----------
 uci -q delete fstab.extroot
 uci set fstab.extroot=mount
 uci set fstab.extroot.uuid="$UUID"
@@ -890,7 +1120,6 @@ else
 fi
 uci commit fstab
 
-# ---------- fstab на USB ($MNT/upper/etc/config) ----------
 uci -c "$CFG" -q delete fstab.extroot
 uci -c "$CFG" set fstab.extroot=mount
 uci -c "$CFG" set fstab.extroot.uuid="$UUID"
@@ -908,8 +1137,8 @@ else
 fi
 uci -c "$CFG" commit fstab
 
-echo "      extroot: UUID=$UUID -> /overlay"
-echo "      rwm:     $ORIG_DEV -> /rwm"
+echo -e "      extroot: UUID=${CLR_YELLOW}$UUID${CLR_RESET} -> /overlay"
+echo -e "      rwm:     ${CLR_YELLOW}$ORIG_DEV${CLR_RESET} -> /rwm"
 
 echo
 echo "Проверка живого fstab:"
@@ -921,18 +1150,20 @@ grep -E 'extroot|rwm' "$CFG/fstab" || echo "      (записи не найде�
 
 umount "$MNT" 2>/dev/null || true
 
+rm -rf "$STAGE_DIR" 2>/dev/null || true
+
 echo
-echo "============================================================"
-echo " Готово. Бэкап: $BACKUP_ARCHIVE"
-echo "   1) перезагрузить сейчас"
-echo "   2) выйти без перезагрузки"
-echo "============================================================"
+echo -e "${CLR_GREEN}============================================================${CLR_RESET}"
+echo -e "${CLR_GREEN} Готово. Бэкап: $BACKUP_ARCHIVE${CLR_RESET}"
+echo "    1) перезагрузить сейчас"
+echo "    2) выйти без перезагрузки"
+echo -e "${CLR_GREEN}============================================================${CLR_RESET}"
 printf "Выбор: "
 read R
 case "$R" in
     1)
         echo
-        echo "!!! ПЕРЕЗАГРУЗКА ЧЕРЕЗ 10 СЕКУНД !!!"
+        echo -e "${CLR_ORANGE}!!! ПЕРЕЗАГРУЗКА ЧЕРЕЗ 10 СЕКУНД !!!${CLR_RESET}"
         echo "    Ctrl+C — отмена."
         i=10
         while [ $i -gt 0 ]; do
