@@ -302,17 +302,14 @@ pkg_repair_start() {
     pm=$(detect_pm)
     case "$pm" in
         apk)
-            echo
             echo "        apk update"
             apk update >/dev/null 2>&1
             ;;
         opkg)
-            echo
             echo "        opkg update"
             opkg update >/dev/null 2>&1
             ;;
         *)
-            echo
             echo "        нет apk/opkg — индексы не обновляю"
             ;;
     esac
@@ -326,10 +323,11 @@ pkg_repair_start() {
 }
 
 clear
-cat <<'BANNER'
-============================================================
- usb-extroot.sh  v2.22
- Перенос overlay OpenWrt на USB-накопитель (extroot)
+
+echo "============================================================"
+echo "usb-extroot.sh  ${ver}"
+cat <<'BANNER' 
+Перенос overlay OpenWrt на USB-накопитель (extroot)
 ------------------------------------------------------------
  До ввода YES — только чтение.
  После YES — необратимо; при ошибке — стоп и инструкции.
@@ -340,36 +338,40 @@ BANNER
 # ============================================================
 #  ФИКС U-Boot env
 # ============================================================
-echo
-echo "=== проверка U-Boot env ==="
+# echo
+# echo "=== проверка U-Boot env ==="
 if have fw_printenv && have fw_setenv; then
 
     # owrt_country — обязателен (без него 5 ГГц = OpenWrt)
     if fw_printenv 2>/dev/null | grep -q '^owrt_country='; then
-        echo "      owrt_country: есть"
+		a=a
+        # echo "      owrt_country: есть"
     else
-        echo "      owrt_country: НЕТ — устанавливаю RU"
+        # echo "      owrt_country: НЕТ — устанавливаю RU"
         fw_setenv owrt_country RU
-        echo "      owrt_country: RU установлен"
+        # echo "      owrt_country: RU установлен"
     fi
 
     # owrt_ssid / owrt_wifi_key — ODM-переменные, ломают дефолт, удалить
     if fw_printenv 2>/dev/null | grep -q '^owrt_ssid='; then
-        echo "      owrt_ssid: есть — удаляю"
+        # echo "      owrt_ssid: есть — удаляю"
         fw_setenv owrt_ssid
     else
-        echo "      owrt_ssid: нет"
+		a=a
+        # echo "      owrt_ssid: нет"
     fi
 
     if fw_printenv 2>/dev/null | grep -q '^owrt_wifi_key='; then
-        echo "      owrt_wifi_key: есть — удаляю"
+        # echo "      owrt_wifi_key: есть — удаляю"
         fw_setenv owrt_wifi_key
     else
-        echo "      owrt_wifi_key: нет"
+		a=a
+        # echo "      owrt_wifi_key: нет"
     fi
 
 else
-    echo "      fw_printenv/fw_setenv: не найдены — пропускаю"
+	a=a
+    # echo "      fw_printenv/fw_setenv: не найдены — пропускаю"
 fi
 
 # ============================================================
@@ -420,7 +422,6 @@ if [ -n "$MISSING_PKGS" ]; then
 Поставь пакеты вручную и запусти скрипт заново."
     fi
 
-    echo
     echo "      подготовка сети (DNS, блокировщики)..."
     pkg_repair_start || echo "      сеть не тронута (нечего чинить)"
 
@@ -432,14 +433,11 @@ if [ -n "$MISSING_PKGS" ]; then
         fi
     done
 
-    echo
     echo "      восстанавливаю сеть..."
     pkg_repair_finish
 else
     echo -e "${CLR_GREEN}      все пакеты на месте${CLR_RESET}"
 fi
-
-echo
 echo "      повторная проверка..."
 TARBIN=""
 for cand in tar /usr/bin/tar /usr/libexec/tar-gnu /bin/tar; do
@@ -500,10 +498,8 @@ RWM_DEV=$(uci -q get fstab.rwm.device)
 
 if is_usb "$CUR_OVERLAY_DEV"; then
     REINSTALL=1
-    echo
-    echo "  /overlay УЖЕ на USB: $CUR_OVERLAY_DEV"
-    echo "  Это повторный перенос."
-    echo
+    echo "      /overlay УЖЕ на USB: $CUR_OVERLAY_DEV"
+    echo "      Это повторный перенос."
 
     if [ -z "$RWM_DEV" ]; then
         die "$STAGE1" "Нет fstab.rwm.device — нижний слой неизвестен.
@@ -520,9 +516,8 @@ if is_usb "$CUR_OVERLAY_DEV"; then
   uci show fstab"
     fi
 
-    echo "  нижний слой (fstab.rwm): $RWM_DEV"
-    echo "  новый перенос перезапишет fstab.extroot."
-    echo
+    echo "      нижний слой (fstab.rwm): $RWM_DEV"
+    echo "      новый перенос перезапишет fstab.extroot."
     ORIG_DEV="$RWM_DEV"
 else
     REINSTALL=0
@@ -531,9 +526,9 @@ else
 Скрипт работает только с внутренним overlay (ubi/mtdblock/root)."
     fi
     ORIG_DEV="$CUR_OVERLAY_DEV"
-    echo "  ок, внутренний: $ORIG_DEV"
+    echo "      ок, внутренний: $ORIG_DEV"
 fi
-echo "  нижний слой для fstab.rwm: $ORIG_DEV"
+echo "      нижний слой для fstab.rwm: $ORIG_DEV"
 
 # ============================================================
 #  ШАГ 2. Поиск USB
@@ -609,12 +604,11 @@ done
 [ -z "$PARTS" ] && PARTS="$TARGET"
 PART=$(echo $PARTS | awk '{print $1}')
 
-echo
+
 block info "$PART" >/dev/null 2>&1
 FS=$(block info "$PART" 2>/dev/null | grep -o 'TYPE="[^"]*"' | cut -d'"' -f2)
 
-echo
-echo -e "${CLR_YELLOW}ЦЕЛЬ: $DESC${CLR_RESET}"
+echo -e "${CLR_YELLOW}      ЦЕЛЬ: $DESC${CLR_RESET}"
 for p in $PARTS; do
     f=$(block info "$p" 2>/dev/null | grep -o 'TYPE="[^"]*"' | cut -d'"' -f2)
     m=$(block info "$p" 2>/dev/null | grep -o 'MOUNT="[^"]*"' | cut -d'"' -f2)
@@ -1011,7 +1005,6 @@ Staging цел: $STAGE_DIR"
 fi
 
 # ---------- Копирование staging -> USB ----------
-echo
 echo "      копирую staging на USB..."
 AVAIL_DST_KB=$(df -k "$MNT" 2>/dev/null | awk 'NR==2 {print $4}')
 echo "      свободно: ${AVAIL_DST_KB}K, нужно ~${STAGE_SIZE_KB}K"
@@ -1091,7 +1084,6 @@ echo
 STAGE9="[9/9] fstab"
 echo "$STAGE9 ..."
 
-echo
 UUID=$(block info "$PART" | grep -o 'UUID="[^"]*"' | cut -d'"' -f2)
 if [ -z "$UUID" ]; then
     umount "$MNT" 2>/dev/null || true
@@ -1140,11 +1132,9 @@ uci -c "$CFG" commit fstab
 echo -e "      extroot: UUID=${CLR_YELLOW}$UUID${CLR_RESET} -> /overlay"
 echo -e "      rwm:     ${CLR_YELLOW}$ORIG_DEV${CLR_RESET} -> /rwm"
 
-echo
 echo "Проверка живого fstab:"
 uci show fstab 2>/dev/null | grep -E 'extroot|rwm' || echo "      (записи не найдены!)"
 
-echo
 echo "Проверка fstab на USB:"
 grep -E 'extroot|rwm' "$CFG/fstab" || echo "      (записи не найдены!)"
 
