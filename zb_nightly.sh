@@ -1,0 +1,672 @@
+#!/bin/sh
+# /zbautoconf.sh
+
+# ============================================
+# 
+# ZEROBLOCK AUTOSETUP SCRIPT
+# 
+# ============================================
+
+VER="v0.1.10.44"
+
+if [ -t 1 ]; then
+    IS_TTY=1
+else
+    IS_TTY=0
+fi
+
+LOG_DIR="/root/zeroblock_autosetup"
+LOG_FILE="$LOG_DIR/install.log"
+mkdir -p "$LOG_DIR"
+rm "$LOG_FILE"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+BACKUP_DIR="/root/zeroblock_autosetup/sysbackup"
+TEMP_DNS="9.9.9.11"
+annoying_services="podkop podkop-plus forkop zapret zapret2 youtubeUnblock ruantiblock"
+
+# Конфиг zeroblock вынесен из скрипта в отдельный файл репозитория
+ZB_CONFIG_URL="https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/zbautoconf/zeroblock.config"
+ZB_CONFIG_LOCAL="/tmp/zeroblock.config"
+
+# проверяем версию OpenWRT
+if [ -f /usr/bin/apk ]; then
+	opkg="apk --allow-untrusted"
+	list_installed="--list-installed -q"
+	install="add"
+	MOD="apk"
+else
+	opkg="opkg"
+	list_installed="list-installed"
+	install="install"
+	MOD="ipk"
+fi
+
+clear
+
+# --- ЦВЕТА ---
+if [ "$IS_TTY" = 1 ]; then
+	CLR_OFF="\033[0m"; RED_BRIGHT="\033[1;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; CYAN="\033[0;36m"
+fi
+
+# Единая проверка: установлен ли пакет zeroblock (работает и для opkg, и для apk)
+# Форматы:
+#   opkg list-installed:  "zeroblock - 1.0.0"
+#   apk  list-installed:  "zeroblock-1.0.0" / "zeroblock"
+zb_installed() {
+	$opkg $list_installed 2>/dev/null | grep -qE '^zeroblock([[:space:]-]|$)'
+}
+
+del_awg10() {
+	IFACE="awg10"
+	# Проверяем, существует ли интерфейс (в UCI или в ядре)
+	if uci -q get network."${IFACE}" >/dev/null && ip link show "${IFACE}" >/dev/null 2>&1; then
+		echo "→ Удаляем интерфейс ${IFACE}..."
+
+		# 1. Останавливаем интерфейс (если он активен)
+		ifdown "${IFACE}" 2>/dev/null >/dev/null 2>&1
+		ip link del dev "${IFACE}" 2>/dev/null >/dev/null 2>&1
+
+		# 2. Удаляем секцию из UCI и связанные peer-секции
+		uci -q delete network."${IFACE}" >/dev/null 2>&1
+		while uci -q delete network."@amneziawg_${IFACE}"[0] >/dev/null 2>&1; do :; done
+
+		# 3. Применяем изменения
+		uci commit network >/dev/null 2>&1
+		uci commit firewall >/dev/null 2>&1
+
+		# 4. Чистим временные файлы
+		rm -f "/tmp/run/wgserver/${IFACE}.key" 2>/dev/null
+		rm -f "/var/run/amneziawg/${IFACE}.sock" 2>/dev/null
+
+		echo "✓ Интерфейс ${IFACE} успешно удалён."
+	fi
+}
+
+
+opkg_update(){
+	UPDATE_LOG="/tmp/opkg_update.log"
+	echo -e "→ ${opkg} update (до 4 попыток)..."
+	for i in 1 2 3 4; do
+		echo "  Попытка $i/4...  "
+		$opkg update > "$UPDATE_LOG" 2>&1
+
+		if grep -qiE "failed|error|unable|not found|returned [1-9]|bad address|refused|timeout" "$UPDATE_LOG"; then
+			echo -e "  ${RED_BRIGHT}✗ Ошибки в попытке $i${CLR_OFF}"
+			[ $i -eq 4 ] && { echo -e "${RED_BRIGHT}✗ Не удалось обновить репозитории${CLR_OFF}"; return 1; }
+			sleep 3
+		else
+			echo -e "  ${GREEN}✓ Репозитории обновлены (попытка $i)${CLR_OFF}"; echo ""
+			break
+		fi
+	done
+}
+
+install_rrws() {
+	sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh) noclear
+	echo ""
+}
+
+install_malwdns() {
+	sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/malw_parser/malw_parser.sh) noclear
+	echo ""
+}
+
+install_prereq(){
+	$opkg $install wget-ssl
+}
+
+
+install_zb_newest() {
+	no_zb_arch=0
+	ZB_ARCH_LINK="https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/zbautoconf/ZeroBlock_latest_$MOD.tar.gz"
+
+	WORK_DIR="/tmp/zb_arch_work"
+	rm -rf "$WORK_DIR"
+	mkdir -p "$WORK_DIR"
+	cd "$WORK_DIR" || return 1
+
+	printf "Скачивание свежего ZeroBlock\n"
+	sleep 5
+
+	wget_attempt=1
+	max_attempts=4
+	while [ $wget_attempt -le $max_attempts ]; do
+		echo "Попытка скачивания $wget_attempt из $max_attempts..."
+
+		if wget -O "archive.tar.gz" "$ZB_ARCH_LINK" --timeout=5; then
+			echo -e "${GREEN}Скачивание успешно${CLR_OFF}"; echo ""
+			break
+		else
+			echo -e "${RED_BRIGHT}Ошибка скачивания${CLR_OFF}"
+			wget_attempt=$((wget_attempt + 1))
+
+			if [ $wget_attempt -gt $max_attempts ]; then
+				echo -e "${YELLOW}Не удалось скачать после $max_attempts попыток${CLR_OFF}"
+				no_zb_arch=1
+				return 1
+			fi
+
+			sleep 2
+		fi
+	done
+
+	echo -e "Распаковка..."
+	tar -xzf "archive.tar.gz" -C "$WORK_DIR" || {
+		echo -e "${RED_BRIGHT}Ошибка распаковки${CLR_OFF}"
+		no_zb_arch=1
+		return 1
+	}
+
+	rm -f "archive.tar.gz"
+
+	LARGEST_FILE=""
+	LARGEST_SIZE=0
+
+	for file in $(find "$WORK_DIR" -name "*.${MOD}" -type f 2>/dev/null); do
+		size=$(ls -la "$file" | awk '{print $5}')
+		if [ "$size" -gt "$LARGEST_SIZE" ]; then
+			LARGEST_SIZE=$size
+			LARGEST_FILE=$file
+		fi
+	done
+
+	if [ -z "$LARGEST_FILE" ]; then
+		echo -e "${RED_BRIGHT}Ошибка: нет .$MOD файлов${CLR_OFF}"
+		no_zb_arch=1
+		return 1
+	fi
+
+
+	echo -e "Установка: $(basename "$LARGEST_FILE")"
+	$opkg $install "$LARGEST_FILE" || {
+		echo -e "${RED_BRIGHT}Ошибка установки${CLR_OFF}"
+		no_zb_arch=1
+		return 1
+	}
+
+	# Второй файл
+	for file in $(find "$WORK_DIR" -name "*.${MOD}" -type f 2>/dev/null | grep -v "$LARGEST_FILE"); do
+		echo -e "Установка: $(basename "$file")"
+		$opkg $install "$file" || echo -e "${YELLOW}Предупреждение: не установлен $file${CLR_OFF}"
+		break
+	done
+
+	echo -e "${GREEN}ZeroBlock установлен. ${CLR_OFF}"
+	return 0
+}
+
+# Установка zeroblock из репозитория (только если свежий архив не встал)
+# Логика сообщений:
+#   • пакет уже установлен до нас                → не ошибка
+#   • install вернул rc≠0, но пакет на месте    → не ошибка (версия та же/выше)
+#   • install вернул rc≠0 и пакета нет           → ошибка
+install_zb_repo() {
+	[ "$no_zb_arch" != "1" ] && return 0
+
+	if zb_installed; then
+		echo -e "✓ zeroblock уже установлен, установка из репозитория не требуется"
+		return 0
+	fi
+
+	echo -e "→ Установка zeroblock luci-app-zeroblock из репозитория..."
+	$opkg $install zeroblock luci-app-zeroblock > /tmp/opkg_install.log 2>&1
+	install_rc=$?
+
+	if zb_installed; then
+		if [ $install_rc -eq 0 ]; then
+			echo -e "✓ zeroblock успешно установлен из репозитория"
+		else
+			echo -e "✓ zeroblock установлен (переустановка не требуется, версия актуальна)"
+			if grep -qiE "up.to.date|already installed|nothing to be done|no packages to install" /tmp/opkg_install.log 2>/dev/null; then
+				echo -e "  (лог подтверждает: пакет актуален)"
+			else
+				echo -e "  ${YELLOW}⚠ $opkg вернул код $install_rc, но zeroblock установлен. См. /tmp/opkg_install.log${CLR_OFF}"
+			fi
+		fi
+		return 0
+	fi
+
+	echo -e "✗ Ошибка: zeroblock не установлен"
+	cat /tmp/opkg_install.log
+	return 1
+}
+
+# Скачивание внешнего конфига zeroblock (без вывода содержимого)
+fetch_zeroblock_config() {
+	echo -e "→ Скачивание конфига zeroblock"
+	rm -f "$ZB_CONFIG_LOCAL"
+	if wget -q -O "$ZB_CONFIG_LOCAL" "$ZB_CONFIG_URL" && [ -s "$ZB_CONFIG_LOCAL" ]; then
+		echo -e "✓ Конфиг загружен"
+		return 0
+	fi
+	echo -e "${RED_BRIGHT}✗ Не удалось скачать конфиг: $ZB_CONFIG_URL${CLR_OFF}"
+	rm -f "$ZB_CONFIG_LOCAL"
+	return 1
+}
+
+# Функция создания директории
+create_backup_dir() {
+	if [ ! -d "$BACKUP_DIR" ]; then
+		mkdir -p "$BACKUP_DIR"
+		if [ $? -eq 0 ]; then
+			echo -e "✓ Директория $BACKUP_DIR создана"
+		else
+			echo -e "✗ Ошибка: не могу создать $BACKUP_DIR"
+			exit 1
+		fi
+	fi
+}
+
+# Функция создания штатного бэкапа через sysupgrade -b
+create_backup() {
+	DATE_TIME=$(date +%Y_%m_%d-%H_%M_%S)
+	BACKUP_FILE="$BACKUP_DIR/${DATE_TIME}.tar.gz"
+
+	echo -e "→ Создание штатного бэкапа через sysupgrade -b"
+	echo -e "  Файл: ${YELLOW}$BACKUP_FILE${CLR_OFF}"
+
+	printf "  "
+	sysupgrade -b "$BACKUP_FILE"
+
+	if [ $? -eq 0 ] && [ -f "$BACKUP_FILE" ]; then
+		printf "%b" "  ${GREEN}✓ Бэкап успешно создан${CLR_OFF}"
+		echo -e "  Размер: $(ls -lh "$BACKUP_FILE" | awk '{print $5}')"
+	else
+		printf "%b" "  ${RED_BRIGHT}✗ Ошибка: бэкап не создан${CLR_OFF}"
+		exit 1
+	fi
+	echo -e ""
+}
+
+# Функция проверки штатного бэкапа
+verify_backup() {
+	BACKUP_FILE="$1"
+
+	echo -e "→ Проверка бэкапа: ${YELLOW}$BACKUP_FILE${CLR_OFF}"
+
+	if [ ! -f "$BACKUP_FILE" ]; then
+		echo -e "✗ Ошибка: файл бэкапа не найден"
+		return 1
+	fi
+	echo -e "  ✓ Файл существует"
+
+	if [ ! -s "$BACKUP_FILE" ]; then
+		echo -e "✗ Ошибка: файл бэкапа пустой"
+		return 1
+	fi
+	echo -e "  ✓ Размер не нулевой"
+
+	if tar -tzf "$BACKUP_FILE" > /dev/null 2>&1; then
+		echo -e "  ✓ Архив валидный (tar.gz)"
+	else
+		echo -e "✗ Ошибка: архив повреждён или не tar.gz"
+		return 1
+	fi
+
+	FILE_COUNT=$(tar -tzf "$BACKUP_FILE" 2>/dev/null | wc -l)
+	echo -e "  ✓ Архив содержит $FILE_COUNT файлов/директорий"
+
+	if tar -tzf "$BACKUP_FILE" 2>/dev/null | grep -q "etc/config/system"; then
+		echo -e "  ✓ Найдены ключевые конфиги (etc/config/)"
+	else
+		echo -e "  ⚠ Внимание: etc/config/ не обнаружен (возможно, так и задумано)"
+	fi
+
+	echo -e  "  ${GREEN}✓ Бэкап прошёл проверку${CLR_OFF}"
+	echo -e ""
+	return 0
+}
+
+# Остановка, отключение и удаление мешающих сервисов
+kill_annoying_services() {
+	echo -e "→ Останавливаем потенциально мешающие службы"
+	add_spaces="  "
+	printf "$add_spaces"
+	for service in $annoying_services; do
+		if [ -f "/etc/init.d/$service" ]; then
+			if echo -e "$service" | grep -q -i "zapret"; then printf "✓ "; fi
+			/etc/init.d/"$service" stop 2>/dev/null
+			/etc/init.d/"$service" disable 2>/dev/null
+			if echo -e "$service" | grep -q -i "zapret"; then printf "$add_spaces"; fi
+			echo -e "✓ $service остановлен и отключён"; printf "$add_spaces"
+		fi
+	done
+	echo -e ""
+}
+
+# Замена конфига zeroblock внешним файлом
+stop_and_rplce_config_zeroblock() {
+	echo -e "✓ zeroblock остановлен"
+
+	fetch_zeroblock_config || return 1
+
+	rm -f /etc/config/zeroblock
+	cp "$ZB_CONFIG_LOCAL" /etc/config/zeroblock
+	chmod 600 /etc/config/zeroblock
+
+	echo -e "✓ Конфиг zeroblock заменён"
+	echo -e "✓ zeroblock запущен"
+	return 0
+}
+
+# Ожидание завершения автонастройки zeroblock
+wait_zeroblock_ready() {
+	/etc/init.d/zeroblock start
+	local timeout=120  # 2 минуты
+	local elapsed=0
+
+	echo -n "→ Ожидание автонастройки zeroblock (макс. 2 минуты)"
+
+	while [ $elapsed -lt $timeout ]; do
+		if uci show zeroblock 2>/dev/null | grep -q "zeroblock.AI1=section" && \
+		   uci show zeroblock 2>/dev/null | grep -q "zeroblock.MESSENGERS1=section"; then
+			echo -e ""
+			echo -e "✓ Автонастройка завершена (через ${elapsed} сек)"
+			uci set zeroblock.auto_config.sections_auto_load='0'
+			uci commit zeroblock
+			uci commit luci
+			return 0
+		fi
+
+		echo -n "."
+		sleep 2
+		elapsed=$((elapsed + 2))
+	done
+
+	echo -e ""
+	return 1
+}
+
+# Управление DNS (аргумент = IP DNS сервера, или recovery = восстановление)
+dns_redirect() {
+	if [ "$1" = "recovery" ] && [ "$NOBACKUP" = "" ]; then
+		if [ -f /tmp/dhcp.bak ]; then
+			cp /tmp/dhcp.bak /etc/config/dhcp
+			rm /tmp/dhcp.bak
+			/etc/init.d/dnsmasq restart >/dev/null 2>&1
+			echo -e "✓ DNS конфиг восстановлен"
+		fi
+
+	elif echo -e "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+		retval="$(uci get dhcp.@dnsmasq[0].server 2>/dev/null | tr -d '[:space:]')"
+		if [ -n "$retval" ]; then
+			cp /etc/config/dhcp /tmp/dhcp.bak 2>/dev/null
+			NOBACKUP=""
+		else
+			echo -e "✗ Передан DNS ${1}. Архивация пропущена."
+			NOBACKUP="1"
+		fi
+
+		/etc/init.d/zeroblock stop >/dev/null 2>&1
+		sleep 3
+
+		uci set dhcp.@dnsmasq[0].noresolv="1"
+		uci -q del dhcp.@dnsmasq[0].server
+		uci add_list dhcp.@dnsmasq[0].server="$1"
+		sleep 1
+		uci commit dhcp
+		uci commit luci
+		sleep 1
+		/etc/init.d/dnsmasq restart >/dev/null 2>&1
+		if [ "$(uci get dhcp.@dnsmasq[0].server)" = "$1" ]; then
+			echo -e "✓ DNS переключен на $1"
+		fi
+	fi
+}
+
+# Обновление меню LuCI после установки пакетов
+refresh_luci() {
+	echo -e "→ Обновление меню LuCI..."
+
+	/etc/init.d/rpcd reload
+	/etc/init.d/uhttpd reload
+
+	rm -rf /tmp/luci-modulecache/ 2>/dev/null
+	rm -f /tmp/luci-indexcache.json 2>/dev/null
+	/etc/init.d/rpcd reload >/dev/null 2>&1
+	/etc/init.d/uhttpd reload >/dev/null 2>&1
+}
+
+
+# --- МЕНЮ ---
+
+
+draw_main_menu() {
+	clear
+	echo -e "${CYAN}=======================================${CLR_OFF}"
+	echo -e "${CYAN} ZEROBLOCK MANAGER ${VER}${CLR_OFF}"
+	echo -e "${CYAN}=======================================${CLR_OFF}"
+	echo -e ""
+	echo -e "  ${GREEN}1${CLR_OFF} — Установить и настроить ZeroBlock"
+
+	BACKUP_COUNT=$(ls "$BACKUP_DIR"/*.tar.gz 2>/dev/null | wc -l)
+	if [ "$BACKUP_COUNT" -gt 0 ]; then
+		echo -e "  ${GREEN}2${CLR_OFF} — Восстановить настройки из бэкапа"
+	else
+		echo -e "  ${YELLOW}2${CLR_OFF} — Восстановить настройки из бэкапа ${YELLOW}[бэкапы отсутствуют]${CLR_OFF}"
+	fi
+
+	echo -e "  ${RED_BRIGHT}0${CLR_OFF} — Выход"
+	echo -e ""
+	echo -e -n "${CYAN}Введите номер пункта меню: ${CLR_OFF}"
+
+	read input
+	case "$input" in
+		1)  echo -e ""
+			echo -e "${GREEN}→ Запуск установки и настройки...${CLR_OFF}"
+			find /etc/zeroblock -maxdepth 1 -type f -exec rm -f -- {} +
+			return 0
+			;;
+		2) if [ "$BACKUP_COUNT" -gt 0 ]; then
+				echo -e ""; echo -e "${GREEN}→ Запуск восстановления...${CLR_OFF}"; draw_restore_menu
+			else draw_main_menu; fi; ;;
+		0) echo -e ""; echo -e "${GREEN}→ Выход${CLR_OFF}"; echo -e ""; exit 0; ;;
+		*) draw_main_menu; ;;
+	esac
+}
+
+draw_restore_menu() {
+	BACKUP_LIST=""
+	TOTAL=0
+	for f in $(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r); do
+		[ -z "$BACKUP_LIST" ] && BACKUP_LIST="$f" || BACKUP_LIST="$BACKUP_LIST|$f"
+		TOTAL=$((TOTAL + 1))
+	done
+
+	while true; do
+		clear
+		printf "%b\n" "${CYAN}=================================${CLR_OFF}"
+		printf "%b\n" "${CYAN}       ВЫБОР БЭКАПА${CLR_OFF}"
+		printf "%b\n" "${CYAN}=================================${CLR_OFF}"
+		echo -e ""
+		echo -e "ВОССТАНОВЛЕНИЕ ИЗ БЭКАПА"
+		echo -e "ОТКАТИТ ВСЕ НАСТРОЙКИ РОУТЕРА"
+		echo -e "ДО СОСТОЯНИЯ НА ДАТУ БЭКАПА!!!"
+		echo -e ""
+		if [ $TOTAL -eq 0 ]; then
+			printf "%b\n" "  ${YELLOW}Нет доступных бэкапов${CLR_OFF}"
+			printf "%b\n" ""
+			printf "%b0%b — Возврат\n" "${GREEN}" "${CLR_OFF}"
+			printf "%b\n" ""
+			printf "%bВведите номер пункта меню: %b" "${CYAN}" "${CLR_OFF}"
+			read choice
+			[ "$choice" = "0" ] && draw_main_menu
+			continue
+		fi
+
+		NUM=1
+		SAVED_IFS="$IFS"
+		IFS='|'
+		for b in $BACKUP_LIST; do
+			NAME=$(basename "$b" .tar.gz)
+			printf "%b%s%b — %s\n" "${GREEN}" "$NUM" "${CLR_OFF}" "$NAME"
+			NUM=$((NUM + 1))
+		done
+		IFS="$SAVED_IFS"
+
+		printf "%b0%b — Возврат в главное меню\n" "${GREEN}" "${CLR_OFF}"
+
+		printf "%b\n" ""
+		printf "%b1111%b — Удалить все бэкапы, кроме первого и последнего " "${RED_BRIGHT}" "${CLR_OFF}"
+		printf "%b\n" "${YELLOW}(Последний вверху)${CLR_OFF}"
+		printf "%b\n" ""
+		printf "%bВведите номер пункта меню: %b" "${CYAN}" "${CLR_OFF}"
+		read choice
+
+		[ "$choice" = "0" ] && draw_main_menu && return
+
+		if [ "$choice" = "1111" ]; then
+			printf "%b" "${RED_BRIGHT}ВЫ УВЕРЕНЫ? (y/n): ${CLR_OFF}"
+			read absolutly
+			if [ "$absolutly" != "y" ]; then
+				draw_restore_menu
+			fi
+
+			if [ $TOTAL -gt 2 ]; then
+				TMP_DIR="/tmp/backup_tmp_$$"
+				mkdir -p "$TMP_DIR"
+
+				NUM=1
+				SAVED_IFS="$IFS"
+				IFS='|'
+				for b in $BACKUP_LIST; do
+					if [ $NUM -eq 1 ] || [ $NUM -eq $TOTAL ]; then
+						cp "$b" "$TMP_DIR/"
+					fi
+					NUM=$((NUM + 1))
+				done
+				IFS="$SAVED_IFS"
+
+				rm -rf "$BACKUP_DIR"/*
+				cp "$TMP_DIR"/* "$BACKUP_DIR/"
+				rm -rf "$TMP_DIR"
+
+				BACKUP_LIST=""
+				TOTAL=0
+				for f in $(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r); do
+					[ -z "$BACKUP_LIST" ] && BACKUP_LIST="$f" || BACKUP_LIST="$BACKUP_LIST|$f"
+					TOTAL=$((TOTAL + 1))
+				done
+
+				printf "%b✓ Оставлены первый и последний бэкап (%d шт)%b\n" "${GREEN}" "$TOTAL" "${CLR_OFF}"
+				sleep 1
+			else
+				printf "%b⚠ Нечего удалять (бэкапов 2 или меньше)%b\n" "${YELLOW}" "${CLR_OFF}"
+				sleep 1
+			fi
+			continue
+		fi
+
+		if [ "$choice" -ge 1 ] 2>/dev/null && [ "$choice" -le $TOTAL ]; then
+			SELECTED=$(echo -e "$BACKUP_LIST" | cut -d'|' -f"$choice")
+			NAME=$(basename "$SELECTED" .tar.gz)
+			printf "%b\n"
+			printf "%bВосстановить из бэкапа %s? (y/n): %b" "${YELLOW}" "$NAME" "${CLR_OFF}"
+			read confirm
+			if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+				printf "%b\n→ Восстановление...%b\n" "${CYAN}" "${CLR_OFF}"
+				sysupgrade -r "$SELECTED"
+				if [ $? -eq 0 ]; then
+					uci commit
+					printf "%b✓ Бэкап восстановлен%b\n" "${GREEN}" "${CLR_OFF}"
+					printf "%b⚠ Требуется перезагрузка роутера%b\n" "${YELLOW}" "${CLR_OFF}"
+				else
+					printf "%b✗ Ошибка восстановления%b\n" "${RED_BRIGHT}" "${CLR_OFF}"
+				fi
+				printf "%b\nПерезагрузить роутер? (${RED_BRIGHT}y${CLR_OFF}/${GREEN}n${CLR_OFF}): %b" "${CYAN}" "${CLR_OFF}"
+				read reboot
+				[ "$reboot" = "y" ] || [ "$reboot" = "Y" ] && echo -e "РОУТЕР ПЕРЕЗАГРУЖАЕТСЯ" && reboot && exit
+				draw_restore_menu
+				return
+			fi
+		fi
+	done
+}
+
+# Дополнительные действия
+on_the_end() {
+
+    # Изменяем параметры awg10 (это сеть, а не конфиг zeroblock)
+	echo "→ Изменяем параметры awg10"
+    uci set network.awg10.mtu='1280'
+	uci set network.awg10.addresses='172.16.0.2'
+	uci delete network.awg10.dns
+	uci add_list network.awg10.dns='1.1.1.1'
+	uci add_list network.awg10.dns='1.0.0.1'
+	uci set network.awg10.nohostroute='1'
+    uci commit network
+	echo "✓ Параметры awg10 успешно изменены"
+
+	# Устанавливаем в секции GEOHIDE_DNS, MALW_DNS, RUSSIA WAN-интерфейс
+	WAN_IF=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device')
+	[ -z "$WAN_IF" ] && WAN_IF=$(uci -q get network.wan.device || uci -q get network.wan.ifname)
+	echo "→ WAN interface: $WAN_IF"
+	uci set zeroblock.RUSSIA.interface="${WAN_IF}"
+	uci set zeroblock.GEOHIDE_DNS.interface="${WAN_IF}"
+	uci set zeroblock.MALW_DNS.interface="${WAN_IF}"
+	uci set zeroblock.XBOX_DNS.interface="${WAN_IF}"
+	uci commit
+	sleep 2
+
+echo -e "
+${YELLOW}При отсутствии ZeroBlock в меню \"Службы\" - обновите страницу.
+Если обновление не помогло - перелогиньтесь.
+Если и это не помогло ${GREEN}ОЧИСТИТЕ КЭШ БРАУЗЕРА
+${YELLOW}или откройте админку роутера в ${GREEN}инкогнито-окне браузера.
+${CLR_OFF}"
+
+	printf "Лог установки сохранён в \033[33m%s\033[0m\n" "$LOG_FILE"
+	echo ""
+}
+
+# ============================================
+# MAIN
+# ============================================
+
+draw_main_menu
+create_backup_dir
+create_backup
+verify_backup "${BACKUP_FILE}"
+kill_annoying_services
+echo "→ Сбрасываем настройки ZeroBlock"
+ubus call zeroblock restore_to_default >/dev/null 2>&1
+del_awg10
+dns_redirect "${TEMP_DNS}"
+sleep 5
+opkg_update
+install_prereq
+install_rrws
+install_malwdns
+install_zb_newest; echo -e ""
+install_zb_repo
+
+# Критическая проверка: zeroblock обязан быть установлен
+if ! zb_installed; then
+	echo -e "${RED_BRIGHT}✗ КРИТИЧЕСКАЯ ОШИБКА: zeroblock не установлен ни из архива, ни из репозитория${CLR_OFF}"
+	dns_redirect "recovery"
+	echo -e "${YELLOW}Перезагрузка отменена. Лог: $LOG_FILE${CLR_OFF}"
+	exit 1
+fi
+
+# Замена конфига zeroblock из внешнего файла
+if ! stop_and_rplce_config_zeroblock; then
+	echo -e "${RED_BRIGHT}✗ КРИТИЧЕСКАЯ ОШИБКА: конфиг zeroblock не применён${CLR_OFF}"
+	dns_redirect "recovery"
+	echo -e "${YELLOW}Перезагрузка отменена. Лог: $LOG_FILE${CLR_OFF}"
+	exit 1
+fi
+
+wait_zeroblock_ready
+dns_redirect "recovery"
+refresh_luci
+on_the_end
+
+echo -e "=== КОНЕЦ ==="
+echo -e ""
+sed -i -E 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$LOG_FILE"
+uci commit
+echo -e  "===${RED_BRIGHT} РОУТЕР БУДЕТ ПЕРЕЗАГРУЖЕН ЧЕРЕЗ 10 СЕКУНД! ${CLR_OFF}=== "
+sleep 10
+reboot
+exit 0
