@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.44"
+VER="v0.1.10.45"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -32,12 +32,10 @@ ZB_CONFIG_LOCAL="/tmp/zeroblock.config"
 # проверяем версию OpenWRT
 if [ -f /usr/bin/apk ]; then
 	opkg="apk --allow-untrusted"
-	list_installed="--list-installed -q"
 	install="add"
 	MOD="apk"
 else
 	opkg="opkg"
-	list_installed="list-installed"
 	install="install"
 	MOD="ipk"
 fi
@@ -54,7 +52,15 @@ fi
 #   opkg list-installed:  "zeroblock - 1.0.0"
 #   apk  list-installed:  "zeroblock-1.0.0" / "zeroblock"
 zb_installed() {
-	$opkg $list_installed 2>/dev/null | grep -qE '^zeroblock([[:space:]-]|$)'
+	if [ "$MOD" = "apk" ]; then
+		# apk list -I фильтрует только установленные пакеты.
+		# Формат строки: "zeroblock-<version> <arch> {<origin>} (license) ~<size>"
+		# или "zeroblock-<version> ..." в зависимости от версии apk-tools.
+		# Точное совпадение по имени до первого дефиса/пробела.
+		apk list -I zeroblock 2>/dev/null | grep -qE '^zeroblock(-[0-9]|[[:space:]]|$)'
+	else
+		opkg list-installed 2>/dev/null | grep -q '^zeroblock[[:space:]]'
+	fi
 }
 
 del_awg10() {
@@ -102,23 +108,17 @@ opkg_update(){
 	done
 }
 
-install_rrws() {
-	sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/dedikar/rrws_installer.sh) noclear
-	echo ""
-}
-
 install_malwdns() {
 	sh <(wget -qO- https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/malw_parser/malw_parser.sh) noclear
 	echo ""
 }
 
 install_prereq(){
-	$opkg $install wget-ssl
+	$opkg $install wget-ssl      >/dev/null 2>&1
+	$opkg $install luci-app-rrws >/dev/null 2>&1
 }
 
-
 install_zb_newest() {
-	no_zb_arch=0
 	ZB_ARCH_LINK="https://raw.githubusercontent.com/kkkkCampbell/master/refs/heads/zbautoconf/ZeroBlock_latest_$MOD.tar.gz"
 
 	WORK_DIR="/tmp/zb_arch_work"
@@ -143,7 +143,6 @@ install_zb_newest() {
 
 			if [ $wget_attempt -gt $max_attempts ]; then
 				echo -e "${YELLOW}Не удалось скачать после $max_attempts попыток${CLR_OFF}"
-				no_zb_arch=1
 				return 1
 			fi
 
@@ -154,7 +153,6 @@ install_zb_newest() {
 	echo -e "Распаковка..."
 	tar -xzf "archive.tar.gz" -C "$WORK_DIR" || {
 		echo -e "${RED_BRIGHT}Ошибка распаковки${CLR_OFF}"
-		no_zb_arch=1
 		return 1
 	}
 
@@ -173,22 +171,20 @@ install_zb_newest() {
 
 	if [ -z "$LARGEST_FILE" ]; then
 		echo -e "${RED_BRIGHT}Ошибка: нет .$MOD файлов${CLR_OFF}"
-		no_zb_arch=1
 		return 1
 	fi
 
 
 	echo -e "Установка: $(basename "$LARGEST_FILE")"
-	$opkg $install "$LARGEST_FILE" || {
+	$opkg $install "$LARGEST_FILE" >/dev/null 2>&1 || {
 		echo -e "${RED_BRIGHT}Ошибка установки${CLR_OFF}"
-		no_zb_arch=1
 		return 1
 	}
 
 	# Второй файл
 	for file in $(find "$WORK_DIR" -name "*.${MOD}" -type f 2>/dev/null | grep -v "$LARGEST_FILE"); do
 		echo -e "Установка: $(basename "$file")"
-		$opkg $install "$file" || echo -e "${YELLOW}Предупреждение: не установлен $file${CLR_OFF}"
+		$opkg $install "$file" >/dev/null 2>&1 || echo -e "${YELLOW}Предупреждение: не установлен $file${CLR_OFF}"
 		break
 	done
 
@@ -196,34 +192,26 @@ install_zb_newest() {
 	return 0
 }
 
-# Установка zeroblock из репозитория (только если свежий архив не встал)
-# Логика сообщений:
-#   • пакет уже установлен до нас                → не ошибка
-#   • install вернул rc≠0, но пакет на месте    → не ошибка (версия та же/выше)
-#   • install вернул rc≠0 и пакета нет           → ошибка
+
+# Установка/обновление zeroblock из репозитория.
+# Вызывается ВСЕГДА, независимо от результата установки из архива.
+# Менеджер пакетов сам решает, надо ли обновлять:
+#   • версия в репо новее  → обновит
+#   • версия та же/старее  → ничего не сделает (rc=0, либо rc≠0 + пакет на месте)
+# Ошибка — только если rc≠0 и пакета нет.
 install_zb_repo() {
-	[ "$no_zb_arch" != "1" ] && return 0
-
-	if zb_installed; then
-		echo -e "✓ zeroblock уже установлен, установка из репозитория не требуется"
-		return 0
-	fi
-
-	echo -e "→ Установка zeroblock luci-app-zeroblock из репозитория..."
+	echo -e "${GREEN}→ Установка/обновление zeroblock luci-app-zeroblock из репозитория...${CLR_OFF}"
 	$opkg $install zeroblock luci-app-zeroblock > /tmp/opkg_install.log 2>&1
 	install_rc=$?
 
+	if [ $install_rc -eq 0 ]; then
+		echo -e "✓ zeroblock установлен/актуален (репозиторий)"
+		return 0
+	fi
+
+	# Менеджер вернул ошибку — если пакет на месте, значит версия в репо та же/старее.
 	if zb_installed; then
-		if [ $install_rc -eq 0 ]; then
-			echo -e "✓ zeroblock успешно установлен из репозитория"
-		else
-			echo -e "✓ zeroblock установлен (переустановка не требуется, версия актуальна)"
-			if grep -qiE "up.to.date|already installed|nothing to be done|no packages to install" /tmp/opkg_install.log 2>/dev/null; then
-				echo -e "  (лог подтверждает: пакет актуален)"
-			else
-				echo -e "  ${YELLOW}⚠ $opkg вернул код $install_rc, но zeroblock установлен. См. /tmp/opkg_install.log${CLR_OFF}"
-			fi
-		fi
+		echo -e "✓ zeroblock уже установлен (версия не ниже репозитория)"
 		return 0
 	fi
 
@@ -232,7 +220,8 @@ install_zb_repo() {
 	return 1
 }
 
-# Скачивание внешнего конфига zeroblock (без вывода содержимого)
+
+
 fetch_zeroblock_config() {
 	echo -e "→ Скачивание конфига zeroblock"
 	rm -f "$ZB_CONFIG_LOCAL"
@@ -636,7 +625,6 @@ dns_redirect "${TEMP_DNS}"
 sleep 5
 opkg_update
 install_prereq
-install_rrws
 install_malwdns
 install_zb_newest; echo -e ""
 install_zb_repo
@@ -656,9 +644,8 @@ if ! stop_and_rplce_config_zeroblock; then
 	echo -e "${YELLOW}Перезагрузка отменена. Лог: $LOG_FILE${CLR_OFF}"
 	exit 1
 fi
-
-wait_zeroblock_ready
 dns_redirect "recovery"
+wait_zeroblock_ready
 refresh_luci
 on_the_end
 
