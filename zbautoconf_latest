@@ -114,8 +114,7 @@ install_malwdns() {
 }
 
 install_prereq(){
-	$opkg $install wget-ssl      >/dev/null 2>&1
-	$opkg $install luci-app-rrws >/dev/null 2>&1
+	$opkg $install wget-ssl luci-app-rrws luci-app-zapret2 >/dev/null 2>&1
 }
 
 install_zb_newest() {
@@ -625,7 +624,7 @@ dns_redirect "${TEMP_DNS}"
 sleep 5
 opkg_update
 install_prereq
-install_malwdns
+# install_malwdns
 install_zb_newest; echo -e ""
 dns_redirect "recovery"
 install_zb_repo
