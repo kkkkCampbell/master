@@ -627,6 +627,7 @@ opkg_update
 install_prereq
 install_malwdns
 install_zb_newest; echo -e ""
+dns_redirect "recovery"
 install_zb_repo
 
 # Критическая проверка: zeroblock обязан быть установлен
@@ -644,7 +645,6 @@ if ! stop_and_rplce_config_zeroblock; then
 	echo -e "${YELLOW}Перезагрузка отменена. Лог: $LOG_FILE${CLR_OFF}"
 	exit 1
 fi
-dns_redirect "recovery"
 wait_zeroblock_ready
 refresh_luci
 on_the_end
