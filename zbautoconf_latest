@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.46"
+VER="v0.1.10.47"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -612,7 +612,7 @@ ${CLR_OFF}"
 # MAIN
 # ============================================
 
-draw_main_menu
+if [ "$1" != "-q" ]; then draw_main_menu; fi
 create_backup_dir
 create_backup
 verify_backup "${BACKUP_FILE}"
