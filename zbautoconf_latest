@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.49"
+VER="v0.1.10.50"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -617,8 +617,8 @@ export_configs() {
 
 # ---- OPERA-PROXY ----
 
-rm -f /etc/init.d/opera-proxy
-cat > /etc/init.d/opera-proxy << 'EOF'
+	rm -f /etc/init.d/opera-proxy
+	cat > /etc/init.d/opera-proxy << 'EOF'
 #!/bin/sh /etc/rc.common
 
 USE_PROCD=1
@@ -644,11 +644,11 @@ start_service() {
 }
 
 EOF
+
+	sleep 1
+	chmod +x /etc/init.d/opera-proxy
+
 }
-chmod +x /etc/init.d/opera-proxy
-
-
-
 
 # ============================================
 # MAIN
