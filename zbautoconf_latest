@@ -7,7 +7,7 @@
 # 
 # ============================================
 
-VER="v0.1.10.48"
+VER="v0.1.10.49"
 
 if [ -t 1 ]; then
     IS_TTY=1
@@ -610,13 +610,15 @@ ${CLR_OFF}"
 
 }
 
-create_configs() {
+
+# ---- ФУНЦИЯ ЭКСПОРТА КОНФИГУРАЦИЙ ----
+export_configs() {
+
 
 # ---- OPERA-PROXY ----
 
 rm -f /etc/init.d/opera-proxy
 cat > /etc/init.d/opera-proxy << 'EOF'
-
 #!/bin/sh /etc/rc.common
 
 USE_PROCD=1
@@ -643,13 +645,17 @@ start_service() {
 
 EOF
 }
+chmod +x /etc/init.d/opera-proxy
+
+
+
 
 # ============================================
 # MAIN
 # ============================================
 
 if [ "$1" != "-q" ]; then draw_main_menu; fi
-create_configs
+export_configs
 create_backup_dir
 create_backup
 verify_backup "${BACKUP_FILE}"
